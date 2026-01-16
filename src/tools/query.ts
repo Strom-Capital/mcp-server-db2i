@@ -2,20 +2,20 @@
  * Query execution tool for IBM DB2i MCP Server
  */
 
-import { z } from 'zod';
 import { executeQuery } from '../db/connection.js';
-import { isReadOnlyQuery } from '../db/queries.js';
+import { validateQuery } from '../db/queries.js';
+import { createChildLogger } from '../utils/logger.js';
+
+const log = createChildLogger({ component: 'query-tool' });
 
 /**
- * Input schema for execute_query tool
+ * Input for execute_query tool
  */
-export const executeQueryInputSchema = {
-  sql: z.string().describe('SQL SELECT query to execute'),
-  params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
-  limit: z.number().optional().default(1000).describe('Maximum number of rows to return (default: 1000)'),
-};
-
-export type ExecuteQueryInput = z.infer<z.ZodObject<typeof executeQueryInputSchema>>;
+export interface ExecuteQueryInput {
+  sql: string;
+  params?: unknown[];
+  limit?: number;
+}
 
 /**
  * Execute a read-only SQL query
@@ -25,14 +25,20 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   data?: unknown[];
   rowCount?: number;
   error?: string;
+  violations?: string[];
 }> {
   const { sql, params = [], limit = 1000 } = input;
 
-  // Validate that query is read-only
-  if (!isReadOnlyQuery(sql)) {
+  log.debug({ sqlPreview: sql.substring(0, 100), limit }, 'Received query request');
+
+  // Validate that query is read-only using enhanced security validator
+  const validationResult = validateQuery(sql);
+  if (!validationResult.isValid) {
+    log.warn({ violations: validationResult.violations }, 'Query rejected: security validation failed');
     return {
       success: false,
-      error: 'Only SELECT queries are allowed. Data modification statements (INSERT, UPDATE, DELETE, etc.) are not permitted.',
+      error: `Security validation failed: ${validationResult.violations.join('; ')}`,
+      violations: validationResult.violations,
     };
   }
 
@@ -50,6 +56,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
 
     const result = await executeQuery(limitedSql, params as unknown[]);
 
+    log.info({ rowCount: result.rows.length }, 'Query executed successfully');
     return {
       success: true,
       data: result.rows,
@@ -57,19 +64,10 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
+    log.debug({ err: error }, 'Query execution failed');
     return {
       success: false,
       error: message,
     };
   }
 }
-
-/**
- * Tool definition for MCP server
- */
-export const queryToolDefinition = {
-  name: 'execute_query',
-  description: 'Execute a read-only SQL SELECT query against the IBM DB2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
-  inputSchema: executeQueryInputSchema,
-  handler: executeQueryTool,
-};

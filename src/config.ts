@@ -14,6 +14,26 @@ export interface DB2iConfig {
 }
 
 /**
+ * Valid log levels for the application
+ */
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+/**
+ * Get the configured log level from environment
+ * Defaults to 'info' if not set or invalid
+ */
+export function getLogLevel(): LogLevel {
+  const level = process.env.LOG_LEVEL?.toLowerCase();
+  const validLevels: LogLevel[] = ['debug', 'info', 'warn', 'error', 'fatal'];
+
+  if (level && validLevels.includes(level as LogLevel)) {
+    return level as LogLevel;
+  }
+
+  return 'info';
+}
+
+/**
  * Parse JDBC options from a semicolon-separated string
  * Format: "key1=value1;key2=value2"
  */
@@ -113,3 +133,29 @@ export function buildConnectionConfig(config: DB2iConfig): {
 export function getDefaultSchema(config: DB2iConfig): string | undefined {
   return config.schema || undefined;
 }
+
+/**
+ * Rate limit configuration interface
+ */
+export interface RateLimitConfig {
+  /** Time window in milliseconds (default: 900000 = 15 minutes) */
+  windowMs: number;
+  /** Maximum requests allowed per window (default: 100) */
+  maxRequests: number;
+  /** Whether rate limiting is enabled (default: true) */
+  enabled: boolean;
+}
+
+/**
+ * Default rate limit configuration values
+ *
+ * Environment variables:
+ * - RATE_LIMIT_WINDOW_MS: Time window in milliseconds (default: 900000)
+ * - RATE_LIMIT_MAX_REQUESTS: Max requests per window (default: 100)
+ * - RATE_LIMIT_ENABLED: Set to 'false' or '0' to disable (default: true)
+ */
+export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 100,
+  enabled: true,
+};

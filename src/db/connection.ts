@@ -6,6 +6,9 @@ import { pool } from 'node-jt400';
 import type { Param } from 'node-jt400';
 import type { DB2iConfig } from '../config.js';
 import { buildConnectionConfig } from '../config.js';
+import { createChildLogger } from '../utils/logger.js';
+
+const log = createChildLogger({ component: 'database' });
 
 export interface QueryResult {
   rows: Record<string, unknown>[];
@@ -26,14 +29,16 @@ let connectionPool: ReturnType<typeof pool> | null = null;
  * Initialize the connection pool
  */
 export function initializePool(config: DB2iConfig): void {
+  log.debug({ hostname: config.hostname, port: config.port }, 'Initializing connection pool');
   const connectionConfig = buildConnectionConfig(config);
   connectionPool = pool(connectionConfig);
+  log.info({ hostname: config.hostname }, 'Connection pool created');
 }
 
 /**
- * Get the connection pool instance
+ * Get the connection pool instance (internal use only)
  */
-export function getPool(): ReturnType<typeof pool> {
+function getPool(): ReturnType<typeof pool> {
   if (!connectionPool) {
     throw new Error('Connection pool not initialized. Call initializePool first.');
   }
@@ -66,36 +71,16 @@ export async function executeQuery(
   const db = getPool();
 
   try {
+    log.debug({ sql: sql.substring(0, 200), paramCount: params.length }, 'Executing query');
     const typedParams = toParams(params);
     const results = await db.query(sql, typedParams);
+    const rows = results as Record<string, unknown>[];
+    log.debug({ rowCount: rows.length }, 'Query completed');
     
-    return {
-      rows: results as Record<string, unknown>[],
-    };
+    return { rows };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown database error';
-    throw new Error(`Database query failed: ${message}`);
-  }
-}
-
-/**
- * Execute a query with metadata about columns
- */
-export async function executeQueryWithMetadata(
-  sql: string,
-  params: unknown[] = []
-): Promise<QueryResult> {
-  const db = getPool();
-
-  try {
-    const typedParams = toParams(params);
-    const results = await db.query(sql, typedParams);
-    
-    return {
-      rows: results as Record<string, unknown>[],
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown database error';
+    log.debug({ err: error, sql: sql.substring(0, 200) }, 'Database query failed');
     throw new Error(`Database query failed: ${message}`);
   }
 }
@@ -105,19 +90,12 @@ export async function executeQueryWithMetadata(
  */
 export async function testConnection(): Promise<boolean> {
   try {
+    log.debug('Testing database connection');
     await executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    log.debug('Connection test successful');
     return true;
-  } catch {
+  } catch (error) {
+    log.warn({ err: error }, 'Connection test failed');
     return false;
-  }
-}
-
-/**
- * Close the connection pool
- */
-export async function closePool(): Promise<void> {
-  if (connectionPool) {
-    // node-jt400 pool doesn't have explicit close, but we can clear the reference
-    connectionPool = null;
   }
 }

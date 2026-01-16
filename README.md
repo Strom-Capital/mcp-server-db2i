@@ -20,8 +20,10 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IB
 | `list_tables` | List tables in a schema (with optional filter) |
 | `describe_table` | Get detailed column information |
 | `list_views` | List views in a schema (with optional filter) |
-| `list_indexes` | List indexes for a table |
+| `list_indexes` | List SQL indexes for a table |
 | `get_table_constraints` | Get primary keys, foreign keys, unique constraints |
+
+> **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included. This is standard DB2 for i behavior.
 
 ### Filter Syntax
 
@@ -70,11 +72,22 @@ DB2I_HOSTNAME=your-ibm-i-host.com
 DB2I_USERNAME=your-username
 DB2I_PASSWORD=your-password
 
-# Optional
+# Optional - Database
 DB2I_PORT=446                              # Default: 446
 DB2I_DATABASE=*LOCAL                       # Default: *LOCAL
 DB2I_SCHEMA=your-default-schema            # Default schema for all tools (can be overridden per-call)
 DB2I_JDBC_OPTIONS=naming=system;date format=iso
+
+# Optional - Logging
+LOG_LEVEL=info                             # debug, info, warn, error, fatal (default: info)
+NODE_ENV=production                        # production = JSON logs, development = pretty logs
+LOG_PRETTY=true                            # Override: force pretty (true) or JSON (false) logs
+LOG_COLORS=true                            # Override: force colors on/off (auto-detected by default)
+
+# Optional - Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000                # Time window in ms (default: 900000 = 15 minutes)
+RATE_LIMIT_MAX_REQUESTS=100                # Max requests per window (default: 100)
+RATE_LIMIT_ENABLED=true                    # Set to 'false' to disable (default: true)
 ```
 
 ### Environment Variables
@@ -88,6 +101,13 @@ DB2I_JDBC_OPTIONS=naming=system;date format=iso
 | `DB2I_DATABASE` | No | `*LOCAL` | Database name |
 | `DB2I_SCHEMA` | No | - | Default schema/library for tools. If set, you don't need to specify schema in each tool call. |
 | `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated) |
+| `LOG_LEVEL` | No | `info` | Log level: `debug`, `info`, `warn`, `error`, `fatal` |
+| `NODE_ENV` | No | - | Set to `production` for JSON logs, otherwise pretty-printed |
+| `LOG_PRETTY` | No | - | Override log format: `true` = pretty, `false` = JSON |
+| `LOG_COLORS` | No | auto | Override colors: `true`/`false` (auto-detects TTY by default) |
+| `RATE_LIMIT_WINDOW_MS` | No | `900000` | Rate limit time window in milliseconds (15 min) |
+| `RATE_LIMIT_MAX_REQUESTS` | No | `100` | Maximum requests allowed per window |
+| `RATE_LIMIT_ENABLED` | No | `true` | Set to `false` or `0` to disable rate limiting |
 
 ### JDBC Options
 
@@ -223,14 +243,31 @@ npm run build
 
 # Run production build
 npm start
+
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Lint code
+npm run lint
+
+# Lint and fix
+npm run lint:fix
+
+# Type check
+npm run typecheck
 ```
 
 ## Security
 
 - **Read-only access**: Only SELECT statements are permitted
 - **No credentials in code**: All sensitive data via environment variables
-- **Query validation**: Dangerous SQL keywords are blocked
+- **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
 - **Result limiting**: Default limit of 1000 rows prevents large result sets
+- **Rate limiting**: Configurable request throttling to prevent abuse (100 req/15 min default)
+- **Structured logging**: Automatic redaction of sensitive fields like passwords
 
 ## Compatibility
 
@@ -254,3 +291,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [node-jt400](https://www.npmjs.com/package/node-jt400) - JT400 JDBC driver wrapper for Node.js
 - [Model Context Protocol](https://modelcontextprotocol.io/) - The protocol specification
 - [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk) - Official TypeScript SDK
+- [IBM ibmi-mcp-server](https://github.com/IBM/ibmi-mcp-server) - SQL security validation patterns inspired by their approach to AST-based query validation
