@@ -237,6 +237,10 @@ npm start
 - IBM i V7R3 and later (V7R5 recommended)
 - Works with any IBM i system accessible via JDBC over TCP/IP
 
+## Related Projects
+
+- **[IBM ibmi-mcp-server](https://github.com/IBM/ibmi-mcp-server)** - IBM's official MCP server for IBM i systems. Offers YAML-based SQL tool definitions, AI agent frameworks, and production deployment options. Requires [Mapepire](https://mapepire-ibmi.github.io/) to be installed on your IBM i system, but if you can manage that prerequisite, it's worth checking out for more advanced use cases.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
