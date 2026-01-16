@@ -3,6 +3,15 @@
  */
 
 import { executeQuery } from './connection.js';
+import {
+  SqlSecurityValidator,
+  validateQuery as validateSqlQuery,
+  type SecurityValidationResult,
+  type SecurityConfig,
+} from '../utils/security/sqlSecurityValidator.js';
+
+// Re-export for backwards compatibility and convenience
+export { SqlSecurityValidator, validateSqlQuery, type SecurityValidationResult, type SecurityConfig };
 
 /**
  * Convert a filter pattern to SQL LIKE pattern
@@ -33,39 +42,27 @@ export function filterToLikePattern(filter: string | undefined): string {
 
 /**
  * Validate that a query is read-only (SELECT only)
+ * 
+ * Uses the enhanced SqlSecurityValidator with AST parsing and regex fallback
+ * for comprehensive security validation.
+ * 
+ * @param sql - SQL query to validate
+ * @returns true if the query is safe to execute, false otherwise
  */
 export function isReadOnlyQuery(sql: string): boolean {
-  const trimmed = sql.trim().toUpperCase();
-  
-  // Must start with SELECT or WITH (for CTEs)
-  if (!trimmed.startsWith('SELECT') && !trimmed.startsWith('WITH')) {
-    return false;
+  const result = SqlSecurityValidator.validateQuery(sql);
+  return result.isValid;
   }
 
-  // Check for dangerous keywords that indicate modification
-  const dangerousKeywords = [
-    'INSERT',
-    'UPDATE',
-    'DELETE',
-    'DROP',
-    'CREATE',
-    'ALTER',
-    'TRUNCATE',
-    'GRANT',
-    'REVOKE',
-    'CALL',
-    'EXECUTE',
-  ];
-
-  for (const keyword of dangerousKeywords) {
-    // Check if keyword appears as a statement (not inside a string or comment)
-    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-    if (regex.test(trimmed)) {
-      return false;
-    }
-  }
-
-  return true;
+/**
+ * Validate a query and return detailed results including any violations
+ * 
+ * @param sql - SQL query to validate
+ * @param config - Optional security configuration
+ * @returns Detailed validation result with violations
+ */
+export function validateQuery(sql: string, config?: SecurityConfig): SecurityValidationResult {
+  return SqlSecurityValidator.validateQuery(sql, config);
 }
 
 /**
@@ -174,6 +171,9 @@ export async function describeTable(
 
 /**
  * List views in a schema
+ * 
+ * Note: This only returns SQL-defined views (CREATE VIEW).
+ * For legacy DDS logical files, query QSYS.QADBFDEP.
  */
 export async function listViews(
   schema: string,
@@ -202,6 +202,9 @@ export async function listViews(
 
 /**
  * List indexes for a table
+ * 
+ * Note: This only returns SQL-defined indexes (CREATE INDEX).
+ * For legacy DDS logical files, query QSYS.QADBFDEP and QSYS.QADBKFLD.
  */
 export async function listIndexes(
   schema: string,
@@ -214,14 +217,21 @@ export async function listIndexes(
 }>> {
   const sql = `
     SELECT 
-      INDEX_NAME,
-      INDEX_SCHEMA,
-      IS_UNIQUE,
-      COLUMN_NAMES
-    FROM QSYS2.SYSINDEXES
-    WHERE TABLE_SCHEMA = ?
-      AND TABLE_NAME = ?
-    ORDER BY INDEX_NAME
+      I.INDEX_NAME,
+      I.INDEX_SCHEMA,
+      I.IS_UNIQUE,
+      COALESCE(
+        LISTAGG(K.COLUMN_NAME, ', ') WITHIN GROUP (ORDER BY K.ORDINAL_POSITION),
+        ''
+      ) AS COLUMN_NAMES
+    FROM QSYS2.SYSINDEXES I
+    LEFT JOIN QSYS2.SYSKEYS K 
+      ON I.INDEX_SCHEMA = K.INDEX_SCHEMA 
+      AND I.INDEX_NAME = K.INDEX_NAME
+    WHERE I.TABLE_SCHEMA = ?
+      AND I.TABLE_NAME = ?
+    GROUP BY I.INDEX_NAME, I.INDEX_SCHEMA, I.IS_UNIQUE
+    ORDER BY I.INDEX_NAME
   `;
 
   const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()]);

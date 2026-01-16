@@ -26,4 +26,10 @@ jobs:
         run: npm run build
 
       - name: Check TypeScript types
-        run: npx tsc --noEmit
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
