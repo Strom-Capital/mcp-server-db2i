@@ -1,0 +1,17 @@
+services:
+  mcp-server-db2i:
+    build: .
+    image: mcp-server-db2i:latest
+    container_name: mcp-server-db2i
+    stdin_open: true
+    tty: true
+    environment:
+      - DB2I_HOSTNAME=${DB2I_HOSTNAME}
+      - DB2I_PORT=${DB2I_PORT:-446}
+      - DB2I_USERNAME=${DB2I_USERNAME}
+      - DB2I_PASSWORD=${DB2I_PASSWORD}
+      - DB2I_DATABASE=${DB2I_DATABASE:-*LOCAL}
+      - DB2I_SCHEMA=${DB2I_SCHEMA:-}
+      - DB2I_JDBC_OPTIONS=${DB2I_JDBC_OPTIONS:-}
+    env_file:
+      - .env

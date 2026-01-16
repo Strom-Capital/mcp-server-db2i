@@ -1,0 +1,58 @@
+{
+  "name": "mcp-server-db2i",
+  "version": "0.0.1",
+  "description": "MCP server for IBM DB2 for i (DB2i) database queries and metadata inspection",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-server-db2i": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ibm",
+    "db2",
+    "db2i",
+    "as400",
+    "iseries",
+    "ibm-i",
+    "jt400",
+    "jdbc"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Strom-Capital/mcp-server-db2i.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Strom-Capital/mcp-server-db2i/issues"
+  },
+  "homepage": "https://github.com/Strom-Capital/mcp-server-db2i#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "node-jt400": "^6.0.1",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.9",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
