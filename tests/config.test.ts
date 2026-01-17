@@ -11,6 +11,7 @@ import {
   buildConnectionConfig,
   readSecretFromFile,
   getSecret,
+  validateHostname,
   type DB2iConfig,
 } from '../src/config.js';
 
@@ -317,6 +318,130 @@ describe('Config Module', () => {
 
       const result = getSecret('TEST_SECRET', 'TEST_SECRET_FILE');
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe('validateHostname', () => {
+    describe('valid hostnames', () => {
+      it('should accept simple hostname', () => {
+        expect(validateHostname('myhost')).toBe(true);
+      });
+
+      it('should accept hostname with domain', () => {
+        expect(validateHostname('myhost.example.com')).toBe(true);
+      });
+
+      it('should accept hostname with subdomain', () => {
+        expect(validateHostname('ibmi.prod.example.com')).toBe(true);
+      });
+
+      it('should accept hostname with hyphen', () => {
+        expect(validateHostname('ibmi-prod')).toBe(true);
+      });
+
+      it('should accept hostname with numbers', () => {
+        expect(validateHostname('ibmi01')).toBe(true);
+      });
+
+      it('should accept hostname starting with number', () => {
+        expect(validateHostname('123host')).toBe(true);
+      });
+    });
+
+    describe('valid IPv4 addresses', () => {
+      it('should accept standard IPv4', () => {
+        expect(validateHostname('192.168.1.100')).toBe(true);
+      });
+
+      it('should accept localhost IP', () => {
+        expect(validateHostname('127.0.0.1')).toBe(true);
+      });
+
+      it('should accept all zeros', () => {
+        expect(validateHostname('0.0.0.0')).toBe(true);
+      });
+
+      it('should accept max values', () => {
+        expect(validateHostname('255.255.255.255')).toBe(true);
+      });
+    });
+
+    describe('invalid hostnames', () => {
+      it('should reject empty string', () => {
+        expect(validateHostname('')).toBe(false);
+      });
+
+      it('should reject whitespace only', () => {
+        expect(validateHostname('   ')).toBe(false);
+      });
+
+      it('should reject hostname starting with hyphen', () => {
+        expect(validateHostname('-invalid')).toBe(false);
+      });
+
+      it('should reject hostname ending with hyphen', () => {
+        expect(validateHostname('invalid-')).toBe(false);
+      });
+
+      it('should reject hostname with underscore', () => {
+        expect(validateHostname('invalid_host')).toBe(false);
+      });
+
+      it('should reject hostname with special characters', () => {
+        expect(validateHostname('host@domain')).toBe(false);
+      });
+
+      it('should reject hostname with spaces', () => {
+        expect(validateHostname('my host')).toBe(false);
+      });
+
+      it('should reject hostname exceeding 253 characters', () => {
+        const longHostname = 'a'.repeat(254);
+        expect(validateHostname(longHostname)).toBe(false);
+      });
+    });
+
+    describe('invalid IPv4 addresses', () => {
+      it('should reject IPv4 with octet > 255', () => {
+        expect(validateHostname('192.168.1.256')).toBe(false);
+      });
+
+      it('should reject IPv4 with negative octet', () => {
+        expect(validateHostname('192.168.-1.1')).toBe(false);
+      });
+
+      it('should reject IPv4 with octet 999', () => {
+        expect(validateHostname('192.168.999.1')).toBe(false);
+      });
+    });
+  });
+
+  describe('loadConfig hostname validation', () => {
+    beforeEach(() => {
+      process.env.DB2I_USERNAME = 'user';
+      process.env.DB2I_PASSWORD = 'pass';
+    });
+
+    it('should accept valid hostname', () => {
+      process.env.DB2I_HOSTNAME = 'myibmi.example.com';
+      const config = loadConfig();
+      expect(config.hostname).toBe('myibmi.example.com');
+    });
+
+    it('should accept valid IPv4 address', () => {
+      process.env.DB2I_HOSTNAME = '192.168.1.100';
+      const config = loadConfig();
+      expect(config.hostname).toBe('192.168.1.100');
+    });
+
+    it('should throw error for invalid hostname format', () => {
+      process.env.DB2I_HOSTNAME = 'invalid_host!';
+      expect(() => loadConfig()).toThrow('Invalid DB2I_HOSTNAME format');
+    });
+
+    it('should throw error for hostname starting with hyphen', () => {
+      process.env.DB2I_HOSTNAME = '-invalid';
+      expect(() => loadConfig()).toThrow('Invalid DB2I_HOSTNAME format');
     });
   });
 
