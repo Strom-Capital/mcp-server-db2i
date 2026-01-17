@@ -70,6 +70,39 @@ export function getSecret(envVar: string, fileEnvVar: string): string | undefine
 }
 
 /**
+ * Validate hostname format.
+ * Accepts valid hostnames (RFC 1123) and IPv4 addresses.
+ *
+ * @param hostname - The hostname or IP address to validate
+ * @returns true if the hostname format is valid, false otherwise
+ */
+export function validateHostname(hostname: string): boolean {
+  const trimmed = hostname.trim();
+  if (!trimmed) return false;
+
+  // IPv4 pattern: four octets separated by dots
+  const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const ipv4Match = trimmed.match(ipv4Pattern);
+  if (ipv4Match) {
+    // Validate each octet is 0-255
+    return ipv4Match.slice(1).every((octet) => {
+      const num = parseInt(octet, 10);
+      return num >= 0 && num <= 255;
+    });
+  }
+
+  // Hostname pattern (RFC 1123):
+  // - Labels separated by dots
+  // - Each label: 1-63 chars, alphanumeric or hyphen, cannot start/end with hyphen
+  // - Total length up to 253 chars
+  if (trimmed.length > 253) return false;
+
+  const hostnamePattern =
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  return hostnamePattern.test(trimmed);
+}
+
+/**
  * Parse JDBC options from a semicolon-separated string
  * Format: "key1=value1;key2=value2"
  */
@@ -112,6 +145,11 @@ export function loadConfig(): DB2iConfig {
 
   if (!hostname) {
     throw new Error('DB2I_HOSTNAME environment variable is required');
+  }
+  if (!validateHostname(hostname)) {
+    throw new Error(
+      `Invalid DB2I_HOSTNAME format: "${hostname}". Must be a valid hostname or IPv4 address.`
+    );
   }
   if (!username) {
     throw new Error(
