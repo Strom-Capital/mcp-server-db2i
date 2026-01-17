@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.1.0...v1.2.0) (2026-01-17)
+
+
+### Features
+
+* add configurable query result size limits ([#15](https://github.com/Strom-Capital/mcp-server-db2i/issues/15)) ([0905b75](https://github.com/Strom-Capital/mcp-server-db2i/commit/0905b75afbc284fd0d0d806bb79478fccc9a16c9)), closes [#14](https://github.com/Strom-Capital/mcp-server-db2i/issues/14)
+* add Docker secrets support for secure credential management ([#10](https://github.com/Strom-Capital/mcp-server-db2i/issues/10)) ([8d40b2a](https://github.com/Strom-Capital/mcp-server-db2i/commit/8d40b2ad51efe956e260033fb29690112fd5a2a1)), closes [#9](https://github.com/Strom-Capital/mcp-server-db2i/issues/9)
+* add hostname format validation ([#13](https://github.com/Strom-Capital/mcp-server-db2i/issues/13)) ([f6ac711](https://github.com/Strom-Capital/mcp-server-db2i/commit/f6ac711b6e457d3a3f5230aea40231a7aa898bed)), closes [#12](https://github.com/Strom-Capital/mcp-server-db2i/issues/12)
+
 ## [1.1.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.0.0...v1.1.0) (2026-01-16)
 
 

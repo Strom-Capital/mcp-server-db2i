@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-db2i",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MCP server for IBM DB2 for i (DB2i) database queries and metadata inspection",
   "type": "module",
   "main": "dist/index.js",
