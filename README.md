@@ -88,6 +88,10 @@ LOG_COLORS=true                            # Override: force colors on/off (auto
 RATE_LIMIT_WINDOW_MS=900000                # Time window in ms (default: 900000 = 15 minutes)
 RATE_LIMIT_MAX_REQUESTS=100                # Max requests per window (default: 100)
 RATE_LIMIT_ENABLED=true                    # Set to 'false' to disable (default: true)
+
+# Optional - Query Limits
+QUERY_DEFAULT_LIMIT=1000                   # Default rows returned (default: 1000)
+QUERY_MAX_LIMIT=10000                      # Maximum rows allowed (default: 10000)
 ```
 
 ### Environment Variables
@@ -110,6 +114,8 @@ RATE_LIMIT_ENABLED=true                    # Set to 'false' to disable (default:
 | `RATE_LIMIT_WINDOW_MS` | No | `900000` | Rate limit time window in milliseconds (15 min) |
 | `RATE_LIMIT_MAX_REQUESTS` | No | `100` | Maximum requests allowed per window |
 | `RATE_LIMIT_ENABLED` | No | `true` | Set to `false` or `0` to disable rate limiting |
+| `QUERY_DEFAULT_LIMIT` | No | `1000` | Default number of rows returned by queries |
+| `QUERY_MAX_LIMIT` | No | `10000` | Maximum rows allowed (caps user-provided limits) |
 
 *Either the environment variable or the corresponding `*_FILE` variable must be set. File-based secrets take priority when both are provided.
 

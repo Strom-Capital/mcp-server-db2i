@@ -102,14 +102,14 @@ export function createServer(): McpServer {
       inputSchema: {
         sql: z.string().describe('SQL SELECT query to execute'),
         params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
-        limit: z.number().optional().default(1000).describe('Maximum number of rows to return (default: 1000)'),
+        limit: z.number().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
       },
     },
     withToolHandler(
       (args) => executeQueryTool({
         sql: args.sql,
         params: args.params,
-        limit: args.limit ?? 1000,
+        limit: args.limit,
       }),
       'Query failed'
     )
