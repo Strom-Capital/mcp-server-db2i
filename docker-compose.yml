@@ -1,3 +1,12 @@
+# Docker Compose configuration for mcp-server-db2i
+#
+# SECURITY NOTE: This file shows two approaches for credentials:
+# 1. Environment variables (simpler, less secure) - credentials visible via docker inspect
+# 2. Docker secrets (recommended for production) - credentials stored securely
+#
+# For production deployments, use Docker secrets or external secret management.
+# See README.md for detailed security recommendations.
+
 services:
   mcp-server-db2i:
     build: .
@@ -8,10 +17,29 @@ services:
     environment:
       - DB2I_HOSTNAME=${DB2I_HOSTNAME}
       - DB2I_PORT=${DB2I_PORT:-446}
-      - DB2I_USERNAME=${DB2I_USERNAME}
-      - DB2I_PASSWORD=${DB2I_PASSWORD}
       - DB2I_DATABASE=${DB2I_DATABASE:-*LOCAL}
       - DB2I_SCHEMA=${DB2I_SCHEMA:-}
       - DB2I_JDBC_OPTIONS=${DB2I_JDBC_OPTIONS:-}
+      # Option 1: Plain environment variables (from .env file)
+      # Less secure - credentials visible via 'docker inspect'
+      - DB2I_USERNAME=${DB2I_USERNAME:-}
+      - DB2I_PASSWORD=${DB2I_PASSWORD:-}
+      # Option 2: File-based secrets (recommended)
+      # More secure - credentials read from mounted files
+      # Uncomment these and comment out the plain env vars above to use secrets:
+      # - DB2I_USERNAME_FILE=/run/secrets/db2i_username
+      # - DB2I_PASSWORD_FILE=/run/secrets/db2i_password
     env_file:
       - .env
+    # Uncomment to use Docker secrets (requires secrets section below):
+    # secrets:
+    #   - db2i_username
+    #   - db2i_password
+
+# Docker secrets configuration (for production use)
+# Create secret files in ./secrets/ directory or use external secret management
+# secrets:
+#   db2i_username:
+#     file: ./secrets/db2i_username.txt
+#   db2i_password:
+#     file: ./secrets/db2i_password.txt
