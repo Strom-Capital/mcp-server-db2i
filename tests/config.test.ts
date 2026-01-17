@@ -12,7 +12,10 @@ import {
   readSecretFromFile,
   getSecret,
   validateHostname,
+  getQueryLimitConfig,
+  applyQueryLimit,
   type DB2iConfig,
+  type QueryLimitConfig,
 } from '../src/config.js';
 
 // Create a unique temp directory for test secrets
@@ -509,6 +512,79 @@ describe('Config Module', () => {
       // Defaults should still be present
       expect(connConfig['naming']).toBe('system');
       expect(connConfig['date format']).toBe('iso');
+    });
+  });
+
+  describe('getQueryLimitConfig', () => {
+    it('should return default values when env vars not set', () => {
+      delete process.env.QUERY_DEFAULT_LIMIT;
+      delete process.env.QUERY_MAX_LIMIT;
+
+      const config = getQueryLimitConfig();
+      expect(config.defaultLimit).toBe(1000);
+      expect(config.maxLimit).toBe(10000);
+    });
+
+    it('should use custom default limit from env var', () => {
+      process.env.QUERY_DEFAULT_LIMIT = '500';
+      delete process.env.QUERY_MAX_LIMIT;
+
+      const config = getQueryLimitConfig();
+      expect(config.defaultLimit).toBe(500);
+
+      delete process.env.QUERY_DEFAULT_LIMIT;
+    });
+
+    it('should use custom max limit from env var', () => {
+      delete process.env.QUERY_DEFAULT_LIMIT;
+      process.env.QUERY_MAX_LIMIT = '5000';
+
+      const config = getQueryLimitConfig();
+      expect(config.maxLimit).toBe(5000);
+
+      delete process.env.QUERY_MAX_LIMIT;
+    });
+
+    it('should enforce minimum of 1 for limits', () => {
+      process.env.QUERY_DEFAULT_LIMIT = '0';
+      process.env.QUERY_MAX_LIMIT = '-10';
+
+      const config = getQueryLimitConfig();
+      expect(config.defaultLimit).toBe(1);
+      expect(config.maxLimit).toBe(1);
+
+      delete process.env.QUERY_DEFAULT_LIMIT;
+      delete process.env.QUERY_MAX_LIMIT;
+    });
+  });
+
+  describe('applyQueryLimit', () => {
+    const testConfig: QueryLimitConfig = {
+      defaultLimit: 1000,
+      maxLimit: 10000,
+    };
+
+    it('should use default limit when no limit requested', () => {
+      expect(applyQueryLimit(undefined, testConfig)).toBe(1000);
+    });
+
+    it('should use requested limit when within bounds', () => {
+      expect(applyQueryLimit(500, testConfig)).toBe(500);
+      expect(applyQueryLimit(5000, testConfig)).toBe(5000);
+    });
+
+    it('should cap limit to maxLimit when exceeded', () => {
+      expect(applyQueryLimit(20000, testConfig)).toBe(10000);
+      expect(applyQueryLimit(999999, testConfig)).toBe(10000);
+    });
+
+    it('should enforce minimum of 1', () => {
+      expect(applyQueryLimit(0, testConfig)).toBe(1);
+      expect(applyQueryLimit(-100, testConfig)).toBe(1);
+    });
+
+    it('should handle edge case where requested equals max', () => {
+      expect(applyQueryLimit(10000, testConfig)).toBe(10000);
     });
   });
 });

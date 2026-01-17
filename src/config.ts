@@ -243,3 +243,54 @@ export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
   maxRequests: 100,
   enabled: true,
 };
+
+/**
+ * Query limit configuration interface
+ */
+export interface QueryLimitConfig {
+  /** Default number of rows to return (default: 1000) */
+  defaultLimit: number;
+  /** Maximum number of rows allowed (default: 10000) */
+  maxLimit: number;
+}
+
+/**
+ * Default query limit configuration values
+ *
+ * Environment variables:
+ * - QUERY_DEFAULT_LIMIT: Default rows to return (default: 1000)
+ * - QUERY_MAX_LIMIT: Maximum rows allowed, caps user-provided limits (default: 10000)
+ */
+export const DEFAULT_QUERY_LIMIT: QueryLimitConfig = {
+  defaultLimit: 1000,
+  maxLimit: 10000,
+};
+
+/**
+ * Get query limit configuration from environment variables
+ */
+export function getQueryLimitConfig(): QueryLimitConfig {
+  const defaultLimit = parseInt(process.env.QUERY_DEFAULT_LIMIT || '1000', 10);
+  const maxLimit = parseInt(process.env.QUERY_MAX_LIMIT || '10000', 10);
+
+  return {
+    defaultLimit: Math.max(1, defaultLimit),
+    maxLimit: Math.max(1, maxLimit),
+  };
+}
+
+/**
+ * Apply query limit constraints.
+ * Returns the effective limit, capped to maxLimit.
+ *
+ * @param requestedLimit - The limit requested by the user (or undefined for default)
+ * @param config - Query limit configuration
+ * @returns The effective limit to use
+ */
+export function applyQueryLimit(
+  requestedLimit: number | undefined,
+  config: QueryLimitConfig = getQueryLimitConfig()
+): number {
+  const limit = requestedLimit ?? config.defaultLimit;
+  return Math.min(Math.max(1, limit), config.maxLimit);
+}

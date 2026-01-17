@@ -5,6 +5,7 @@
 import { executeQuery } from '../db/connection.js';
 import { validateQuery } from '../db/queries.js';
 import { createChildLogger } from '../utils/logger.js';
+import { applyQueryLimit, getQueryLimitConfig } from '../config.js';
 
 const log = createChildLogger({ component: 'query-tool' });
 
@@ -26,10 +27,16 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   rowCount?: number;
   error?: string;
   violations?: string[];
+  limitApplied?: number;
 }> {
-  const { sql, params = [], limit = 1000 } = input;
+  const { sql, params = [] } = input;
+  const queryConfig = getQueryLimitConfig();
+  const effectiveLimit = applyQueryLimit(input.limit, queryConfig);
 
-  log.debug({ sqlPreview: sql.substring(0, 100), limit }, 'Received query request');
+  log.debug(
+    { sqlPreview: sql.substring(0, 100), requestedLimit: input.limit, effectiveLimit },
+    'Received query request'
+  );
 
   // Validate that query is read-only using enhanced security validator
   const validationResult = validateQuery(sql);
@@ -51,16 +58,17 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
       if (limitedSql.endsWith(';')) {
         limitedSql = limitedSql.slice(0, -1);
       }
-      limitedSql = `${limitedSql} FETCH FIRST ${limit} ROWS ONLY`;
+      limitedSql = `${limitedSql} FETCH FIRST ${effectiveLimit} ROWS ONLY`;
     }
 
     const result = await executeQuery(limitedSql, params as unknown[]);
 
-    log.info({ rowCount: result.rows.length }, 'Query executed successfully');
+    log.info({ rowCount: result.rows.length, effectiveLimit }, 'Query executed successfully');
     return {
       success: true,
       data: result.rows,
       rowCount: result.rows.length,
+      limitApplied: effectiveLimit,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
