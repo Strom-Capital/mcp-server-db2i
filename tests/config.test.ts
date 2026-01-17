@@ -3,7 +3,19 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { loadConfig, buildConnectionConfig, type DB2iConfig } from '../src/config.js';
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import {
+  loadConfig,
+  buildConnectionConfig,
+  readSecretFromFile,
+  getSecret,
+  type DB2iConfig,
+} from '../src/config.js';
+
+// Create a unique temp directory for test secrets
+const testSecretsDir = join(tmpdir(), `db2i-test-secrets-${process.pid}`);
 
 describe('Config Module', () => {
   // Store original env vars
@@ -13,11 +25,19 @@ describe('Config Module', () => {
     // Reset env vars before each test
     vi.resetModules();
     process.env = { ...originalEnv };
+    // Create temp secrets directory
+    mkdirSync(testSecretsDir, { recursive: true });
   });
 
   afterEach(() => {
     // Restore original env vars
     process.env = originalEnv;
+    // Clean up temp secrets directory
+    try {
+      rmSync(testSecretsDir, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
   });
 
   describe('loadConfig', () => {
@@ -33,17 +53,23 @@ describe('Config Module', () => {
       it('should throw error when DB2I_USERNAME is missing', () => {
         process.env.DB2I_HOSTNAME = 'host.example.com';
         delete process.env.DB2I_USERNAME;
+        delete process.env.DB2I_USERNAME_FILE;
         process.env.DB2I_PASSWORD = 'pass';
 
-        expect(() => loadConfig()).toThrow('DB2I_USERNAME environment variable is required');
+        expect(() => loadConfig()).toThrow(
+          'DB2I_USERNAME environment variable is required (or DB2I_USERNAME_FILE for file-based secret)'
+        );
       });
 
       it('should throw error when DB2I_PASSWORD is missing', () => {
         process.env.DB2I_HOSTNAME = 'host.example.com';
         process.env.DB2I_USERNAME = 'user';
         delete process.env.DB2I_PASSWORD;
+        delete process.env.DB2I_PASSWORD_FILE;
 
-        expect(() => loadConfig()).toThrow('DB2I_PASSWORD environment variable is required');
+        expect(() => loadConfig()).toThrow(
+          'DB2I_PASSWORD environment variable is required (or DB2I_PASSWORD_FILE for file-based secret)'
+        );
       });
     });
 
@@ -93,6 +119,91 @@ describe('Config Module', () => {
         process.env.DB2I_SCHEMA = 'MYLIB';
         const config = loadConfig();
         expect(config.schema).toBe('MYLIB');
+      });
+    });
+
+    describe('file-based secrets', () => {
+      beforeEach(() => {
+        process.env.DB2I_HOSTNAME = 'host.example.com';
+        // Clear both env vars and file vars
+        delete process.env.DB2I_USERNAME;
+        delete process.env.DB2I_PASSWORD;
+        delete process.env.DB2I_USERNAME_FILE;
+        delete process.env.DB2I_PASSWORD_FILE;
+      });
+
+      it('should read password from file when DB2I_PASSWORD_FILE is set', () => {
+        const passwordFile = join(testSecretsDir, 'password.txt');
+        writeFileSync(passwordFile, 'secret-from-file');
+
+        process.env.DB2I_USERNAME = 'user';
+        process.env.DB2I_PASSWORD_FILE = passwordFile;
+
+        const config = loadConfig();
+        expect(config.password).toBe('secret-from-file');
+      });
+
+      it('should read username from file when DB2I_USERNAME_FILE is set', () => {
+        const usernameFile = join(testSecretsDir, 'username.txt');
+        writeFileSync(usernameFile, 'user-from-file');
+
+        process.env.DB2I_USERNAME_FILE = usernameFile;
+        process.env.DB2I_PASSWORD = 'pass';
+
+        const config = loadConfig();
+        expect(config.username).toBe('user-from-file');
+      });
+
+      it('should trim whitespace from file-based secrets', () => {
+        const passwordFile = join(testSecretsDir, 'password.txt');
+        writeFileSync(passwordFile, '  secret-with-whitespace  \n');
+
+        process.env.DB2I_USERNAME = 'user';
+        process.env.DB2I_PASSWORD_FILE = passwordFile;
+
+        const config = loadConfig();
+        expect(config.password).toBe('secret-with-whitespace');
+      });
+
+      it('should prioritize file-based secret over environment variable', () => {
+        const passwordFile = join(testSecretsDir, 'password.txt');
+        writeFileSync(passwordFile, 'file-password');
+
+        process.env.DB2I_USERNAME = 'user';
+        process.env.DB2I_PASSWORD = 'env-password';
+        process.env.DB2I_PASSWORD_FILE = passwordFile;
+
+        const config = loadConfig();
+        expect(config.password).toBe('file-password');
+      });
+
+      it('should fall back to environment variable when file is not specified', () => {
+        process.env.DB2I_USERNAME = 'user';
+        process.env.DB2I_PASSWORD = 'env-password';
+
+        const config = loadConfig();
+        expect(config.password).toBe('env-password');
+      });
+
+      it('should throw error when secret file does not exist', () => {
+        process.env.DB2I_USERNAME = 'user';
+        process.env.DB2I_PASSWORD_FILE = '/nonexistent/path/to/secret';
+
+        expect(() => loadConfig()).toThrow('Secret file not found: /nonexistent/path/to/secret');
+      });
+
+      it('should read both username and password from files', () => {
+        const usernameFile = join(testSecretsDir, 'username.txt');
+        const passwordFile = join(testSecretsDir, 'password.txt');
+        writeFileSync(usernameFile, 'file-user');
+        writeFileSync(passwordFile, 'file-pass');
+
+        process.env.DB2I_USERNAME_FILE = usernameFile;
+        process.env.DB2I_PASSWORD_FILE = passwordFile;
+
+        const config = loadConfig();
+        expect(config.username).toBe('file-user');
+        expect(config.password).toBe('file-pass');
       });
     });
 
@@ -148,6 +259,64 @@ describe('Config Module', () => {
         expect(config.jdbcOptions['naming']).toBe('system');
         expect(config.jdbcOptions['errors']).toBe('full');
       });
+    });
+  });
+
+  describe('readSecretFromFile', () => {
+    it('should read content from file', () => {
+      const secretFile = join(testSecretsDir, 'test-secret.txt');
+      writeFileSync(secretFile, 'my-secret-value');
+
+      const result = readSecretFromFile(secretFile);
+      expect(result).toBe('my-secret-value');
+    });
+
+    it('should trim whitespace from content', () => {
+      const secretFile = join(testSecretsDir, 'test-secret.txt');
+      writeFileSync(secretFile, '  trimmed  \n\n');
+
+      const result = readSecretFromFile(secretFile);
+      expect(result).toBe('trimmed');
+    });
+
+    it('should throw error for non-existent file', () => {
+      expect(() => readSecretFromFile('/does/not/exist')).toThrow(
+        'Secret file not found: /does/not/exist'
+      );
+    });
+  });
+
+  describe('getSecret', () => {
+    it('should return value from file when file env var is set', () => {
+      const secretFile = join(testSecretsDir, 'secret.txt');
+      writeFileSync(secretFile, 'file-value');
+
+      process.env.TEST_SECRET = 'env-value';
+      process.env.TEST_SECRET_FILE = secretFile;
+
+      const result = getSecret('TEST_SECRET', 'TEST_SECRET_FILE');
+      expect(result).toBe('file-value');
+
+      delete process.env.TEST_SECRET;
+      delete process.env.TEST_SECRET_FILE;
+    });
+
+    it('should return value from env var when file env var is not set', () => {
+      process.env.TEST_SECRET = 'env-value';
+      delete process.env.TEST_SECRET_FILE;
+
+      const result = getSecret('TEST_SECRET', 'TEST_SECRET_FILE');
+      expect(result).toBe('env-value');
+
+      delete process.env.TEST_SECRET;
+    });
+
+    it('should return undefined when neither is set', () => {
+      delete process.env.TEST_SECRET;
+      delete process.env.TEST_SECRET_FILE;
+
+      const result = getSecret('TEST_SECRET', 'TEST_SECRET_FILE');
+      expect(result).toBeUndefined();
     });
   });
 

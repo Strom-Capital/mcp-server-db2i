@@ -95,8 +95,10 @@ RATE_LIMIT_ENABLED=true                    # Set to 'false' to disable (default:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DB2I_HOSTNAME` | Yes | - | IBM i hostname or IP address |
-| `DB2I_USERNAME` | Yes | - | IBM i user profile |
-| `DB2I_PASSWORD` | Yes | - | User password |
+| `DB2I_USERNAME` | Yes* | - | IBM i user profile |
+| `DB2I_PASSWORD` | Yes* | - | User password |
+| `DB2I_USERNAME_FILE` | No | - | Path to file containing username (overrides `DB2I_USERNAME`) |
+| `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
 | `DB2I_PORT` | No | `446` | JDBC port (446 is standard for IBM i) |
 | `DB2I_DATABASE` | No | `*LOCAL` | Database name |
 | `DB2I_SCHEMA` | No | - | Default schema/library for tools. If set, you don't need to specify schema in each tool call. |
@@ -108,6 +110,8 @@ RATE_LIMIT_ENABLED=true                    # Set to 'false' to disable (default:
 | `RATE_LIMIT_WINDOW_MS` | No | `900000` | Rate limit time window in milliseconds (15 min) |
 | `RATE_LIMIT_MAX_REQUESTS` | No | `100` | Maximum requests allowed per window |
 | `RATE_LIMIT_ENABLED` | No | `true` | Set to `false` or `0` to disable rate limiting |
+
+*Either the environment variable or the corresponding `*_FILE` variable must be set. File-based secrets take priority when both are provided.
 
 ### JDBC Options
 
@@ -263,11 +267,84 @@ npm run typecheck
 ## Security
 
 - **Read-only access**: Only SELECT statements are permitted
-- **No credentials in code**: All sensitive data via environment variables
+- **No credentials in code**: All sensitive data via environment variables or file-based secrets
 - **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
 - **Result limiting**: Default limit of 1000 rows prevents large result sets
 - **Rate limiting**: Configurable request throttling to prevent abuse (100 req/15 min default)
 - **Structured logging**: Automatic redaction of sensitive fields like passwords
+
+### Credential Management
+
+The server supports multiple methods for providing credentials, listed from most to least secure:
+
+#### Option 1: Docker Secrets (Recommended for Production)
+
+Docker secrets provide the most secure credential management. Secrets are mounted as files and never exposed in environment variables or process listings.
+
+1. Create secret files:
+
+```bash
+mkdir -p ./secrets
+echo "your-username" > ./secrets/db2i_username.txt
+echo "your-password" > ./secrets/db2i_password.txt
+chmod 600 ./secrets/*.txt
+```
+
+2. Configure docker-compose.yml to use secrets:
+
+```yaml
+services:
+  mcp-server-db2i:
+    # ... other config ...
+    environment:
+      - DB2I_HOSTNAME=${DB2I_HOSTNAME}
+      - DB2I_USERNAME_FILE=/run/secrets/db2i_username
+      - DB2I_PASSWORD_FILE=/run/secrets/db2i_password
+    secrets:
+      - db2i_username
+      - db2i_password
+
+secrets:
+  db2i_username:
+    file: ./secrets/db2i_username.txt
+  db2i_password:
+    file: ./secrets/db2i_password.txt
+```
+
+For Docker Swarm or Kubernetes, use their native secret management instead of file-based secrets.
+
+#### Option 2: External Secret Management
+
+For enterprise deployments, integrate with secret management systems:
+
+- **HashiCorp Vault**: Inject secrets at runtime
+- **AWS Secrets Manager**: Use IAM roles for access
+- **Azure Key Vault**: Integrate with managed identities
+
+These systems can populate the `*_FILE` environment variables or inject secrets directly.
+
+#### Option 3: Environment Variables (Development Only)
+
+Plain environment variables are convenient for development but expose credentials through:
+- `docker inspect` output
+- Process listings (`ps aux`)
+- Shell history
+- Log files
+
+```bash
+# .env file (ensure it's in .gitignore)
+DB2I_USERNAME=your-username
+DB2I_PASSWORD=your-password
+```
+
+**Warning**: Never commit `.env` files or credentials to version control.
+
+### File-Based Secret Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DB2I_USERNAME_FILE` | Path to file containing username (takes priority over `DB2I_USERNAME`) |
+| `DB2I_PASSWORD_FILE` | Path to file containing password (takes priority over `DB2I_PASSWORD`) |
 
 ## Compatibility
 

@@ -1,7 +1,12 @@
 /**
  * Configuration module for IBM DB2i MCP Server
  * Handles environment variables and JDBC connection options
+ *
+ * Supports file-based secrets (e.g., Docker secrets) via *_FILE environment variables.
+ * File-based secrets take priority over plain environment variables.
  */
+
+import { readFileSync, existsSync } from 'node:fs';
 
 export interface DB2iConfig {
   hostname: string;
@@ -34,6 +39,37 @@ export function getLogLevel(): LogLevel {
 }
 
 /**
+ * Read a secret value from a file.
+ * Docker secrets are typically mounted at /run/secrets/<secret_name>
+ *
+ * @param filePath - Path to the file containing the secret
+ * @returns The secret value with leading/trailing whitespace trimmed
+ * @throws Error if file cannot be read
+ */
+export function readSecretFromFile(filePath: string): string {
+  if (!existsSync(filePath)) {
+    throw new Error(`Secret file not found: ${filePath}`);
+  }
+  return readFileSync(filePath, 'utf8').trim();
+}
+
+/**
+ * Get a secret value from either a file or environment variable.
+ * File-based secrets take priority (more secure).
+ *
+ * @param envVar - Name of the environment variable containing the value
+ * @param fileEnvVar - Name of the environment variable containing the file path
+ * @returns The secret value, or undefined if neither is set
+ */
+export function getSecret(envVar: string, fileEnvVar: string): string | undefined {
+  const filePath = process.env[fileEnvVar];
+  if (filePath) {
+    return readSecretFromFile(filePath);
+  }
+  return process.env[envVar];
+}
+
+/**
  * Parse JDBC options from a semicolon-separated string
  * Format: "key1=value1;key2=value2"
  */
@@ -61,21 +97,31 @@ function parseJdbcOptions(optionsString: string | undefined): Record<string, str
 }
 
 /**
- * Load configuration from environment variables
+ * Load configuration from environment variables.
+ *
+ * Supports file-based secrets for sensitive values (recommended for production):
+ * - DB2I_PASSWORD_FILE: Path to file containing password (e.g., Docker secret)
+ * - DB2I_USERNAME_FILE: Path to file containing username (optional)
+ *
+ * File-based secrets take priority over plain environment variables.
  */
 export function loadConfig(): DB2iConfig {
   const hostname = process.env.DB2I_HOSTNAME;
-  const username = process.env.DB2I_USERNAME;
-  const password = process.env.DB2I_PASSWORD;
+  const username = getSecret('DB2I_USERNAME', 'DB2I_USERNAME_FILE');
+  const password = getSecret('DB2I_PASSWORD', 'DB2I_PASSWORD_FILE');
 
   if (!hostname) {
     throw new Error('DB2I_HOSTNAME environment variable is required');
   }
   if (!username) {
-    throw new Error('DB2I_USERNAME environment variable is required');
+    throw new Error(
+      'DB2I_USERNAME environment variable is required (or DB2I_USERNAME_FILE for file-based secret)'
+    );
   }
   if (!password) {
-    throw new Error('DB2I_PASSWORD environment variable is required');
+    throw new Error(
+      'DB2I_PASSWORD environment variable is required (or DB2I_PASSWORD_FILE for file-based secret)'
+    );
   }
 
   return {
