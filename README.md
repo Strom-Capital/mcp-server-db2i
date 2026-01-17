@@ -275,9 +275,19 @@ npm run typecheck
 - **Read-only access**: Only SELECT statements are permitted
 - **No credentials in code**: All sensitive data via environment variables or file-based secrets
 - **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
-- **Result limiting**: Default limit of 1000 rows prevents large result sets
+- **Result limiting**: Default limit of 1000 rows, configurable max limit (default: 10000)
 - **Rate limiting**: Configurable request throttling to prevent abuse (100 req/15 min default)
 - **Structured logging**: Automatic redaction of sensitive fields like passwords
+
+### Rate Limiting
+
+The server includes built-in rate limiting to protect the IBM i database from excessive queries:
+
+- **Default**: 100 requests per 15-minute window
+- **Scope**: Per server instance (for stdio transport, this effectively means per-client since each MCP client spawns its own server process)
+- **Configurable**: Adjust via `RATE_LIMIT_*` environment variables or disable entirely
+
+When the rate limit is exceeded, queries return an error with `waitTimeSeconds` indicating when to retry.
 
 ### Credential Management
 
