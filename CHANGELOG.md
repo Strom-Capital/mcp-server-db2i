@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.2.0...v1.2.1) (2026-01-17)
+
+
+### Bug Fixes
+
+* add Docker secrets configuration to docker-compose.yml ([886d2bc](https://github.com/Strom-Capital/mcp-server-db2i/commit/886d2bcd481d58ad0e61f9809f8f102110150cca))
+
 ## [1.2.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.1.0...v1.2.0) (2026-01-17)
 
 
