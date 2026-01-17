@@ -4,9 +4,14 @@
  *
  * Supports file-based secrets (e.g., Docker secrets) via *_FILE environment variables.
  * File-based secrets take priority over plain environment variables.
+ * 
+ * Supports multiple database drivers:
+ * - jt400 (default): Uses node-jt400 JDBC driver, requires Java on client
+ * - mapepire: Uses @ibm/mapepire-js, requires Mapepire server on IBM i
  */
 
 import { readFileSync, existsSync } from 'node:fs';
+import type { DriverType, DriverConfig, JT400DriverConfig, MapepireDriverConfig } from './db/drivers/interface.js';
 
 export interface DB2iConfig {
   hostname: string;
@@ -16,6 +21,85 @@ export interface DB2iConfig {
   database: string;
   schema: string;
   jdbcOptions: Record<string, string>;
+}
+
+/**
+ * Mapepire-specific configuration (internal)
+ */
+interface MapepireConfig {
+  /** Mapepire server port (default: 8471) */
+  port: number;
+  /** Whether to ignore SSL certificate validation (default: true) */
+  ignoreUnauthorized: boolean;
+  /** Connection pool maximum size (default: 10) */
+  poolMaxSize: number;
+  /** Connection pool starting size (default: 2) */
+  poolStartingSize: number;
+  /** Query timeout in milliseconds (default: 30000 = 30 seconds, 0 = no timeout) */
+  queryTimeout: number;
+}
+
+/**
+ * Get the configured database driver type
+ * Defaults to 'jt400' if not set or invalid
+ */
+export function getDriverType(): DriverType {
+  const driver = process.env.DB2I_DRIVER?.toLowerCase();
+  if (driver === 'mapepire') {
+    return 'mapepire';
+  }
+  return 'jt400';
+}
+
+/**
+ * Load Mapepire-specific configuration from environment variables
+ * @internal Used by buildDriverConfig
+ */
+function loadMapepireConfig(): MapepireConfig {
+  const ignoreUnauthorizedEnv = process.env.MAPEPIRE_IGNORE_UNAUTHORIZED?.toLowerCase();
+  
+  return {
+    port: parseInt(process.env.MAPEPIRE_PORT || '8471', 10),
+    ignoreUnauthorized: ignoreUnauthorizedEnv !== 'false' && ignoreUnauthorizedEnv !== '0',
+    poolMaxSize: parseInt(process.env.MAPEPIRE_POOL_MAX_SIZE || '10', 10),
+    poolStartingSize: parseInt(process.env.MAPEPIRE_POOL_STARTING_SIZE || '2', 10),
+    queryTimeout: parseInt(process.env.MAPEPIRE_QUERY_TIMEOUT || '30000', 10),
+  };
+}
+
+/**
+ * Build driver configuration based on the selected driver type
+ */
+export function buildDriverConfig(config: DB2iConfig): DriverConfig {
+  const driverType = getDriverType();
+  
+  if (driverType === 'mapepire') {
+    const mapepireConfig = loadMapepireConfig();
+    return {
+      driver: 'mapepire',
+      hostname: config.hostname,
+      port: mapepireConfig.port,
+      username: config.username,
+      password: config.password,
+      database: config.database,
+      schema: config.schema,
+      ignoreUnauthorized: mapepireConfig.ignoreUnauthorized,
+      poolMaxSize: mapepireConfig.poolMaxSize,
+      poolStartingSize: mapepireConfig.poolStartingSize,
+      queryTimeout: mapepireConfig.queryTimeout,
+    } satisfies MapepireDriverConfig;
+  }
+  
+  return {
+    driver: 'jt400',
+    hostname: config.hostname,
+    port: config.port,
+    username: config.username,
+    password: config.password,
+    database: config.database,
+    schema: config.schema,
+    jdbcOptions: config.jdbcOptions,
+  } satisfies JT400DriverConfig;
 }
 
 /**
@@ -255,19 +339,11 @@ export interface QueryLimitConfig {
 }
 
 /**
- * Default query limit configuration values
- *
+ * Get query limit configuration from environment variables
+ * 
  * Environment variables:
  * - QUERY_DEFAULT_LIMIT: Default rows to return (default: 1000)
  * - QUERY_MAX_LIMIT: Maximum rows allowed, caps user-provided limits (default: 10000)
- */
-export const DEFAULT_QUERY_LIMIT: QueryLimitConfig = {
-  defaultLimit: 1000,
-  maxLimit: 10000,
-};
-
-/**
- * Get query limit configuration from environment variables
  */
 export function getQueryLimitConfig(): QueryLimitConfig {
   const defaultLimit = parseInt(process.env.QUERY_DEFAULT_LIMIT || '1000', 10);

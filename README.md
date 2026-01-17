@@ -1,6 +1,6 @@
 # mcp-server-db2i
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases using the JT400 JDBC driver.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases.
 
 ## Features
 
@@ -10,6 +10,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IB
 - **View inspection** - List and explore database views
 - **Secure by design** - Only SELECT queries allowed, credentials via environment variables
 - **Docker support** - Run as a container for easy deployment
+- **Multiple drivers** - Choose between JT400 (JDBC) or Mapepire (native TypeScript)
 
 ## Available Tools
 
@@ -38,8 +39,28 @@ The list tools support pattern matching:
 ### Prerequisites
 
 - Node.js 18 or higher
-- Java Runtime Environment (JRE) 11 or higher (for JDBC)
 - Access to an IBM i system
+- **For JT400 driver (default):** Java Runtime Environment (JRE) 11 or higher
+- **For Mapepire driver:** Mapepire server installed and running on IBM i (port 8471)
+
+### Database Drivers
+
+This server supports two database drivers. Choose based on your environment:
+
+| Driver | `DB2I_DRIVER` | Requirements | Best For |
+|--------|--------------|--------------|----------|
+| **JT400** (default) | `jt400` | Java Runtime on client | Works out of the box with any IBM i |
+| **Mapepire** | `mapepire` | Mapepire server on IBM i | No Java needed, modern async design |
+
+**JT400** uses the battle-tested JT400/JTOpen JDBC driver. It works with any IBM i system without additional server-side setup, but requires Java on the machine running this MCP server.
+
+**Mapepire** uses IBM's native TypeScript client. It provides a lighter footprint without Java dependency, but requires the [Mapepire server component](https://mapepire-ibmi.github.io/) to be installed on your IBM i system. If you're already using Mapepire for VS Code or other tools, this is a good choice.
+
+To use Mapepire, install the optional dependency:
+
+```bash
+npm install @ibm/mapepire-js
+```
 
 ### Option 1: npm (recommended)
 
@@ -72,11 +93,21 @@ DB2I_HOSTNAME=your-ibm-i-host.com
 DB2I_USERNAME=your-username
 DB2I_PASSWORD=your-password
 
-# Optional - Database
-DB2I_PORT=446                              # Default: 446
+# Optional - Driver Selection
+DB2I_DRIVER=jt400                          # 'jt400' (default) or 'mapepire'
+
+# Optional - Database (JT400)
+DB2I_PORT=446                              # Default: 446 (JDBC port)
 DB2I_DATABASE=*LOCAL                       # Default: *LOCAL
 DB2I_SCHEMA=your-default-schema            # Default schema for all tools (can be overridden per-call)
 DB2I_JDBC_OPTIONS=naming=system;date format=iso
+
+# Optional - Mapepire Settings (only used when DB2I_DRIVER=mapepire)
+MAPEPIRE_PORT=8471                         # Mapepire server port (default: 8471)
+MAPEPIRE_IGNORE_UNAUTHORIZED=true          # Skip SSL cert validation (default: true, see Security Notes)
+MAPEPIRE_POOL_MAX_SIZE=10                  # Connection pool max size (default: 10)
+MAPEPIRE_POOL_STARTING_SIZE=2              # Connection pool starting size (default: 2)
+MAPEPIRE_QUERY_TIMEOUT=30000               # Query timeout in ms (default: 30000, 0 = no timeout)
 
 # Optional - Logging
 LOG_LEVEL=info                             # debug, info, warn, error, fatal (default: info)
@@ -103,10 +134,16 @@ QUERY_MAX_LIMIT=10000                      # Maximum rows allowed (default: 1000
 | `DB2I_PASSWORD` | Yes* | - | User password |
 | `DB2I_USERNAME_FILE` | No | - | Path to file containing username (overrides `DB2I_USERNAME`) |
 | `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
+| `DB2I_DRIVER` | No | `jt400` | Database driver: `jt400` (JDBC) or `mapepire` (native) |
 | `DB2I_PORT` | No | `446` | JDBC port (446 is standard for IBM i) |
 | `DB2I_DATABASE` | No | `*LOCAL` | Database name |
 | `DB2I_SCHEMA` | No | - | Default schema/library for tools. If set, you don't need to specify schema in each tool call. |
-| `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated) |
+| `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated, JT400 only) |
+| `MAPEPIRE_PORT` | No | `8471` | Mapepire server port (Mapepire driver only) |
+| `MAPEPIRE_IGNORE_UNAUTHORIZED` | No | `true` | Skip SSL certificate validation (see Security Notes) |
+| `MAPEPIRE_POOL_MAX_SIZE` | No | `10` | Connection pool maximum size (Mapepire driver only) |
+| `MAPEPIRE_POOL_STARTING_SIZE` | No | `2` | Connection pool starting size (Mapepire driver only) |
+| `MAPEPIRE_QUERY_TIMEOUT` | No | `30000` | Query timeout in milliseconds (0 = no timeout) |
 | `LOG_LEVEL` | No | `info` | Log level: `debug`, `info`, `warn`, `error`, `fatal` |
 | `NODE_ENV` | No | - | Set to `production` for JSON logs, otherwise pretty-printed |
 | `LOG_PRETTY` | No | - | Override log format: `true` = pretty, `false` = JSON |
@@ -134,6 +171,34 @@ Common JDBC options for IBM i (JT400/JTOpen driver):
 | `secure` | `true`, `false` | Enable SSL/TLS encryption |
 
 Example: `naming=system;date format=iso;errors=full`
+
+### Mapepire Security Notes
+
+When using the Mapepire driver, be aware of these security considerations:
+
+**TLS Certificate Validation (`MAPEPIRE_IGNORE_UNAUTHORIZED`)**
+
+By default, `MAPEPIRE_IGNORE_UNAUTHORIZED=true` disables TLS certificate validation. This is convenient for development or environments with self-signed certificates, but has security implications:
+
+- Connections may be vulnerable to man-in-the-middle attacks
+- The server warns at startup when this mode is enabled
+- **For production:** Set `MAPEPIRE_IGNORE_UNAUTHORIZED=false`
+
+**Certificate Fetching (Trust-On-First-Use)**
+
+When `MAPEPIRE_IGNORE_UNAUTHORIZED=false`, the driver automatically fetches the server's SSL certificate on first connection. This uses a Trust-On-First-Use (TOFU) pattern:
+
+1. An initial unverified connection fetches the certificate
+2. Subsequent connections use the fetched certificate for validation
+
+This means the very first connection is not cryptographically verified. For maximum security in sensitive environments:
+
+- Pre-configure your system's CA certificates to include the IBM i certificate
+- Or use a corporate PKI where the IBM i certificate is already trusted
+
+**Query Timeout**
+
+The `MAPEPIRE_QUERY_TIMEOUT` setting (default: 30 seconds) prevents runaway queries from consuming resources indefinitely. Set to `0` to disable timeouts (not recommended for production).
 
 ## Usage with Cursor
 
@@ -382,6 +447,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - [node-jt400](https://www.npmjs.com/package/node-jt400) - JT400 JDBC driver wrapper for Node.js
+- [@ibm/mapepire-js](https://github.com/Mapepire-IBMi/mapepire-js) - Native TypeScript client for IBM i (optional driver)
 - [Model Context Protocol](https://modelcontextprotocol.io/) - The protocol specification
 - [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk) - Official TypeScript SDK
 - [IBM ibmi-mcp-server](https://github.com/IBM/ibmi-mcp-server) - SQL security validation patterns inspired by their approach to AST-based query validation

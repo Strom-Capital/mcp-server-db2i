@@ -15,20 +15,47 @@ services:
     stdin_open: true
     tty: true
     environment:
+      # Core database connection
       - DB2I_HOSTNAME=${DB2I_HOSTNAME}
       - DB2I_PORT=${DB2I_PORT:-446}
       - DB2I_DATABASE=${DB2I_DATABASE:-*LOCAL}
       - DB2I_SCHEMA=${DB2I_SCHEMA:-}
       - DB2I_JDBC_OPTIONS=${DB2I_JDBC_OPTIONS:-}
-      # Option 1: Plain environment variables (from .env file)
+      
+      # Credentials - Option 1: Plain environment variables (from .env file)
       # Less secure - credentials visible via 'docker inspect'
       - DB2I_USERNAME=${DB2I_USERNAME:-}
       - DB2I_PASSWORD=${DB2I_PASSWORD:-}
-      # Option 2: File-based secrets (recommended)
+      # Credentials - Option 2: File-based secrets (recommended for production)
       # More secure - credentials read from mounted files
       # Uncomment these and comment out the plain env vars above to use secrets:
       # - DB2I_USERNAME_FILE=/run/secrets/db2i_username
       # - DB2I_PASSWORD_FILE=/run/secrets/db2i_password
+      
+      # Driver selection: 'jt400' (default) or 'mapepire'
+      - DB2I_DRIVER=${DB2I_DRIVER:-jt400}
+      
+      # Mapepire settings (only used when DB2I_DRIVER=mapepire)
+      - MAPEPIRE_PORT=${MAPEPIRE_PORT:-8471}
+      - MAPEPIRE_IGNORE_UNAUTHORIZED=${MAPEPIRE_IGNORE_UNAUTHORIZED:-true}
+      - MAPEPIRE_POOL_MAX_SIZE=${MAPEPIRE_POOL_MAX_SIZE:-10}
+      - MAPEPIRE_POOL_STARTING_SIZE=${MAPEPIRE_POOL_STARTING_SIZE:-2}
+      - MAPEPIRE_QUERY_TIMEOUT=${MAPEPIRE_QUERY_TIMEOUT:-30000}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NODE_ENV=${NODE_ENV:-production}
+      - LOG_PRETTY=${LOG_PRETTY:-}
+      - LOG_COLORS=${LOG_COLORS:-}
+      
+      # Rate limiting
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-900000}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}
+      
+      # Query limits
+      - QUERY_DEFAULT_LIMIT=${QUERY_DEFAULT_LIMIT:-1000}
+      - QUERY_MAX_LIMIT=${QUERY_MAX_LIMIT:-10000}
     env_file:
       - .env
     # Uncomment to use Docker secrets (requires secrets section below):
