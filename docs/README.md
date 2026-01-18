@@ -22,16 +22,34 @@ mcp-server-db2i is a [Model Context Protocol (MCP)](https://modelcontextprotocol
 
 ## Architecture
 
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────┐
-│   MCP Client    │────▶│  mcp-server-db2i │────▶│   IBM i     │
-│ (Cursor/Claude) │     │                  │     │   DB2       │
-└─────────────────┘     │  ┌────────────┐  │     └─────────────┘
-                        │  │ JT400 JDBC │  │
-┌─────────────────┐     │  └────────────┘  │
-│   HTTP Client   │────▶│                  │
-│  (Web/Agent)    │     └──────────────────┘
-└─────────────────┘
+```mermaid
+graph LR
+    subgraph clients ["AI Clients"]
+        claude("Claude Desktop")
+        cursor("Cursor IDE")
+        agents("Custom Agents")
+    end
+
+    subgraph server ["MCP Server"]
+        stdio["stdio"]
+        http["HTTP + Auth"]
+        tools[["MCP Tools"]]
+        jdbc["JT400 JDBC"]
+    end
+
+    subgraph ibmi ["IBM i"]
+        db2[("DB2 for i")]
+    end
+
+    claude & cursor -->|MCP Protocol| stdio
+    agents -->|REST API| http
+    stdio & http --> tools
+    tools --> jdbc
+    jdbc -->|JDBC| db2
+
+    style clients fill:#e1f5fe,stroke:#01579b
+    style server fill:#f3e5f5,stroke:#4a148c
+    style ibmi fill:#e8f5e9,stroke:#1b5e20
 ```
 
 ## Available Tools

@@ -120,6 +120,16 @@ When the rate limit is exceeded, queries return an error with `waitTimeSeconds` 
 
 The server validates all SQL queries before execution using multiple layers:
 
+```mermaid
+flowchart LR
+    query["SQL Query"] --> ast["AST Parser"]
+    ast -->|"SELECT only"| regex["Regex Patterns"]
+    ast -->|"DDL/DML/DCL"| reject1[["REJECTED"]]
+    regex -->|"Safe"| limit["Result Limiter"]
+    regex -->|"Dangerous patterns"| reject2[["REJECTED"]]
+    limit --> db[("DB2 for i")]
+```
+
 ### AST-based Validation
 
 Queries are parsed into an Abstract Syntax Tree (AST) to verify:

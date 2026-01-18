@@ -1,6 +1,52 @@
 # mcp-server-db2i
 
+[![CI](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml/badge.svg)](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/mcp-server-db2i)](https://www.npmjs.com/package/mcp-server-db2i)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP](https://img.shields.io/badge/MCP-2025--11--25-green?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
+[![IBM i](https://img.shields.io/badge/IBM%20i-V7R3+-green?logo=ibm&logoColor=white)](https://www.ibm.com/products/ibm-i)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-≥20.6-green?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-supported-blue?logo=docker&logoColor=white)](docs/docker.md)
+[![npm downloads](https://img.shields.io/npm/dm/mcp-server-db2i)](https://www.npmjs.com/package/mcp-server-db2i)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Strom-Capital/mcp-server-db2i/pulls)
+[![GitHub last commit](https://img.shields.io/github/last-commit/Strom-Capital/mcp-server-db2i)](https://github.com/Strom-Capital/mcp-server-db2i/commits/main)
+
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases using the JT400 JDBC driver.
+
+## Architecture
+
+AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the JT400 JDBC driver.
+
+```mermaid
+graph LR
+    subgraph clients ["AI Clients"]
+        claude("Claude Desktop")
+        cursor("Cursor IDE")
+        agents("Custom Agents")
+    end
+
+    subgraph server ["MCP Server"]
+        stdio["stdio"]
+        http["HTTP + Auth"]
+        tools[["MCP Tools"]]
+        jdbc["JT400 JDBC"]
+    end
+
+    subgraph ibmi ["IBM i"]
+        db2[("DB2 for i")]
+    end
+
+    claude & cursor -->|MCP Protocol| stdio
+    agents -->|REST API| http
+    stdio & http --> tools
+    tools --> jdbc
+    jdbc -->|JDBC| db2
+
+    style clients fill:#e1f5fe,stroke:#01579b
+    style server fill:#f3e5f5,stroke:#4a148c
+    style ibmi fill:#e8f5e9,stroke:#1b5e20
+```
 
 ## Features
 

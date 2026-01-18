@@ -91,6 +91,24 @@ No authentication required:
 
 HTTP mode uses token-based authentication. You must first obtain a token by posting credentials, then use that token for subsequent MCP requests.
 
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server as MCP Server
+    participant DB as DB2 for i
+
+    Client->>Server: POST /auth (credentials)
+    Server->>DB: Validate connection
+    DB-->>Server: Connection OK
+    Server-->>Client: access_token + expires_at
+
+    Client->>Server: POST /mcp + Bearer token
+    Server->>Server: Validate token
+    Server->>DB: Execute query
+    DB-->>Server: Results
+    Server-->>Client: JSON-RPC response
+```
+
 ### Step 1: Get a Token
 
 Post credentials to `/auth`:
@@ -171,6 +189,24 @@ curl -X POST http://localhost:3000/mcp \
 ### Stateful (default)
 
 Maintains MCP session context across requests. Use the `Mcp-Session-Id` header to continue conversations.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server as MCP Server
+
+    Client->>Server: POST /mcp (initialize)
+    Server-->>Client: Response + Mcp-Session-Id header
+
+    Client->>Server: POST /mcp + Mcp-Session-Id (tools/list)
+    Server-->>Client: Available tools
+
+    Client->>Server: POST /mcp + Mcp-Session-Id (tools/call)
+    Server-->>Client: Tool result
+
+    Client->>Server: DELETE /mcp + Mcp-Session-Id
+    Server-->>Client: Session closed
+```
 
 **Flow:**
 1. Send `initialize` request to `/mcp` (POST)
