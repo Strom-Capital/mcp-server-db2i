@@ -4,6 +4,19 @@
  *
  * Supports file-based secrets (e.g., Docker secrets) via *_FILE environment variables.
  * File-based secrets take priority over plain environment variables.
+ * 
+ * HTTP Transport Configuration:
+ * - MCP_TRANSPORT: 'stdio' | 'http' | 'both' (default: 'stdio')
+ * - MCP_HTTP_PORT: HTTP server port (default: 3000)
+ * - MCP_HTTP_HOST: HTTP bind address (default: '0.0.0.0')
+ * - MCP_SESSION_MODE: 'stateful' | 'stateless' (default: 'stateful')
+ * - MCP_AUTH_MODE: 'required' | 'token' | 'none' (default: 'required')
+ * - MCP_AUTH_TOKEN: Static token for 'token' auth mode
+ * - MCP_TLS_ENABLED: Enable built-in TLS (default: false)
+ * - MCP_TLS_CERT_PATH: Path to TLS certificate
+ * - MCP_TLS_KEY_PATH: Path to TLS private key
+ * - MCP_TOKEN_EXPIRY: Token lifetime in seconds (default: 3600)
+ * - MCP_MAX_SESSIONS: Maximum concurrent sessions (default: 100)
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -294,3 +307,258 @@ export function applyQueryLimit(
   const limit = requestedLimit ?? config.defaultLimit;
   return Math.min(Math.max(1, limit), config.maxLimit);
 }
+
+// ============================================================================
+// HTTP Transport Configuration
+// ============================================================================
+
+/**
+ * Transport mode options
+ */
+export type TransportMode = 'stdio' | 'http' | 'both';
+
+/**
+ * Session mode options for HTTP transport
+ */
+export type SessionMode = 'stateful' | 'stateless';
+
+/**
+ * Authentication mode options for HTTP transport
+ * - 'required': Full /auth flow with per-user DB credentials (most secure, default)
+ * - 'token': Pre-shared static token via MCP_AUTH_TOKEN, uses env DB credentials
+ * - 'none': No authentication required, uses env DB credentials (trusted networks only)
+ */
+export type AuthMode = 'required' | 'token' | 'none';
+
+/**
+ * TLS configuration for HTTP transport
+ */
+export interface TlsConfig {
+  /** Whether TLS is enabled */
+  enabled: boolean;
+  /** Path to TLS certificate file */
+  certPath?: string;
+  /** Path to TLS private key file */
+  keyPath?: string;
+}
+
+/**
+ * HTTP transport configuration
+ */
+export interface HttpConfig {
+  /** Transport mode: stdio, http, or both (default: stdio) */
+  transport: TransportMode;
+  /** HTTP server port (default: 3000) */
+  port: number;
+  /** HTTP server bind address (default: 0.0.0.0) */
+  host: string;
+  /** Session mode: stateful or stateless (default: stateful) */
+  sessionMode: SessionMode;
+  /** Authentication mode: required, token, or none (default: required) */
+  authMode: AuthMode;
+  /** Static token for 'token' auth mode */
+  staticToken?: string;
+  /** TLS configuration */
+  tls: TlsConfig;
+  /** Token expiry time in seconds (default: 3600) */
+  tokenExpiry: number;
+  /** Maximum concurrent sessions (default: 100) */
+  maxSessions: number;
+}
+
+/**
+ * Default HTTP configuration values
+ */
+export const DEFAULT_HTTP_CONFIG: HttpConfig = {
+  transport: 'stdio',
+  port: 3000,
+  host: '0.0.0.0',
+  sessionMode: 'stateful',
+  authMode: 'required',
+  tls: {
+    enabled: false,
+  },
+  tokenExpiry: 3600,
+  maxSessions: 100,
+};
+
+/**
+ * Get the configured transport mode
+ * Defaults to 'stdio' for backwards compatibility
+ */
+export function getTransportMode(): TransportMode {
+  const mode = process.env.MCP_TRANSPORT?.toLowerCase();
+  if (mode === 'http' || mode === 'both') {
+    return mode;
+  }
+  return 'stdio';
+}
+
+/**
+ * Get the configured session mode
+ * Defaults to 'stateful'
+ */
+export function getSessionMode(): SessionMode {
+  const mode = process.env.MCP_SESSION_MODE?.toLowerCase();
+  if (mode === 'stateless') {
+    return 'stateless';
+  }
+  return 'stateful';
+}
+
+/**
+ * Get the configured authentication mode for HTTP transport
+ * Defaults to 'required' for security
+ * 
+ * Environment variables:
+ * - MCP_AUTH_MODE: 'required' | 'token' | 'none' (default: 'required')
+ * - MCP_AUTH_TOKEN: Static token for 'token' mode (required if mode='token')
+ */
+export function getAuthMode(): AuthMode {
+  const mode = process.env.MCP_AUTH_MODE?.toLowerCase();
+  if (mode === 'none' || mode === 'token') {
+    return mode;
+  }
+  return 'required';
+}
+
+/**
+ * Get the static auth token for 'token' mode
+ */
+export function getStaticToken(): string | undefined {
+  return process.env.MCP_AUTH_TOKEN;
+}
+
+/**
+ * Get TLS configuration from environment variables
+ */
+export function getTlsConfig(): TlsConfig {
+  const enabled = process.env.MCP_TLS_ENABLED?.toLowerCase();
+  const isEnabled = enabled === 'true' || enabled === '1';
+
+  if (!isEnabled) {
+    return { enabled: false };
+  }
+
+  const certPath = process.env.MCP_TLS_CERT_PATH;
+  const keyPath = process.env.MCP_TLS_KEY_PATH;
+
+  if (!certPath || !keyPath) {
+    throw new Error(
+      'MCP_TLS_CERT_PATH and MCP_TLS_KEY_PATH are required when MCP_TLS_ENABLED=true'
+    );
+  }
+
+  if (!existsSync(certPath)) {
+    throw new Error(`TLS certificate file not found: ${certPath}`);
+  }
+
+  if (!existsSync(keyPath)) {
+    throw new Error(`TLS key file not found: ${keyPath}`);
+  }
+
+  return {
+    enabled: true,
+    certPath,
+    keyPath,
+  };
+}
+
+/**
+ * Load HTTP transport configuration from environment variables
+ */
+export function getHttpConfig(): HttpConfig {
+  const authMode = getAuthMode();
+  const staticToken = getStaticToken();
+
+  // Validate token mode has a token configured
+  if (authMode === 'token' && !staticToken) {
+    throw new Error(
+      'MCP_AUTH_TOKEN is required when MCP_AUTH_MODE=token. Generate with: openssl rand -hex 32'
+    );
+  }
+
+  return {
+    transport: getTransportMode(),
+    port: parseInt(process.env.MCP_HTTP_PORT || '3000', 10),
+    host: process.env.MCP_HTTP_HOST || '0.0.0.0',
+    sessionMode: getSessionMode(),
+    authMode,
+    staticToken,
+    tls: getTlsConfig(),
+    tokenExpiry: parseInt(process.env.MCP_TOKEN_EXPIRY || '3600', 10),
+    maxSessions: parseInt(process.env.MCP_MAX_SESSIONS || '100', 10),
+  };
+}
+
+/**
+ * Check if HTTP transport is enabled
+ */
+export function isHttpEnabled(): boolean {
+  const mode = getTransportMode();
+  return mode === 'http' || mode === 'both';
+}
+
+/**
+ * Check if stdio transport is enabled
+ */
+export function isStdioEnabled(): boolean {
+  const mode = getTransportMode();
+  return mode === 'stdio' || mode === 'both';
+}
+
+/**
+ * Load partial DB2i config from optional parameters with env fallbacks.
+ * Used by HTTP auth to build session-specific configs.
+ * 
+ * @param overrides - Optional overrides for config values
+ * @returns Partial config with env fallbacks applied
+ */
+export function loadPartialConfig(overrides: {
+  hostname?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  database?: string;
+  schema?: string;
+}): DB2iConfig {
+  const hostname = overrides.hostname ?? process.env.DB2I_HOSTNAME;
+  const port = overrides.port ?? parseInt(process.env.DB2I_PORT || '446', 10);
+  const username = overrides.username ?? getSecret('DB2I_USERNAME', 'DB2I_USERNAME_FILE');
+  const password = overrides.password ?? getSecret('DB2I_PASSWORD', 'DB2I_PASSWORD_FILE');
+  const database = overrides.database ?? process.env.DB2I_DATABASE ?? '*LOCAL';
+  const schema = overrides.schema ?? process.env.DB2I_SCHEMA ?? '';
+
+  if (!hostname) {
+    throw new Error(
+      'Host is required: provide in request or set DB2I_HOSTNAME environment variable'
+    );
+  }
+
+  if (!validateHostname(hostname)) {
+    throw new Error(
+      `Invalid hostname format: "${hostname}". Must be a valid hostname or IPv4 address.`
+    );
+  }
+
+  if (!username) {
+    throw new Error('Username is required');
+  }
+
+  if (!password) {
+    throw new Error('Password is required');
+  }
+
+  return {
+    hostname,
+    port,
+    username,
+    password,
+    database,
+    schema,
+    jdbcOptions: parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS),
+  };
+}
+
+// Make parseJdbcOptions accessible internally for loadPartialConfig
+// (it's already defined above, we just need to export it or use it here)

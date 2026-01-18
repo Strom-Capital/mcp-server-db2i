@@ -14,7 +14,11 @@ services:
     container_name: mcp-server-db2i
     stdin_open: true
     tty: true
+    # Expose HTTP port (only needed when MCP_TRANSPORT=http or both)
+    # ports:
+    #   - "${MCP_HTTP_PORT:-3000}:${MCP_HTTP_PORT:-3000}"
     environment:
+      # Database connection
       - DB2I_HOSTNAME=${DB2I_HOSTNAME}
       - DB2I_PORT=${DB2I_PORT:-446}
       - DB2I_DATABASE=${DB2I_DATABASE:-*LOCAL}
@@ -29,8 +33,46 @@ services:
       # Uncomment these and comment out the plain env vars above to use secrets:
       # - DB2I_USERNAME_FILE=/run/secrets/db2i_username
       # - DB2I_PASSWORD_FILE=/run/secrets/db2i_password
+      
+      # Transport settings
+      # stdio (default) | http | both
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-stdio}
+      
+      # HTTP transport settings (only used when MCP_TRANSPORT=http or both)
+      - MCP_HTTP_PORT=${MCP_HTTP_PORT:-3000}
+      - MCP_HTTP_HOST=${MCP_HTTP_HOST:-0.0.0.0}
+      - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateful}
+      - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}
+      - MCP_MAX_SESSIONS=${MCP_MAX_SESSIONS:-100}
+      
+      # HTTP authentication mode
+      # required (default): Full /auth flow with per-user credentials
+      # token: Pre-shared static token, uses env DB credentials
+      # none: No auth required (trusted networks only)
+      - MCP_AUTH_MODE=${MCP_AUTH_MODE:-required}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-}
+      
+      # TLS settings (for HTTPS)
+      - MCP_TLS_ENABLED=${MCP_TLS_ENABLED:-false}
+      - MCP_TLS_CERT_PATH=${MCP_TLS_CERT_PATH:-}
+      - MCP_TLS_KEY_PATH=${MCP_TLS_KEY_PATH:-}
+      
+      # Rate limiting
+      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-900000}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      
+      # Query limits
+      - QUERY_DEFAULT_LIMIT=${QUERY_DEFAULT_LIMIT:-1000}
+      - QUERY_MAX_LIMIT=${QUERY_MAX_LIMIT:-10000}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     env_file:
       - .env
+    # Uncomment to mount TLS certificates:
+    # volumes:
+    #   - ./certs:/certs:ro
     # Uncomment to use Docker secrets (requires secrets section below):
     # secrets:
     #   - db2i_username

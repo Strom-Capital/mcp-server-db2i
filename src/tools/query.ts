@@ -16,10 +16,14 @@ export interface ExecuteQueryInput {
   sql: string;
   params?: unknown[];
   limit?: number;
+  /** Optional session ID for HTTP transport (uses session-specific pool) */
+  sessionId?: string;
 }
 
 /**
  * Execute a read-only SQL query
+ * 
+ * @param input - Query input including SQL, params, limit, and optional sessionId
  */
 export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   success: boolean;
@@ -29,12 +33,12 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   violations?: string[];
   limitApplied?: number;
 }> {
-  const { sql, params = [] } = input;
+  const { sql, params = [], sessionId } = input;
   const queryConfig = getQueryLimitConfig();
   const effectiveLimit = applyQueryLimit(input.limit, queryConfig);
 
   log.debug(
-    { sqlPreview: sql.substring(0, 100), requestedLimit: input.limit, effectiveLimit },
+    { sqlPreview: sql.substring(0, 100), requestedLimit: input.limit, effectiveLimit, sessionId: sessionId?.substring(0, 8) },
     'Received query request'
   );
 
@@ -61,7 +65,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
       limitedSql = `${limitedSql} FETCH FIRST ${effectiveLimit} ROWS ONLY`;
     }
 
-    const result = await executeQuery(limitedSql, params as unknown[]);
+    const result = await executeQuery(limitedSql, params as unknown[], sessionId);
 
     log.info({ rowCount: result.rows.length, effectiveLimit }, 'Query executed successfully');
     return {
