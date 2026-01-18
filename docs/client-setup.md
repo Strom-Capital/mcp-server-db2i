@@ -1,19 +1,60 @@
 # Client Setup
 
-This guide covers setting up mcp-server-db2i with MCP-compatible clients like Cursor, Claude, and Claude Code.
+This guide covers setting up mcp-server-db2i with MCP-compatible clients. The JSON configuration format is the same for all clients - only the file location differs.
 
-## Configuration File
+## Configuration Paths
 
-Add mcp-server-db2i to your Cursor MCP settings file:
+### Cursor
 
 - **macOS/Linux**: `~/.cursor/mcp.json`
 - **Windows**: `%USERPROFILE%\.cursor\mcp.json`
+- **Env var syntax**: `${env:VAR_NAME}`
+
+### Claude Desktop
+
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Claude Code
+
+- **All platforms**: `~/.claude.json`
+- **Project-specific**: `.mcp.json` in project root
+- **Env var syntax**: `${VAR_NAME}`
+- **CLI**: `claude mcp add --scope user db2i -- npx mcp-server-db2i`
 
 ## Setup Options
 
-### Using Docker (Recommended)
+### Using Docker with env file (Recommended)
 
-The simplest and most portable option. Requires Docker to be installed.
+Store credentials in a separate `.env` file for security. For production deployments, see [Docker Secrets](docker.md#docker-secrets) for the most secure approach.
+
+```json
+{
+  "mcpServers": {
+    "db2i": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "--env-file", "/path/to/your/.env",
+        "mcp-server-db2i:latest"
+      ]
+    }
+  }
+}
+```
+
+Create a `.env` file with your credentials:
+
+```env
+DB2I_HOSTNAME=your-ibmi-host.com
+DB2I_USERNAME=your-username
+DB2I_PASSWORD=your-password
+```
+
+### Using Docker with inline credentials
+
+> **Security Warning:** This stores credentials in plain text in your config file. Only use for local development or testing.
 
 ```json
 {
@@ -25,25 +66,6 @@ The simplest and most portable option. Requires Docker to be installed.
         "-e", "DB2I_HOSTNAME=your-host",
         "-e", "DB2I_USERNAME=your-user",
         "-e", "DB2I_PASSWORD=your-password",
-        "mcp-server-db2i:latest"
-      ]
-    }
-  }
-}
-```
-
-### Using Docker with env file
-
-Store credentials in a separate file for better security:
-
-```json
-{
-  "mcpServers": {
-    "db2i": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "--env-file", "/path/to/your/.env",
         "mcp-server-db2i:latest"
       ]
     }
@@ -69,9 +91,39 @@ Create a `.env` file in the project root, then:
 
 The `docker-compose.yml` automatically reads from `.env` in the same directory.
 
-### Using npx (after npm install)
+### Using npx (Recommended for Cursor)
 
-If you have Node.js installed globally:
+Use environment variable expansion to keep credentials out of config files.
+
+1. Set credentials in your shell profile (`~/.zshrc` or `~/.bashrc`):
+
+```bash
+export DB2I_HOSTNAME="your-host"
+export DB2I_USERNAME="your-user"
+export DB2I_PASSWORD="your-password"
+```
+
+2. Use `${env:VAR}` syntax in your Cursor config:
+
+```json
+{
+  "mcpServers": {
+    "db2i": {
+      "command": "npx",
+      "args": ["mcp-server-db2i"],
+      "env": {
+        "DB2I_HOSTNAME": "${env:DB2I_HOSTNAME}",
+        "DB2I_USERNAME": "${env:DB2I_USERNAME}",
+        "DB2I_PASSWORD": "${env:DB2I_PASSWORD}"
+      }
+    }
+  }
+}
+```
+
+### Using npx with inline credentials
+
+> **Security Warning:** This stores credentials in plain text in your config file. Only use for local development or testing.
 
 ```json
 {
@@ -274,13 +326,21 @@ You can configure multiple IBM i connections:
 
 Then specify which connection to use in your prompts: "Using db2i-prod, list all tables in PRODLIB"
 
-## Claude Desktop
+## Claude Code CLI
 
-The same configuration format works for Claude Desktop. Add to:
+Claude Code supports environment variable expansion using `${VAR}` syntax, which is the recommended secure approach.
 
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Linux**: `~/.config/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+### Secure setup with environment variables
+
+1. Set credentials in your shell profile (`~/.zshrc` or `~/.bashrc`):
+
+```bash
+export DB2I_HOSTNAME="your-host"
+export DB2I_USERNAME="your-user"
+export DB2I_PASSWORD="your-password"
+```
+
+2. Add to `~/.claude.json` with variable references:
 
 ```json
 {
@@ -289,60 +349,23 @@ The same configuration format works for Claude Desktop. Add to:
       "command": "npx",
       "args": ["mcp-server-db2i"],
       "env": {
-        "DB2I_HOSTNAME": "your-host",
-        "DB2I_USERNAME": "your-user",
-        "DB2I_PASSWORD": "your-password"
+        "DB2I_HOSTNAME": "${DB2I_HOSTNAME}",
+        "DB2I_USERNAME": "${DB2I_USERNAME}",
+        "DB2I_PASSWORD": "${DB2I_PASSWORD}"
       }
     }
   }
 }
 ```
 
-## Claude Code
+This keeps credentials out of config files - Claude Code expands `${VAR}` at runtime.
 
-Claude Code (Anthropic's agentic coding tool) supports MCP servers. Configuration can be stored in:
-
-- **User/global**: `~/.claude.json` (applies to all projects)
-- **Project-specific**: `.mcp.json` in project root
-
-### Using the CLI (recommended)
+### Using the CLI
 
 ```bash
+# Add server (credentials from shell environment)
 claude mcp add --scope user db2i -- npx mcp-server-db2i
-```
 
-To include environment variables:
-
-```bash
-claude mcp add --scope user db2i \
-  --env DB2I_HOSTNAME=your-host \
-  --env DB2I_USERNAME=your-user \
-  --env DB2I_PASSWORD=your-password \
-  -- npx mcp-server-db2i
-```
-
-### Manual configuration
-
-Add to `~/.claude.json`:
-
-```json
-{
-  "mcpServers": {
-    "db2i": {
-      "command": "npx",
-      "args": ["mcp-server-db2i"],
-      "env": {
-        "DB2I_HOSTNAME": "your-host",
-        "DB2I_USERNAME": "your-user",
-        "DB2I_PASSWORD": "your-password"
-      }
-    }
-  }
-}
-```
-
-### Verify installation
-
-```bash
+# Verify installation
 claude mcp list
 ```
