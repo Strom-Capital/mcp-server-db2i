@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.3.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.2.1...v1.3.0) (2026-01-18)
+
+
+### Features
+
+* **http:** add HTTP transport with token authentication ([#19](https://github.com/Strom-Capital/mcp-server-db2i/issues/19)) ([19fb0c8](https://github.com/Strom-Capital/mcp-server-db2i/commit/19fb0c8de7e3482fe7d5ae3b3b8f5b1be9cb55d4))
+  * REST API endpoints for MCP protocol (`POST /mcp`, `GET /mcp`, `DELETE /mcp`)
+  * OAuth-style token authentication via `POST /auth` endpoint
+  * Three auth modes: `required` (per-user DB credentials), `token` (pre-shared), `none` (trusted networks)
+  * Stateful and stateless session modes with configurable limits
+  * Per-user database connection pools with automatic cleanup on token expiration
+  * Built-in TLS/HTTPS support with certificate configuration
+  * OpenAPI 3.1 specification at `/openapi.json`
+  * CORS configuration with same-origin-only default
+  * DNS rebinding protection middleware
+* **config:** new environment variables for HTTP transport
+  * `MCP_TRANSPORT` (stdio/http/both), `MCP_HTTP_PORT`, `MCP_HTTP_HOST`
+  * `MCP_AUTH_MODE`, `MCP_AUTH_TOKEN`, `MCP_SESSION_MODE`
+  * `MCP_TOKEN_EXPIRY`, `MCP_MAX_SESSIONS`, `MCP_CORS_ORIGINS`
+  * `MCP_TLS_ENABLED`, `MCP_TLS_CERT_PATH`, `MCP_TLS_KEY_PATH`
+* **docs:** comprehensive documentation in `/docs` folder
+  * HTTP Transport guide, Configuration reference, Security guide
+  * Docker deployment guide, Cursor integration examples, Development guide
+
+
+### Bug Fixes
+
+* **security:** use constant-time comparison for static token auth (timing attack prevention)
+* **cors:** only enable CORS headers when `MCP_CORS_ORIGINS` is explicitly configured (default is same-origin only)
+* **http:** close mcpServer when session creation fails to prevent resource leaks
+* **http:** prevent closing shared 'global' pool on individual session failure in none/token auth modes
+* **http:** handle race condition in `/auth` endpoint session limit with proper 503 response
+* **http:** use crypto.randomBytes for unique test pool IDs to prevent collisions
+* **config:** defer HTTP config validation until HTTP transport is enabled (allows stdio-only with HTTP env vars set)
+* **docker:** suppress false-positive BuildKit warnings for ENV placeholders
+
 ## [1.2.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.2.0...v1.2.1) (2026-01-17)
 
 
