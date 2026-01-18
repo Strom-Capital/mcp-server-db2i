@@ -1,5 +1,11 @@
+# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
+
 # MCP Server for IBM DB2i
 # Multi-stage build for smaller final image
+#
+# Note: ENV placeholders below are intentionally empty - they're overridden at runtime
+# via -e flags, --env-file, or Docker secrets. The BuildKit warning is suppressed above.
 
 # Build stage
 FROM node:20-slim AS builder
@@ -64,6 +70,7 @@ RUN useradd -m -s /bin/bash mcpuser
 USER mcpuser
 
 # Environment variables (to be provided at runtime)
+# Database connection
 ENV DB2I_HOSTNAME=""
 ENV DB2I_PORT="446"
 ENV DB2I_USERNAME=""
@@ -72,5 +79,29 @@ ENV DB2I_DATABASE="*LOCAL"
 ENV DB2I_SCHEMA=""
 ENV DB2I_JDBC_OPTIONS=""
 
-# The MCP server communicates via stdio
+# Transport settings
+# stdio (default) | http | both
+ENV MCP_TRANSPORT="stdio"
+ENV MCP_HTTP_PORT="3000"
+ENV MCP_HTTP_HOST="127.0.0.1"
+ENV MCP_SESSION_MODE="stateful"
+ENV MCP_TOKEN_EXPIRY="3600"
+ENV MCP_MAX_SESSIONS="100"
+
+# Auth settings for HTTP transport
+# required (default) | token | none
+ENV MCP_AUTH_MODE="required"
+ENV MCP_AUTH_TOKEN=""
+ENV MCP_CORS_ORIGINS=""
+
+# TLS settings
+ENV MCP_TLS_ENABLED="false"
+ENV MCP_TLS_CERT_PATH=""
+ENV MCP_TLS_KEY_PATH=""
+
+# Expose HTTP port (only used when MCP_TRANSPORT=http or both)
+EXPOSE 3000
+
+# The MCP server communicates via stdio by default
+# Set MCP_TRANSPORT=http to enable HTTP API
 CMD ["node", "dist/index.js"]

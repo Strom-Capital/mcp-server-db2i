@@ -67,8 +67,11 @@ export function validateQuery(sql: string, config?: SecurityConfig): SecurityVal
 
 /**
  * List all schemas/libraries
+ * 
+ * @param filter - Optional filter pattern
+ * @param sessionId - Optional session ID for HTTP transport
  */
-export async function listSchemas(filter?: string): Promise<Array<{ schema_name: string; schema_text: string | null }>> {
+export async function listSchemas(filter?: string, sessionId?: string): Promise<Array<{ schema_name: string; schema_text: string | null }>> {
   const pattern = filterToLikePattern(filter);
   
   const sql = `
@@ -80,7 +83,7 @@ export async function listSchemas(filter?: string): Promise<Array<{ schema_name:
     ORDER BY SCHEMA_NAME
   `;
 
-  const result = await executeQuery(sql, [pattern]);
+  const result = await executeQuery(sql, [pattern], sessionId);
   
   return result.rows.map(row => ({
     schema_name: String(row.SCHEMA_NAME || '').trim(),
@@ -90,10 +93,15 @@ export async function listSchemas(filter?: string): Promise<Array<{ schema_name:
 
 /**
  * List tables in a schema
+ * 
+ * @param schema - Schema name
+ * @param filter - Optional filter pattern
+ * @param sessionId - Optional session ID for HTTP transport
  */
 export async function listTables(
   schema: string,
-  filter?: string
+  filter?: string,
+  sessionId?: string
 ): Promise<Array<{ table_name: string; table_type: string; table_text: string | null }>> {
   const pattern = filterToLikePattern(filter);
   
@@ -108,7 +116,7 @@ export async function listTables(
     ORDER BY TABLE_NAME
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), pattern]);
+  const result = await executeQuery(sql, [schema.toUpperCase(), pattern], sessionId);
   
   return result.rows.map(row => ({
     table_name: String(row.TABLE_NAME || '').trim(),
@@ -119,10 +127,15 @@ export async function listTables(
 
 /**
  * Describe a table's columns
+ * 
+ * @param schema - Schema name
+ * @param table - Table name
+ * @param sessionId - Optional session ID for HTTP transport
  */
 export async function describeTable(
   schema: string,
-  table: string
+  table: string,
+  sessionId?: string
 ): Promise<Array<{
   column_name: string;
   ordinal_position: number;
@@ -153,7 +166,7 @@ export async function describeTable(
     ORDER BY ORDINAL_POSITION
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()]);
+  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], sessionId);
   
   return result.rows.map(row => ({
     column_name: String(row.COLUMN_NAME || '').trim(),
@@ -174,10 +187,15 @@ export async function describeTable(
  * 
  * Note: This only returns SQL-defined views (CREATE VIEW).
  * For legacy DDS logical files, query QSYS.QADBFDEP.
+ * 
+ * @param schema - Schema name
+ * @param filter - Optional filter pattern
+ * @param sessionId - Optional session ID for HTTP transport
  */
 export async function listViews(
   schema: string,
-  filter?: string
+  filter?: string,
+  sessionId?: string
 ): Promise<Array<{ view_name: string; view_text: string | null }>> {
   const pattern = filterToLikePattern(filter);
   
@@ -192,7 +210,7 @@ export async function listViews(
     ORDER BY TABLE_NAME
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), pattern]);
+  const result = await executeQuery(sql, [schema.toUpperCase(), pattern], sessionId);
   
   return result.rows.map(row => ({
     view_name: String(row.VIEW_NAME || '').trim(),
@@ -205,10 +223,15 @@ export async function listViews(
  * 
  * Note: This only returns SQL-defined indexes (CREATE INDEX).
  * For legacy DDS logical files, query QSYS.QADBFDEP and QSYS.QADBKFLD.
+ * 
+ * @param schema - Schema name
+ * @param table - Table name
+ * @param sessionId - Optional session ID for HTTP transport
  */
 export async function listIndexes(
   schema: string,
-  table: string
+  table: string,
+  sessionId?: string
 ): Promise<Array<{
   index_name: string;
   index_schema: string;
@@ -234,7 +257,7 @@ export async function listIndexes(
     ORDER BY I.INDEX_NAME
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()]);
+  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], sessionId);
   
   return result.rows.map(row => ({
     index_name: String(row.INDEX_NAME || '').trim(),
@@ -246,10 +269,15 @@ export async function listIndexes(
 
 /**
  * Get table constraints (primary keys, foreign keys, unique constraints)
+ * 
+ * @param schema - Schema name
+ * @param table - Table name
+ * @param sessionId - Optional session ID for HTTP transport
  */
 export async function getTableConstraints(
   schema: string,
-  table: string
+  table: string,
+  sessionId?: string
 ): Promise<Array<{
   constraint_name: string;
   constraint_type: string;
@@ -284,7 +312,7 @@ export async function getTableConstraints(
     ORDER BY CST.CONSTRAINT_NAME, KC.ORDINAL_POSITION
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()]);
+  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], sessionId);
   
   return result.rows.map(row => ({
     constraint_name: String(row.CONSTRAINT_NAME || '').trim(),

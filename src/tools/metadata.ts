@@ -1,5 +1,9 @@
 /**
  * Metadata inspection tools for IBM DB2i MCP Server
+ * 
+ * All tools support optional sessionId for HTTP transport.
+ * When sessionId is provided, uses session-specific connection pool.
+ * When omitted, uses global connection pool (stdio mode).
  */
 
 import {
@@ -53,25 +57,25 @@ function resolveSchema(inputSchema?: string): string {
 // List Schemas Tool
 // ============================================================================
 
-export function listSchemasTool(input: { filter?: string }): Promise<ToolResult<{
+export function listSchemasTool(input: { filter?: string; sessionId?: string }): Promise<ToolResult<{
   schema_name: string;
   schema_text: string | null;
 }>> {
-  return withErrorHandling(() => listSchemas(input.filter));
+  return withErrorHandling(() => listSchemas(input.filter, input.sessionId));
 }
 
 // ============================================================================
 // List Tables Tool
 // ============================================================================
 
-export function listTablesTool(input: { schema?: string; filter?: string }): Promise<ToolResult<{
+export function listTablesTool(input: { schema?: string; filter?: string; sessionId?: string }): Promise<ToolResult<{
   table_name: string;
   table_type: string;
   table_text: string | null;
 }>> {
   return withErrorHandling(() => {
     const schema = resolveSchema(input.schema);
-    return listTables(schema, input.filter);
+    return listTables(schema, input.filter, input.sessionId);
   });
 }
 
@@ -79,7 +83,7 @@ export function listTablesTool(input: { schema?: string; filter?: string }): Pro
 // Describe Table Tool
 // ============================================================================
 
-export function describeTableTool(input: { schema?: string; table: string }): Promise<ToolResult<{
+export function describeTableTool(input: { schema?: string; table: string; sessionId?: string }): Promise<ToolResult<{
   column_name: string;
   ordinal_position: number;
   data_type: string;
@@ -93,7 +97,7 @@ export function describeTableTool(input: { schema?: string; table: string }): Pr
 }>> {
   return withErrorHandling(() => {
     const schema = resolveSchema(input.schema);
-    return describeTable(schema, input.table);
+    return describeTable(schema, input.table, input.sessionId);
   });
 }
 
@@ -101,13 +105,13 @@ export function describeTableTool(input: { schema?: string; table: string }): Pr
 // List Views Tool
 // ============================================================================
 
-export function listViewsTool(input: { schema?: string; filter?: string }): Promise<ToolResult<{
+export function listViewsTool(input: { schema?: string; filter?: string; sessionId?: string }): Promise<ToolResult<{
   view_name: string;
   view_text: string | null;
 }>> {
   return withErrorHandling(() => {
     const schema = resolveSchema(input.schema);
-    return listViews(schema, input.filter);
+    return listViews(schema, input.filter, input.sessionId);
   });
 }
 
@@ -115,7 +119,7 @@ export function listViewsTool(input: { schema?: string; filter?: string }): Prom
 // List Indexes Tool
 // ============================================================================
 
-export function listIndexesTool(input: { schema?: string; table: string }): Promise<ToolResult<{
+export function listIndexesTool(input: { schema?: string; table: string; sessionId?: string }): Promise<ToolResult<{
   index_name: string;
   index_schema: string;
   is_unique: string;
@@ -123,7 +127,7 @@ export function listIndexesTool(input: { schema?: string; table: string }): Prom
 }>> {
   return withErrorHandling(() => {
     const schema = resolveSchema(input.schema);
-    return listIndexes(schema, input.table);
+    return listIndexes(schema, input.table, input.sessionId);
   });
 }
 
@@ -131,7 +135,7 @@ export function listIndexesTool(input: { schema?: string; table: string }): Prom
 // Get Table Constraints Tool
 // ============================================================================
 
-export function getTableConstraintsTool(input: { schema?: string; table: string }): Promise<ToolResult<{
+export function getTableConstraintsTool(input: { schema?: string; table: string; sessionId?: string }): Promise<ToolResult<{
   constraint_name: string;
   constraint_type: string;
   column_name: string;
@@ -142,6 +146,6 @@ export function getTableConstraintsTool(input: { schema?: string; table: string 
 }>> {
   return withErrorHandling(() => {
     const schema = resolveSchema(input.schema);
-    return getTableConstraints(schema, input.table);
+    return getTableConstraints(schema, input.table, input.sessionId);
   });
 }

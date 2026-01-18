@@ -3,12 +3,17 @@
  *
  * Creates and configures the MCP server with all tools registered.
  * Extracted from index.ts for testability.
+ * 
+ * Supports two modes:
+ * - Stdio mode: Uses global connection pool (no sessionConfig)
+ * - HTTP mode: Uses session-specific connection pool (with sessionConfig)
  */
 
 import { createRequire } from 'module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import type { DB2iConfig } from './config.js';
 import { executeQueryTool } from './tools/query.js';
 import {
   listSchemasTool,
@@ -26,6 +31,17 @@ const packageJson = require('../package.json') as { name: string; version: strin
 
 export const SERVER_NAME = packageJson.name;
 export const SERVER_VERSION = packageJson.version;
+
+/**
+ * Session context for HTTP transport
+ * Contains the session-specific configuration
+ */
+export interface SessionContext {
+  /** Session/token ID for looking up the connection pool */
+  sessionId: string;
+  /** DB2i configuration for this session */
+  config: DB2iConfig;
+}
 
 /**
  * Standard tool result type
@@ -47,10 +63,15 @@ export type McpToolResponse = {
 /**
  * Creates a tool handler wrapper that applies rate limiting and standardizes responses.
  * Eliminates boilerplate code across all tool registrations.
+ * 
+ * @param handler - The tool handler function
+ * @param errorMessage - Error message to use on failure
+ * @param sessionContext - Optional session context for HTTP transport
  */
 export function withToolHandler<TArgs, TResult extends ToolResult>(
-  handler: (args: TArgs) => Promise<TResult>,
-  errorMessage: string
+  handler: (args: TArgs, sessionId?: string) => Promise<TResult>,
+  errorMessage: string,
+  sessionContext?: SessionContext
 ): (args: TArgs) => Promise<McpToolResponse> {
   return async (args: TArgs): Promise<McpToolResponse> => {
     // Check rate limit
@@ -65,8 +86,8 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       };
     }
 
-    // Execute the tool
-    const result = await handler(args);
+    // Execute the tool with optional sessionId
+    const result = await handler(args, sessionContext?.sessionId);
 
     if (!result.success) {
       return {
@@ -84,13 +105,32 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
 /**
  * Create and configure the MCP server with all tools registered.
  *
+ * @param sessionConfig - Optional session config for HTTP transport.
+ *                        When provided, tools use session-specific connection pool.
+ *                        When omitted, tools use global connection pool (stdio mode).
+ * @param sessionId - Optional session ID (auth token) for HTTP transport.
+ *                    Used to look up the session-specific connection pool.
  * @returns Configured McpServer instance ready to connect to a transport
  */
-export function createServer(): McpServer {
+export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): McpServer {
   const server = new McpServer({
     name: SERVER_NAME,
     version: SERVER_VERSION,
   });
+
+  // Create session context if sessionConfig provided
+  const sessionContext: SessionContext | undefined = sessionConfig && sessionId ? {
+    sessionId,
+    config: sessionConfig,
+  } : undefined;
+
+  // Helper to get effective default schema
+  const getDefaultSchema = (): string | undefined => {
+    if (sessionConfig?.schema) {
+      return sessionConfig.schema;
+    }
+    return process.env.DB2I_SCHEMA || undefined;
+  };
 
   // Register execute_query tool
   server.registerTool(
@@ -106,12 +146,14 @@ export function createServer(): McpServer {
       },
     },
     withToolHandler(
-      (args) => executeQueryTool({
+      (args, sessionId) => executeQueryTool({
         sql: args.sql,
         params: args.params,
         limit: args.limit,
+        sessionId,
       }),
-      'Query failed'
+      'Query failed',
+      sessionContext
     )
   );
 
@@ -127,8 +169,9 @@ export function createServer(): McpServer {
       },
     },
     withToolHandler(
-      (args) => listSchemasTool({ filter: args.filter }),
-      'Failed to list schemas'
+      (args, sessionId) => listSchemasTool({ filter: args.filter, sessionId }),
+      'Failed to list schemas',
+      sessionContext
     )
   );
 
@@ -137,16 +180,21 @@ export function createServer(): McpServer {
     'list_tables',
     {
       title: 'List Tables',
-      description: 'List all tables in a schema (library). Uses DB2I_SCHEMA env var if schema not provided. Optionally filter by name pattern using * as wildcard.',
+      description: `List all tables in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
       annotations: { readOnlyHint: true },
       inputSchema: {
-        schema: z.string().optional().describe('Schema (library) name to list tables from. Uses DB2I_SCHEMA env var if not provided.'),
+        schema: z.string().optional().describe(`Schema (library) name to list tables from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "CUST*" matches tables starting with CUST'),
       },
     },
     withToolHandler(
-      (args) => listTablesTool({ schema: args.schema, filter: args.filter }),
-      'Failed to list tables'
+      (args, sessionId) => listTablesTool({ 
+        schema: args.schema ?? getDefaultSchema(), 
+        filter: args.filter,
+        sessionId,
+      }),
+      'Failed to list tables',
+      sessionContext
     )
   );
 
@@ -155,16 +203,21 @@ export function createServer(): McpServer {
     'describe_table',
     {
       title: 'Describe Table',
-      description: 'Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. Uses DB2I_SCHEMA env var if schema not provided.',
+      description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
       annotations: { readOnlyHint: true },
       inputSchema: {
-        schema: z.string().optional().describe('Schema (library) name containing the table. Uses DB2I_SCHEMA env var if not provided.'),
+        schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to describe'),
       },
     },
     withToolHandler(
-      (args) => describeTableTool({ schema: args.schema, table: args.table }),
-      'Failed to describe table'
+      (args, sessionId) => describeTableTool({ 
+        schema: args.schema ?? getDefaultSchema(), 
+        table: args.table,
+        sessionId,
+      }),
+      'Failed to describe table',
+      sessionContext
     )
   );
 
@@ -173,16 +226,21 @@ export function createServer(): McpServer {
     'list_views',
     {
       title: 'List Views',
-      description: 'List all views in a schema (library). Uses DB2I_SCHEMA env var if schema not provided. Optionally filter by name pattern using * as wildcard.',
+      description: `List all views in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
       annotations: { readOnlyHint: true },
       inputSchema: {
-        schema: z.string().optional().describe('Schema (library) name to list views from. Uses DB2I_SCHEMA env var if not provided.'),
+        schema: z.string().optional().describe(`Schema (library) name to list views from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         filter: z.string().optional().describe('Filter pattern for view names. Use * as wildcard.'),
       },
     },
     withToolHandler(
-      (args) => listViewsTool({ schema: args.schema, filter: args.filter }),
-      'Failed to list views'
+      (args, sessionId) => listViewsTool({ 
+        schema: args.schema ?? getDefaultSchema(), 
+        filter: args.filter,
+        sessionId,
+      }),
+      'Failed to list views',
+      sessionContext
     )
   );
 
@@ -191,16 +249,21 @@ export function createServer(): McpServer {
     'list_indexes',
     {
       title: 'List Indexes',
-      description: 'List all indexes for a specific table including uniqueness and column information. Uses DB2I_SCHEMA env var if schema not provided.',
+      description: `List all indexes for a specific table including uniqueness and column information. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
       annotations: { readOnlyHint: true },
       inputSchema: {
-        schema: z.string().optional().describe('Schema (library) name containing the table. Uses DB2I_SCHEMA env var if not provided.'),
+        schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to list indexes for'),
       },
     },
     withToolHandler(
-      (args) => listIndexesTool({ schema: args.schema, table: args.table }),
-      'Failed to list indexes'
+      (args, sessionId) => listIndexesTool({ 
+        schema: args.schema ?? getDefaultSchema(), 
+        table: args.table,
+        sessionId,
+      }),
+      'Failed to list indexes',
+      sessionContext
     )
   );
 
@@ -209,16 +272,21 @@ export function createServer(): McpServer {
     'get_table_constraints',
     {
       title: 'Get Table Constraints',
-      description: 'Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. Uses DB2I_SCHEMA env var if schema not provided.',
+      description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
       annotations: { readOnlyHint: true },
       inputSchema: {
-        schema: z.string().optional().describe('Schema (library) name containing the table. Uses DB2I_SCHEMA env var if not provided.'),
+        schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to get constraints for'),
       },
     },
     withToolHandler(
-      (args) => getTableConstraintsTool({ schema: args.schema, table: args.table }),
-      'Failed to get constraints'
+      (args, sessionId) => getTableConstraintsTool({ 
+        schema: args.schema ?? getDefaultSchema(), 
+        table: args.table,
+        sessionId,
+      }),
+      'Failed to get constraints',
+      sessionContext
     )
   );
 
