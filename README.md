@@ -42,10 +42,6 @@ graph LR
     stdio & http --> tools
     tools --> jdbc
     jdbc -->|JDBC| db2
-
-    style clients fill:#e1f5fe,stroke:#01579b
-    style server fill:#f3e5f5,stroke:#4a148c
-    style ibmi fill:#e8f5e9,stroke:#1b5e20
 ```
 
 ## Features
