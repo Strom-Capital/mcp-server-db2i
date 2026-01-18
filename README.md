@@ -103,7 +103,7 @@ Once connected, you can ask the AI assistant:
 ## Compatibility
 
 - IBM i V7R3 and later (V7R5 recommended)
-- Node.js 18 or higher
+- Node.js 20.6 or higher
 - Java Runtime Environment (JRE) 11 or higher
 
 ## Related Projects

@@ -15,7 +15,7 @@ export type {
 } from './types.js';
 
 // Token Manager
-export { getTokenManager, TokenManager } from './tokenManager.js';
+export { getTokenManager, TokenManager, type SessionCleanupCallback } from './tokenManager.js';
 
 // Middleware
 export {

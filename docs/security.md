@@ -157,8 +157,19 @@ When using HTTP transport, additional security measures apply:
 ### Auth Endpoint Rate Limiting
 
 The `/auth` endpoint has additional rate limiting to prevent brute-force attacks:
-- Failed authentication attempts are tracked per IP
-- Multiple failures trigger temporary lockouts
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| Max attempts | 5 | Maximum failed attempts before lockout |
+| Window | 60 seconds | Time window for tracking attempts |
+
+**Behavior:**
+- Failed authentication attempts are tracked per IP address
+- After 5 failed attempts within 60 seconds, the IP is temporarily locked out
+- Successful authentication clears the failure count for that IP
+- Lockout automatically expires after the window period
+
+> **Note:** These values are currently hardcoded. Environment variable configuration may be added in a future release.
 
 ### TLS/HTTPS
 

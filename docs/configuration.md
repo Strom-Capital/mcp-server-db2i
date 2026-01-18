@@ -37,7 +37,7 @@ DB2I_PASSWORD=your-password
 |----------|---------|-------------|
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
-| `MCP_HTTP_HOST` | `0.0.0.0` | HTTP server bind address |
+| `MCP_HTTP_HOST` | `127.0.0.1` | HTTP server bind address (use `0.0.0.0` only with TLS or reverse proxy) |
 | `MCP_SESSION_MODE` | `stateful` | Session mode: `stateful` or `stateless` |
 | `MCP_TOKEN_EXPIRY` | `3600` | Token lifetime in seconds (for `required` auth mode) |
 | `MCP_MAX_SESSIONS` | `100` | Maximum concurrent sessions |
@@ -84,8 +84,8 @@ DB2I_PASSWORD=your-password
 |----------|---------|-------------|
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error`, `fatal` |
 | `NODE_ENV` | - | Set to `production` for JSON logs, otherwise pretty-printed |
-| `LOG_PRETTY` | auto | Override log format: `true` = pretty, `false` = JSON |
-| `LOG_COLORS` | auto | Override colors: `true`/`false` (auto-detects TTY by default) |
+| `LOG_PRETTY` | `auto` | Override log format: `true` = pretty, `false` = JSON |
+| `LOG_COLORS` | `auto` | Override colors: `true`/`false` (auto-detects TTY by default) |
 
 ## Example Configuration
 
@@ -112,7 +112,7 @@ DB2I_JDBC_OPTIONS=naming=sql;date format=iso;errors=full
 # Transport
 MCP_TRANSPORT=http
 MCP_HTTP_PORT=3000
-MCP_HTTP_HOST=0.0.0.0
+MCP_HTTP_HOST=127.0.0.1
 MCP_SESSION_MODE=stateful
 MCP_TOKEN_EXPIRY=3600
 MCP_MAX_SESSIONS=100

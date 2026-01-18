@@ -9,6 +9,7 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { getTokenManager } from './tokenManager.js';
 import { createChildLogger } from '../utils/logger.js';
 import { getHttpConfig, type AuthMode } from '../config.js';
@@ -89,7 +90,14 @@ export function authMiddleware(
       return;
     }
     
-    if (token === httpConfig.staticToken) {
+    // Use constant-time comparison to prevent timing attacks
+    const staticToken = httpConfig.staticToken ?? '';
+    const tokenBuffer = Buffer.from(token);
+    const staticTokenBuffer = Buffer.from(staticToken);
+    const tokensMatch = tokenBuffer.length === staticTokenBuffer.length &&
+      timingSafeEqual(tokenBuffer, staticTokenBuffer);
+    
+    if (tokensMatch) {
       log.debug(
         { path: req.path, method: req.method, authMode: 'token' },
         'Static token validated'
@@ -209,17 +217,17 @@ const AUTH_RATE_LIMIT = {
 
 /**
  * Get client IP from request
+ * 
+ * Uses Express's req.ip which respects the 'trust proxy' setting.
+ * If proxy is trusted, req.ip will contain the client IP from X-Forwarded-For.
+ * If proxy is not trusted, req.ip will be the direct connection IP.
+ * 
+ * To trust proxy headers, set app.set('trust proxy', true) or configure
+ * specific trusted proxies. Without this, X-Forwarded-For headers are ignored.
  */
 function getClientIp(req: Request): string {
-  // Check common proxy headers
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (typeof forwardedFor === 'string') {
-    return forwardedFor.split(',')[0].trim();
-  }
-  const realIp = req.headers['x-real-ip'];
-  if (typeof realIp === 'string') {
-    return realIp;
-  }
+  // Use Express's req.ip which respects 'trust proxy' setting
+  // This prevents IP spoofing when proxy is not trusted
   return req.ip ?? req.socket.remoteAddress ?? 'unknown';
 }
 

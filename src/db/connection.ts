@@ -35,8 +35,15 @@ const sessionPools = new Map<string, ReturnType<typeof pool>>();
 
 /**
  * Initialize the global connection pool (for stdio transport)
+ * 
+ * Safe to call multiple times - will skip if pool already exists.
  */
 export function initializePool(config: DB2iConfig): void {
+  if (globalPool) {
+    log.debug({ hostname: config.hostname }, 'Global pool already exists, skipping initialization');
+    return;
+  }
+  
   log.debug({ hostname: config.hostname, port: config.port }, 'Initializing global connection pool');
   const connectionConfig = buildConnectionConfig(config);
   globalPool = pool(connectionConfig);
@@ -78,14 +85,16 @@ export function initializeSessionPool(sessionId: string, config: DB2iConfig): vo
 export async function closeSessionPool(sessionId: string): Promise<void> {
   const sessionPool = sessionPools.get(sessionId);
   if (sessionPool) {
-    sessionPools.delete(sessionId);
     try {
       await sessionPool.close();
+      sessionPools.delete(sessionId);
       log.info(
         { sessionId: sessionId.substring(0, 8), poolCount: sessionPools.size },
         'Session connection pool closed'
       );
     } catch (err) {
+      // Still remove from map on error to avoid retry loops with broken pools
+      sessionPools.delete(sessionId);
       log.warn(
         { err, sessionId: sessionId.substring(0, 8) },
         'Error closing session connection pool'

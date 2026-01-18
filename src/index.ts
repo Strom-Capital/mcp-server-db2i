@@ -19,7 +19,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type http from 'node:http';
 import type https from 'node:https';
 
-import { loadConfig, isHttpEnabled, isStdioEnabled, getHttpConfig } from './config.js';
+import { loadConfig, isHttpEnabled, isStdioEnabled, getTransportMode, getHttpConfig } from './config.js';
 import { initializePool, testConnection, closeGlobalPool } from './db/connection.js';
 import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
@@ -71,9 +71,9 @@ async function main(): Promise<void> {
   }
 
   try {
-    const httpConfig = getHttpConfig();
+    const transportMode = getTransportMode();
     logger.info(
-      { transport: httpConfig.transport },
+      { transport: transportMode },
       'Starting MCP server...'
     );
 
@@ -113,7 +113,10 @@ async function main(): Promise<void> {
     }
 
     // Start HTTP server if enabled
+    // Note: getHttpConfig() is called here (not at startup) to avoid validating
+    // HTTP-specific settings when only stdio transport is being used
     if (httpEnabled) {
+      const httpConfig = getHttpConfig();
       logger.info(
         {
           port: httpConfig.port,

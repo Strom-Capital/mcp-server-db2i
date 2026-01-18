@@ -128,7 +128,7 @@ describe('HTTP Configuration', () => {
       const config = getHttpConfig();
 
       expect(config.port).toBe(3000);
-      expect(config.host).toBe('0.0.0.0');
+      expect(config.host).toBe('127.0.0.1');
       expect(config.sessionMode).toBe('stateful');
       expect(config.tokenExpiry).toBe(3600);
       expect(config.maxSessions).toBe(100);

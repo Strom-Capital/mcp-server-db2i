@@ -1,5 +1,11 @@
+# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
+
 # MCP Server for IBM DB2i
 # Multi-stage build for smaller final image
+#
+# Note: ENV placeholders below are intentionally empty - they're overridden at runtime
+# via -e flags, --env-file, or Docker secrets. The BuildKit warning is suppressed above.
 
 # Build stage
 FROM node:20-slim AS builder
@@ -77,7 +83,7 @@ ENV DB2I_JDBC_OPTIONS=""
 # stdio (default) | http | both
 ENV MCP_TRANSPORT="stdio"
 ENV MCP_HTTP_PORT="3000"
-ENV MCP_HTTP_HOST="0.0.0.0"
+ENV MCP_HTTP_HOST="127.0.0.1"
 ENV MCP_SESSION_MODE="stateful"
 ENV MCP_TOKEN_EXPIRY="3600"
 ENV MCP_MAX_SESSIONS="100"
@@ -86,6 +92,7 @@ ENV MCP_MAX_SESSIONS="100"
 # required (default) | token | none
 ENV MCP_AUTH_MODE="required"
 ENV MCP_AUTH_TOKEN=""
+ENV MCP_CORS_ORIGINS=""
 
 # TLS settings
 ENV MCP_TLS_ENABLED="false"

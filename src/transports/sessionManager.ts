@@ -87,8 +87,15 @@ class SessionManager {
       });
     };
 
-    // Connect server to transport
-    await server.connect(transport);
+    // Connect server to transport with cleanup on failure
+    try {
+      await server.connect(transport);
+    } catch (err) {
+      // Clean up transport if connection fails to prevent resource leak
+      transport.onclose = undefined;
+      await transport.close().catch(() => {});
+      throw err;
+    }
 
     const session: McpSession = {
       id: sessionId,
@@ -182,11 +189,17 @@ class SessionManager {
 
     session.isClosing = true;
 
+    // Close transport and server independently to ensure both are attempted
     try {
       await session.transport.close();
+    } catch (err) {
+      log.error({ err, sessionId }, 'Error closing session transport');
+    }
+
+    try {
       await session.server.close();
     } catch (err) {
-      log.error({ err, sessionId }, 'Error closing session resources');
+      log.error({ err, sessionId }, 'Error closing session server');
     }
 
     this.sessions.delete(sessionId);

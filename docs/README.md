@@ -62,7 +62,7 @@ The list tools support pattern matching:
 ## Compatibility
 
 - IBM i V7R3 and later (V7R5 recommended)
-- Node.js 18 or higher
+- Node.js 20.6 or higher
 - Java Runtime Environment (JRE) 11 or higher (for JDBC)
 
 ## Related Projects

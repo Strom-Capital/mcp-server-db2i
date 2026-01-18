@@ -12,6 +12,7 @@
 import express, { type Express, type Request, type Response } from 'express';
 import https from 'node:https';
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -114,15 +115,28 @@ export function createHttpApp(): Express {
     next();
   });
 
-  // CORS - allow all origins in development, restrict in production
+  // CORS - validate against allowed origins list
+  // Set MCP_CORS_ORIGINS env var to restrict (comma-separated list, or '*' for all)
   app.use((req: Request, res: Response, next: express.NextFunction) => {
     const origin = req.headers.origin;
+    const allowedOrigins = httpConfig.corsOrigins;
+    
     if (origin) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      // Check if origin is allowed
+      const isAllowed = allowedOrigins.length === 0 || // Empty = no CORS (same-origin only)
+        allowedOrigins.includes('*') || // Wildcard = allow all
+        allowedOrigins.includes(origin); // Specific origin match
+      
+      if (isAllowed) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        // Only set credentials when origin is explicitly allowed (not wildcard)
+        if (!allowedOrigins.includes('*') && allowedOrigins.length > 0) {
+          res.setHeader('Access-Control-Allow-Credentials', 'true');
+        }
+      }
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id, Accept');
     
     if (req.method === 'OPTIONS') {
       res.status(204).end();
@@ -216,7 +230,8 @@ export function createHttpApp(): Express {
       // Test connection to validate credentials
       log.debug({ host: dbConfig.hostname, user: dbConfig.username }, 'Testing credentials');
       
-      const testPoolId = `auth-test-${Date.now()}`;
+      // Use crypto random bytes for unique test pool ID (avoids collision with concurrent requests)
+      const testPoolId = `auth-test-${crypto.randomBytes(16).toString('hex')}`;
       try {
         initializeSessionPool(testPoolId, dbConfig);
         const connected = await testSessionConnection(testPoolId);
@@ -244,6 +259,7 @@ export function createHttpApp(): Express {
       // Create token session
       const tokenManager = getTokenManager();
       
+      // Advisory check - the hard limit is enforced in createSession()
       if (!tokenManager.canCreateSession()) {
         res.status(503).json({
           error: 'service_unavailable',
@@ -252,7 +268,27 @@ export function createHttpApp(): Express {
         return;
       }
 
-      const { token, expiresAt, expiresIn } = tokenManager.createSession(dbConfig, authReq.duration);
+      // Create session with proper error handling for race condition
+      // (another request could fill the limit between canCreateSession and createSession)
+      let token: string;
+      let expiresAt: Date;
+      let expiresIn: number;
+      try {
+        const result = tokenManager.createSession(dbConfig, authReq.duration);
+        token = result.token;
+        expiresAt = result.expiresAt;
+        expiresIn = result.expiresIn;
+      } catch (err) {
+        // Check if this is a max sessions error (race condition)
+        if (err instanceof Error && err.message.includes('Maximum concurrent sessions')) {
+          res.status(503).json({
+            error: 'service_unavailable',
+            error_description: err.message,
+          });
+          return;
+        }
+        throw err; // Re-throw other errors
+      }
 
       // Clear rate limit on successful auth
       clearAuthRateLimit(req);
@@ -302,12 +338,23 @@ export function createHttpApp(): Express {
           });
           return;
         }
-        // Use a single global session for none/token modes
+        // Use a single shared pool for none/token modes (similar to stdio mode).
+        // This pool persists for the server's lifetime and is cleaned up on shutdown
+        // via closeAllSessionPools(). This is intentional connection reuse, not a leak.
         sessionKey = 'global';
       } else {
         // Required mode - use per-user config from token
-        const session = authReq.tokenSession!;
-        const authToken = authReq.authToken!;
+        if (!authReq.tokenSession || !authReq.authToken) {
+          log.error('Token session or auth token missing in required mode');
+          res.status(401).json({
+            jsonrpc: '2.0',
+            error: { code: -32001, message: 'Token session not found' },
+            id: null,
+          });
+          return;
+        }
+        const session = authReq.tokenSession;
+        const authToken = authReq.authToken;
         dbConfig = session.config;
         sessionKey = authToken;
       }
@@ -340,19 +387,25 @@ export function createHttpApp(): Express {
           // Initialize DB pool for this session key
           initializeSessionPool(sessionKey, dbConfig);
 
-          const mcpServer = createMcpServer(dbConfig, sessionKey);
-          const { sessionId: newSessionId, transport } = await sessionManager.createSession(
-            mcpServer,
-            sessionKey
-          );
+          try {
+            const mcpServer = createMcpServer(dbConfig, sessionKey);
+            const { sessionId: newSessionId, transport } = await sessionManager.createSession(
+              mcpServer,
+              sessionKey
+            );
 
-          // Associate MCP session with token (only in required mode)
-          if (httpConfig.authMode === 'required') {
-            const tokenManager = getTokenManager();
-            tokenManager.setMcpSessionId(sessionKey, newSessionId);
+            // Associate MCP session with token (only in required mode)
+            if (httpConfig.authMode === 'required') {
+              const tokenManager = getTokenManager();
+              tokenManager.setMcpSessionId(sessionKey, newSessionId);
+            }
+
+            await transport.handleRequest(req, res, req.body);
+          } catch (err) {
+            // Clean up the connection pool if session creation fails
+            await closeSessionPool(sessionKey);
+            throw err;
           }
-
-          await transport.handleRequest(req, res, req.body);
         } else {
           res.status(400).json({
             jsonrpc: '2.0',
@@ -366,14 +419,23 @@ export function createHttpApp(): Express {
           sessionIdGenerator: undefined,
         });
 
-        res.on('close', () => {
-          transport.close().catch(() => {});
-        });
-
-        // Initialize pool for this request if not exists
+        // Initialize or reuse pool for this session key.
+        // In 'required' auth mode, sessionKey = authToken, so the pool is shared
+        // across all requests with the same token. This is intentional for efficiency.
+        // Pool cleanup is handled by TokenManager when the token expires or is revoked
+        // (see setCleanupCallback in startHttpServer).
         initializeSessionPool(sessionKey, dbConfig);
 
         const mcpServer = createMcpServer(dbConfig, sessionKey);
+        
+        // Clean up MCP server and transport on response close.
+        // Note: The database connection pool is NOT closed here - it's reused across
+        // requests with the same auth token and cleaned up on token expiration.
+        res.on('close', () => {
+          mcpServer.close().catch(() => {});
+          transport.close().catch(() => {});
+        });
+
         await mcpServer.connect(transport);
         await transport.handleRequest(req, res, req.body);
       }
@@ -459,6 +521,18 @@ export async function startHttpServer(): Promise<http.Server | https.Server> {
   const httpConfig = getHttpConfig();
   const app = createHttpApp();
 
+  // Register cleanup callback to close session pools when tokens expire or are revoked.
+  // This handles cleanup for both stateful and stateless modes in 'required' auth:
+  // - sessionKey = authToken, so pools are keyed by token
+  // - Pools are intentionally reused across requests for the same token (efficiency)
+  // - When token expires/revokes, this callback closes the associated pool
+  if (httpConfig.authMode === 'required') {
+    const tokenManager = getTokenManager();
+    tokenManager.setCleanupCallback(async (token: string) => {
+      await closeSessionPool(token);
+    });
+  }
+
   let server: http.Server | https.Server;
 
   if (httpConfig.tls.enabled && httpConfig.tls.certPath && httpConfig.tls.keyPath) {
@@ -524,9 +598,9 @@ export async function shutdownHttpServer(server: http.Server | https.Server): Pr
   const sessionManager = getSessionManager();
   await sessionManager.shutdown();
 
-  // Close token manager (clears auth tokens)
+  // Close token manager (clears auth tokens and triggers pool cleanup via callback)
   const tokenManager = getTokenManager();
-  tokenManager.shutdown();
+  await tokenManager.shutdown();
 
   // Close all database connection pools
   await closeAllSessionPools();

@@ -17,6 +17,12 @@ import type {
 const log = createChildLogger({ component: 'token-manager' });
 
 /**
+ * Callback type for session cleanup notification
+ * Used to close associated resources (e.g., connection pools) when tokens expire
+ */
+export type SessionCleanupCallback = (token: string) => Promise<void> | void;
+
+/**
  * Token Manager singleton for managing authentication tokens
  */
 class TokenManager {
@@ -24,6 +30,7 @@ class TokenManager {
   private sessions: Map<string, TokenSession> = new Map();
   private cleanupTimer: NodeJS.Timeout | null = null;
   private readonly cleanupIntervalMs = 60000; // 1 minute
+  private cleanupCallback: SessionCleanupCallback | null = null;
 
   private constructor() {
     this.startCleanupTimer();
@@ -88,7 +95,7 @@ class TokenManager {
         sessionCount: this.sessions.size,
         expiresIn,
         host: config.hostname,
-        user: config.username,
+        // Note: username intentionally omitted for PII compliance
       },
       'Token session created'
     );
@@ -159,13 +166,17 @@ class TokenManager {
    * @param token - The token to revoke
    * @returns true if token was found and revoked
    */
-  revokeToken(token: string): boolean {
+  async revokeToken(token: string): Promise<boolean> {
     const session = this.sessions.get(token);
     if (!session) {
       return false;
     }
 
     this.sessions.delete(token);
+    
+    // Notify cleanup callback to close associated resources
+    await this.notifyCleanup(token);
+    
     log.info(
       {
         tokenPrefix: token.substring(0, 8),
@@ -206,7 +217,7 @@ class TokenManager {
   /**
    * Clean up expired sessions
    */
-  private cleanupExpiredSessions(): void {
+  private async cleanupExpiredSessions(): Promise<void> {
     const now = new Date();
     const expiredTokens: string[] = [];
 
@@ -219,6 +230,8 @@ class TokenManager {
     if (expiredTokens.length > 0) {
       for (const token of expiredTokens) {
         this.sessions.delete(token);
+        // Notify cleanup callback to close associated resources
+        await this.notifyCleanup(token);
       }
       log.info(
         {
@@ -255,10 +268,16 @@ class TokenManager {
    * Stop the cleanup timer and clear all sessions
    * Used for graceful shutdown
    */
-  shutdown(): void {
+  async shutdown(): Promise<void> {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
+    }
+
+    // Notify cleanup callback for all remaining sessions
+    const tokens = Array.from(this.sessions.keys());
+    for (const token of tokens) {
+      await this.notifyCleanup(token);
     }
 
     const sessionCount = this.sessions.size;
@@ -268,11 +287,41 @@ class TokenManager {
   }
 
   /**
-   * Check if a new session can be created
+   * Check if a new session can be created (advisory)
+   * 
+   * Note: This is an advisory check. In Node.js single-threaded environment,
+   * there's no race condition between synchronous operations. However, if async
+   * operations occur between calling this method and createSession(), the count
+   * could change. The hard limit is enforced in createSession() which throws
+   * an error if the limit is exceeded.
    */
   canCreateSession(): boolean {
     const httpConfig = getHttpConfig();
     return this.sessions.size < httpConfig.maxSessions;
+  }
+
+  /**
+   * Set a callback to be called when sessions are cleaned up
+   * Used to close associated resources (e.g., connection pools)
+   * 
+   * @param callback - Function called with the token when a session is removed
+   */
+  setCleanupCallback(callback: SessionCleanupCallback): void {
+    this.cleanupCallback = callback;
+    log.debug('Session cleanup callback registered');
+  }
+
+  /**
+   * Internal method to notify about session cleanup
+   */
+  private async notifyCleanup(token: string): Promise<void> {
+    if (this.cleanupCallback) {
+      try {
+        await this.cleanupCallback(token);
+      } catch (err) {
+        log.error({ err, tokenPrefix: token.substring(0, 8) }, 'Error in cleanup callback');
+      }
+    }
   }
 }
 

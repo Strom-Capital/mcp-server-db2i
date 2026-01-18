@@ -23,7 +23,7 @@ MCP_TRANSPORT=stdio
 |----------|---------|-------------|
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
-| `MCP_HTTP_HOST` | `0.0.0.0` | HTTP server bind address |
+| `MCP_HTTP_HOST` | `127.0.0.1` | HTTP server bind address (use `0.0.0.0` only with TLS) |
 | `MCP_SESSION_MODE` | `stateful` | Session mode: `stateful` or `stateless` |
 | `MCP_AUTH_MODE` | `required` | Authentication mode: `required`, `token`, or `none` |
 | `MCP_AUTH_TOKEN` | - | Static token for `token` auth mode |
@@ -32,6 +32,11 @@ MCP_TRANSPORT=stdio
 | `MCP_TLS_KEY_PATH` | - | Path to TLS private key (required if TLS enabled) |
 | `MCP_TOKEN_EXPIRY` | `3600` | Token lifetime in seconds (for `required` mode) |
 | `MCP_MAX_SESSIONS` | `100` | Maximum concurrent sessions |
+| `MCP_CORS_ORIGINS` | - | CORS allowed origins (comma-separated, `*` for all) |
+| `DB2I_HOSTNAME` | - | IBM i hostname (fallback for auth requests) |
+| `DB2I_PORT` | `446` | IBM i port (fallback for auth requests) |
+| `DB2I_DATABASE` | `*LOCAL` | Database name (fallback for auth requests) |
+| `DB2I_SCHEMA` | - | Default schema (fallback for auth requests) |
 
 ## Authentication Modes
 

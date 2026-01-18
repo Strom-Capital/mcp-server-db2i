@@ -4,7 +4,7 @@ This guide covers setting up a development environment and contributing to mcp-s
 
 ## Prerequisites
 
-- **Node.js** 18 or higher
+- **Node.js** 20.6 or higher (required for `--env-file` flag)
 - **Java Runtime Environment (JRE)** 11 or higher (for JDBC)
 - **npm** or **yarn**
 - Access to an IBM i system (for integration testing)
@@ -170,7 +170,9 @@ export async function myTool(input: MyToolInput): Promise<{
     return { success: true, data: result };
   } catch (err) {
     log.error({ err }, 'myTool failed');
-    return { success: false, error: err.message };
+    // Type-safe error handling
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
   }
 }
 ```
@@ -178,6 +180,7 @@ export async function myTool(input: MyToolInput): Promise<{
 2. **Register the tool** in `src/server.ts`:
 
 ```typescript
+import { z } from 'zod';
 import { myTool } from './tools/myTool.js';
 
 // In createServer():

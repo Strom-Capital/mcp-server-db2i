@@ -9,7 +9,7 @@ vi.mock('../../src/config.js', () => ({
   getHttpConfig: vi.fn(() => ({
     transport: 'http',
     port: 3000,
-    host: '0.0.0.0',
+    host: '127.0.0.1',
     sessionMode: 'stateful',
     tls: { enabled: false },
     tokenExpiry: 3600,
@@ -48,9 +48,9 @@ describe('TokenManager', () => {
     tokenManager = getTokenManager();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     // Cleanup
-    tokenManager.shutdown();
+    await tokenManager.shutdown();
   });
 
   describe('createSession', () => {
@@ -116,18 +116,18 @@ describe('TokenManager', () => {
   });
 
   describe('revokeToken', () => {
-    it('should revoke a valid token', () => {
+    it('should revoke a valid token', async () => {
       const { token } = tokenManager.createSession(mockConfig);
       
-      const revoked = tokenManager.revokeToken(token);
+      const revoked = await tokenManager.revokeToken(token);
       expect(revoked).toBe(true);
 
       const result = tokenManager.validateToken(token);
       expect(result.valid).toBe(false);
     });
 
-    it('should return false for non-existent token', () => {
-      const revoked = tokenManager.revokeToken('non-existent');
+    it('should return false for non-existent token', async () => {
+      const revoked = await tokenManager.revokeToken('non-existent');
       expect(revoked).toBe(false);
     });
   });

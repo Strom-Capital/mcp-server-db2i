@@ -8,7 +8,7 @@
  * HTTP Transport Configuration:
  * - MCP_TRANSPORT: 'stdio' | 'http' | 'both' (default: 'stdio')
  * - MCP_HTTP_PORT: HTTP server port (default: 3000)
- * - MCP_HTTP_HOST: HTTP bind address (default: '0.0.0.0')
+ * - MCP_HTTP_HOST: HTTP bind address (default: '127.0.0.1')
  * - MCP_SESSION_MODE: 'stateful' | 'stateless' (default: 'stateful')
  * - MCP_AUTH_MODE: 'required' | 'token' | 'none' (default: 'required')
  * - MCP_AUTH_TOKEN: Static token for 'token' auth mode
@@ -17,6 +17,7 @@
  * - MCP_TLS_KEY_PATH: Path to TLS private key
  * - MCP_TOKEN_EXPIRY: Token lifetime in seconds (default: 3600)
  * - MCP_MAX_SESSIONS: Maximum concurrent sessions (default: 100)
+ * - MCP_CORS_ORIGINS: CORS allowed origins (comma-separated, '*' for all)
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -350,7 +351,7 @@ export interface HttpConfig {
   transport: TransportMode;
   /** HTTP server port (default: 3000) */
   port: number;
-  /** HTTP server bind address (default: 0.0.0.0) */
+  /** HTTP server bind address (default: 127.0.0.1) */
   host: string;
   /** Session mode: stateful or stateless (default: stateful) */
   sessionMode: SessionMode;
@@ -364,6 +365,8 @@ export interface HttpConfig {
   tokenExpiry: number;
   /** Maximum concurrent sessions (default: 100) */
   maxSessions: number;
+  /** CORS allowed origins (comma-separated, '*' for all, empty for none) */
+  corsOrigins: string[];
 }
 
 /**
@@ -372,7 +375,7 @@ export interface HttpConfig {
 export const DEFAULT_HTTP_CONFIG: HttpConfig = {
   transport: 'stdio',
   port: 3000,
-  host: '0.0.0.0',
+  host: '127.0.0.1',
   sessionMode: 'stateful',
   authMode: 'required',
   tls: {
@@ -380,7 +383,20 @@ export const DEFAULT_HTTP_CONFIG: HttpConfig = {
   },
   tokenExpiry: 3600,
   maxSessions: 100,
+  corsOrigins: [],
 };
+
+/**
+ * Parse CORS origins from environment variable
+ * Returns array of allowed origins, or ['*'] for all
+ */
+export function getCorsOrigins(): string[] {
+  const origins = process.env.MCP_CORS_ORIGINS;
+  if (!origins || origins.trim() === '') {
+    return [];
+  }
+  return origins.split(',').map(o => o.trim()).filter(o => o.length > 0);
+}
 
 /**
  * Get the configured transport mode
@@ -481,13 +497,14 @@ export function getHttpConfig(): HttpConfig {
   return {
     transport: getTransportMode(),
     port: parseInt(process.env.MCP_HTTP_PORT || '3000', 10),
-    host: process.env.MCP_HTTP_HOST || '0.0.0.0',
+    host: process.env.MCP_HTTP_HOST || '127.0.0.1',
     sessionMode: getSessionMode(),
     authMode,
     staticToken,
     tls: getTlsConfig(),
     tokenExpiry: parseInt(process.env.MCP_TOKEN_EXPIRY || '3600', 10),
     maxSessions: parseInt(process.env.MCP_MAX_SESSIONS || '100', 10),
+    corsOrigins: getCorsOrigins(),
   };
 }
 

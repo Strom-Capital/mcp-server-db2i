@@ -12,7 +12,10 @@ docker build -t mcp-server-db2i .
 
 ### Run with Environment Variables
 
+> **Security Warning:** Passing credentials via `-e` flags exposes them in process lists (`ps aux`), `docker inspect` output, and shell history. Use `--env-file` for local testing and Docker secrets for production deployments.
+
 ```bash
+# For quick local testing only - not recommended for production
 docker run -i --rm \
   -e DB2I_HOSTNAME=your-host \
   -e DB2I_USERNAME=your-user \
@@ -20,7 +23,7 @@ docker run -i --rm \
   mcp-server-db2i
 ```
 
-### Run with env file
+### Run with env file (Recommended)
 
 ```bash
 docker run -i --rm \
@@ -75,10 +78,20 @@ For production deployments, use Docker secrets instead of environment variables.
 
 ```bash
 mkdir -p ./secrets
-echo "your-username" > ./secrets/db2i_username.txt
-echo "your-password" > ./secrets/db2i_password.txt
+
+# Securely prompt for username (doesn't leak to shell history)
+read -p "Enter DB2i username: " username
+echo "$username" > ./secrets/db2i_username.txt
+
+# Securely prompt for password (hidden input)
+read -s -p "Enter DB2i password: " password
+echo
+echo "$password" > ./secrets/db2i_password.txt
+
 chmod 600 ./secrets/*.txt
 ```
+
+> **Security Note:** Avoid using `echo "password" > file` directly, as it may be logged in shell history. The `read -s` command hides input from the terminal.
 
 ### 2. Update docker-compose.yml
 
@@ -176,7 +189,7 @@ environment:
   # Transport settings
   - MCP_TRANSPORT=${MCP_TRANSPORT:-stdio}
   - MCP_HTTP_PORT=${MCP_HTTP_PORT:-3000}
-  - MCP_HTTP_HOST=${MCP_HTTP_HOST:-0.0.0.0}
+  - MCP_HTTP_HOST=${MCP_HTTP_HOST:-127.0.0.1}
   - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateful}
   - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}
   - MCP_MAX_SESSIONS=${MCP_MAX_SESSIONS:-100}
@@ -220,12 +233,14 @@ services:
   mcp-server-db2i:
     # ...
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 ```
+
+> **Note:** We use `wget` instead of `curl` because curl is not included in Node.js Alpine images.
 
 ## Resource Limits
 
@@ -338,7 +353,7 @@ services:
     volumes:
       - ./certs:/certs:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "https://localhost:3000/health", "--insecure"]
+      test: ["CMD", "wget", "--spider", "-q", "--no-check-certificate", "https://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
