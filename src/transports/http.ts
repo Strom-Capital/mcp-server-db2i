@@ -116,27 +116,30 @@ export function createHttpApp(): Express {
   });
 
   // CORS - validate against allowed origins list
-  // Set MCP_CORS_ORIGINS env var to restrict (comma-separated list, or '*' for all)
+  // By default (MCP_CORS_ORIGINS not set), no CORS headers are sent = same-origin only
+  // Set MCP_CORS_ORIGINS='*' to allow all origins, or comma-separated list for specific origins
   app.use((req: Request, res: Response, next: express.NextFunction) => {
     const origin = req.headers.origin;
     const allowedOrigins = httpConfig.corsOrigins;
     
-    if (origin) {
-      // Check if origin is allowed
-      const isAllowed = allowedOrigins.length === 0 || // Empty = no CORS (same-origin only)
+    if (origin && allowedOrigins.length > 0) {
+      // CORS is explicitly configured - check if origin is allowed
+      const isAllowed = 
         allowedOrigins.includes('*') || // Wildcard = allow all
         allowedOrigins.includes(origin); // Specific origin match
       
       if (isAllowed) {
         res.setHeader('Access-Control-Allow-Origin', origin);
         // Only set credentials when origin is explicitly allowed (not wildcard)
-        if (!allowedOrigins.includes('*') && allowedOrigins.length > 0) {
+        if (!allowedOrigins.includes('*')) {
           res.setHeader('Access-Control-Allow-Credentials', 'true');
         }
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id, Accept');
       }
     }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id, Accept');
+    // When allowedOrigins is empty (default), no CORS headers are set.
+    // Browser will enforce same-origin policy, blocking cross-origin requests.
     
     if (req.method === 'OPTIONS') {
       res.status(204).end();
@@ -387,25 +390,35 @@ export function createHttpApp(): Express {
           // Initialize DB pool for this session key
           initializeSessionPool(sessionKey, dbConfig);
 
+          // Create MCP server and session with proper cleanup on failure
+          let mcpServer: ReturnType<typeof createMcpServer> | undefined;
+          let transport: Awaited<ReturnType<typeof sessionManager.createSession>>['transport'];
+          let newSessionId: string;
+
           try {
-            const mcpServer = createMcpServer(dbConfig, sessionKey);
-            const { sessionId: newSessionId, transport } = await sessionManager.createSession(
-              mcpServer,
-              sessionKey
-            );
-
-            // Associate MCP session with token (only in required mode)
-            if (httpConfig.authMode === 'required') {
-              const tokenManager = getTokenManager();
-              tokenManager.setMcpSessionId(sessionKey, newSessionId);
-            }
-
-            await transport.handleRequest(req, res, req.body);
+            mcpServer = createMcpServer(dbConfig, sessionKey);
+            const result = await sessionManager.createSession(mcpServer, sessionKey);
+            transport = result.transport;
+            newSessionId = result.sessionId;
           } catch (err) {
-            // Clean up the connection pool if session creation fails
+            // Clean up resources if server or session creation fails
+            if (mcpServer) {
+              await mcpServer.close().catch(() => {});
+            }
             await closeSessionPool(sessionKey);
             throw err;
           }
+
+          // Associate MCP session with token (only in required mode)
+          if (httpConfig.authMode === 'required') {
+            const tokenManager = getTokenManager();
+            tokenManager.setMcpSessionId(sessionKey, newSessionId);
+          }
+
+          // Handle the initial request
+          // Note: errors here are handled by the outer try-catch, and the session
+          // will be cleaned up via normal session management (not here)
+          await transport.handleRequest(req, res, req.body);
         } else {
           res.status(400).json({
             jsonrpc: '2.0',
