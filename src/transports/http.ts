@@ -405,7 +405,13 @@ export function createHttpApp(): Express {
             if (mcpServer) {
               await mcpServer.close().catch(() => {});
             }
-            await closeSessionPool(sessionKey);
+            // Only close the pool if it's a per-user pool (required auth mode).
+            // For 'none'/'token' modes, sessionKey='global' and the pool is shared
+            // across all sessions - closing it would break other active sessions.
+            // The global pool is only closed on server shutdown.
+            if (sessionKey !== 'global') {
+              await closeSessionPool(sessionKey);
+            }
             throw err;
           }
 
