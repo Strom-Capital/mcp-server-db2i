@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.2.1...v1.3.0) (2026-01-18)
+
+
+### Features
+
+* add HTTP transport with token authentication ([#19](https://github.com/Strom-Capital/mcp-server-db2i/issues/19)) ([19fb0c8](https://github.com/Strom-Capital/mcp-server-db2i/commit/19fb0c8de7e3482fe7d5ae3b3b8f5b1be9cb55d4))
+
 ## [1.2.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.2.0...v1.2.1) (2026-01-17)
 
 
