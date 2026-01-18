@@ -1,6 +1,6 @@
-# Cursor Integration
+# Client Setup
 
-This guide covers setting up mcp-server-db2i with Cursor and other MCP-compatible clients.
+This guide covers setting up mcp-server-db2i with MCP-compatible clients like Cursor, Claude, and Claude Code.
 
 ## Configuration File
 
@@ -279,6 +279,7 @@ Then specify which connection to use in your prompts: "Using db2i-prod, list all
 The same configuration format works for Claude Desktop. Add to:
 
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
@@ -295,4 +296,53 @@ The same configuration format works for Claude Desktop. Add to:
     }
   }
 }
+```
+
+## Claude Code
+
+Claude Code (Anthropic's agentic coding tool) supports MCP servers. Configuration can be stored in:
+
+- **User/global**: `~/.claude.json` (applies to all projects)
+- **Project-specific**: `.mcp.json` in project root
+
+### Using the CLI (recommended)
+
+```bash
+claude mcp add --scope user db2i -- npx mcp-server-db2i
+```
+
+To include environment variables:
+
+```bash
+claude mcp add --scope user db2i \
+  --env DB2I_HOSTNAME=your-host \
+  --env DB2I_USERNAME=your-user \
+  --env DB2I_PASSWORD=your-password \
+  -- npx mcp-server-db2i
+```
+
+### Manual configuration
+
+Add to `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "db2i": {
+      "command": "npx",
+      "args": ["mcp-server-db2i"],
+      "env": {
+        "DB2I_HOSTNAME": "your-host",
+        "DB2I_USERNAME": "your-user",
+        "DB2I_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+
+### Verify installation
+
+```bash
+claude mcp list
 ```

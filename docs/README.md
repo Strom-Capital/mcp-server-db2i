@@ -9,7 +9,7 @@ Welcome to the mcp-server-db2i documentation. This guide provides detailed infor
 | [HTTP Transport](http-transport.md) | REST API with token authentication for web/agent integration |
 | [Configuration](configuration.md) | Environment variables, JDBC options, and all settings |
 | [Security](security.md) | Credentials management, rate limiting, and query validation |
-| [Cursor Integration](cursor-integration.md) | Setup examples for Cursor and other MCP clients |
+| [Client Setup](client-setup.md) | Setup for Cursor, Claude Desktop, and Claude Code |
 | [Docker Guide](docker.md) | Container deployment with Docker and docker-compose |
 | [Development](development.md) | Contributing, testing, and local development setup |
 
@@ -17,7 +17,7 @@ Welcome to the mcp-server-db2i documentation. This guide provides detailed infor
 
 mcp-server-db2i is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that enables AI assistants to query and inspect IBM DB2 for i databases. It supports two transport modes:
 
-- **stdio** (default) - For CLI and IDE integration (Cursor, Claude Desktop)
+- **stdio** (default) - For CLI and IDE integration (Cursor, Claude)
 - **HTTP** - REST API with token authentication for web applications and agents
 
 ## Architecture
@@ -25,7 +25,7 @@ mcp-server-db2i is a [Model Context Protocol (MCP)](https://modelcontextprotocol
 ```mermaid
 graph LR
     subgraph clients ["AI Clients"]
-        claude("Claude Desktop")
+        claude("Claude")
         cursor("Cursor IDE")
         agents("Custom Agents")
     end

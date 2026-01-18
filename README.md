@@ -21,7 +21,7 @@ AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which ex
 ```mermaid
 graph LR
     subgraph clients ["AI Clients"]
-        claude("Claude Desktop")
+        claude("Claude")
         cursor("Cursor IDE")
         agents("Custom Agents")
     end
@@ -100,7 +100,7 @@ Add to `~/.cursor/mcp.json`:
 }
 ```
 
-See the [Cursor Integration Guide](docs/cursor-integration.md) for more options including Docker setup.
+See the [Client Setup Guide](docs/client-setup.md) for more options including Docker setup.
 
 ## Available Tools
 
@@ -138,7 +138,7 @@ Once connected, you can ask the AI assistant:
 | [HTTP Transport](docs/http-transport.md) | REST API with token authentication |
 | [Configuration](docs/configuration.md) | All environment variables and JDBC options |
 | [Security](docs/security.md) | Credentials, rate limiting, query validation |
-| [Cursor Integration](docs/cursor-integration.md) | IDE setup examples |
+| [Client Setup](docs/client-setup.md) | Cursor, Claude, Claude Code setup |
 | [Docker Guide](docs/docker.md) | Container deployment |
 | [Development](docs/development.md) | Contributing and local setup |
 
