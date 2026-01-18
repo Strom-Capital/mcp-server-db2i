@@ -251,6 +251,6 @@ LOG_LEVEL=info
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do not** open a public GitHub issue
-2. Email security concerns to the maintainers
+2. Use GitHub's [private vulnerability reporting](https://github.com/Strom-Capital/mcp-server-db2i/security/advisories/new) to submit your report
 3. Include steps to reproduce the issue
 4. Allow time for a fix before public disclosure
