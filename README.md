@@ -80,9 +80,9 @@ DB2I_PASSWORD=your-password
 DB2I_SCHEMA=your-default-schema  # Optional
 ```
 
-### Cursor Setup
+### Client Setup
 
-Add to `~/.cursor/mcp.json`:
+Add to your MCP client config (e.g., `~/.cursor/mcp.json`):
 
 ```json
 {
@@ -91,16 +91,18 @@ Add to `~/.cursor/mcp.json`:
       "command": "npx",
       "args": ["mcp-server-db2i"],
       "env": {
-        "DB2I_HOSTNAME": "your-host",
-        "DB2I_USERNAME": "your-user",
-        "DB2I_PASSWORD": "your-password"
+        "DB2I_HOSTNAME": "${env:DB2I_HOSTNAME}",
+        "DB2I_USERNAME": "${env:DB2I_USERNAME}",
+        "DB2I_PASSWORD": "${env:DB2I_PASSWORD}"
       }
     }
   }
 }
 ```
 
-See the [Client Setup Guide](docs/client-setup.md) for more options including Docker setup.
+This uses environment variable expansion to keep credentials out of config files. Set the variables in your shell profile (`~/.zshrc` or `~/.bashrc`).
+
+See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, Claude Code, and Docker setup options.
 
 ## Available Tools
 
