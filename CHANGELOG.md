@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.3.0...v1.3.1) (2026-03-05)
+
+
+### Bug Fixes
+
+* add node_modules/.bin to PATH in Docker builder stage ([994eff5](https://github.com/Strom-Capital/mcp-server-db2i/commit/994eff51ba0258803b66c644357e5c032c2388d7))
+
 ## [1.3.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.2.1...v1.3.0) (2026-01-18)
 
 
