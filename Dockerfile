@@ -30,6 +30,7 @@ COPY package*.json ./
 
 # Install all dependencies (including dev)
 RUN npm ci
+ENV PATH="/app/node_modules/.bin:${PATH}"
 
 # Copy source code
 COPY tsconfig.json ./
