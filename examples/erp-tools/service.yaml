@@ -1,0 +1,330 @@
+# Example service-order tools. Table and column names are placeholders.
+# A service order is a header, then job packages, then lines. The job points at an installed unit.
+version: 1
+tools:
+  - name: list_service_orders
+    title: List service orders
+    toolset: service
+    description: >
+      Service order headers, newest first, with a job count. Only order types with
+      SVCFLAG Y are included. Derived status is error when STATFLG is E, invoiced when
+      STATUS is 60, closed when every job has CLOSEDFLG Y, otherwise open.
+      Omit a filter to leave it off. from_date is compared to ORDERDAT as YYYYMMDD.
+    parameters:
+      customer:
+        type: string
+        required: false
+        maxLength: 10
+        description: Customer number
+      handler:
+        type: string
+        required: false
+        maxLength: 10
+        description: Handler code
+      order_type:
+        type: string
+        required: false
+        maxLength: 4
+        description: Order type code
+      from_date:
+        type: date
+        required: false
+        description: Include orders dated on or after this day
+      status:
+        type: string
+        required: false
+        enum: ['open', 'closed', 'invoiced', 'error']
+        description: Derived status
+    maxRows: 100
+    sql: |
+      SELECT *
+      FROM (
+        SELECT
+          H.SVCNO,
+          TRIM(H.ORDTYPE) AS ORDTYPE,
+          TRIM(T.TYPEDESC) AS ORDTYPE_DESC,
+          TRIM(H.CUSTNO) AS CUSTNO,
+          TRIM(C.CUSTNAME) AS CUSTNAME,
+          TRIM(H.HANDLER) AS HANDLER,
+          H.STATUS,
+          TRIM(H.STATFLG) AS STATFLG,
+          H.ORDERDAT,
+          COUNT(J.JOBNO) AS JOB_COUNT,
+          CASE
+            WHEN TRIM(H.STATFLG) = 'E' THEN 'error'
+            WHEN H.STATUS = 60 THEN 'invoiced'
+            WHEN COUNT(J.JOBNO) > 0
+              AND SUM(CASE WHEN TRIM(J.CLOSEDFLG) <> 'Y' THEN 1 ELSE 0 END) = 0
+              THEN 'closed'
+            ELSE 'open'
+          END AS DERIVED_STATUS
+        FROM MYLIB.SVCHDR H
+        INNER JOIN MYLIB.ORDTYPE T
+          ON T.ORDTYPE = H.ORDTYPE
+          AND TRIM(T.SVCFLAG) = 'Y'
+        LEFT JOIN MYLIB.CUSTOMERS C ON C.CUSTNO = H.CUSTNO
+        LEFT JOIN MYLIB.SVCJOB J
+          ON J.SVCNO = H.SVCNO
+          AND TRIM(J.JOBFLG) <> 'D'
+        WHERE TRIM(H.STATFLG) <> 'D'
+          AND (CAST(:customer AS VARCHAR(10)) IS NULL OR TRIM(H.CUSTNO) = TRIM(CAST(:customer AS VARCHAR(10))))
+          AND (CAST(:handler AS VARCHAR(10)) IS NULL OR TRIM(H.HANDLER) = TRIM(CAST(:handler AS VARCHAR(10))))
+          AND (CAST(:order_type AS VARCHAR(4)) IS NULL OR TRIM(H.ORDTYPE) = TRIM(CAST(:order_type AS VARCHAR(4))))
+          AND (
+            CAST(:from_date AS VARCHAR(10)) IS NULL
+            OR H.ORDERDAT >= INTEGER(
+              SUBSTR(CAST(:from_date AS VARCHAR(10)), 1, 4) ||
+              SUBSTR(CAST(:from_date AS VARCHAR(10)), 6, 2) ||
+              SUBSTR(CAST(:from_date AS VARCHAR(10)), 9, 2)
+            )
+          )
+        GROUP BY
+          H.SVCNO, H.ORDTYPE, T.TYPEDESC, H.CUSTNO, C.CUSTNAME,
+          H.HANDLER, H.STATUS, H.STATFLG, H.ORDERDAT
+      ) LISTED
+      WHERE (CAST(:status AS VARCHAR(10)) IS NULL OR LISTED.DERIVED_STATUS = CAST(:status AS VARCHAR(10)))
+      ORDER BY LISTED.SVCNO DESC
+
+  - name: search_service_orders
+    title: Search service orders
+    toolset: service
+    description: >
+      Text match on customer name, customer reference, and order reference,
+      plus an EXISTS match on the serial number of a job.
+    parameters:
+      text:
+        type: string
+        required: true
+        maxLength: 30
+        description: Text to find. Matched with LIKE, case insensitive.
+    maxRows: 50
+    sql: |
+      SELECT
+        H.SVCNO,
+        TRIM(H.CUSTNO) AS CUSTNO,
+        TRIM(C.CUSTNAME) AS CUSTNAME,
+        TRIM(H.CUSTREF) AS CUSTREF,
+        TRIM(H.ORDREF) AS ORDREF,
+        H.STATUS,
+        H.ORDERDAT
+      FROM MYLIB.SVCHDR H
+      INNER JOIN MYLIB.ORDTYPE T
+        ON T.ORDTYPE = H.ORDTYPE
+        AND TRIM(T.SVCFLAG) = 'Y'
+      LEFT JOIN MYLIB.CUSTOMERS C ON C.CUSTNO = H.CUSTNO
+      WHERE TRIM(H.STATFLG) <> 'D'
+        AND (
+          UPPER(TRIM(C.CUSTNAME)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          OR UPPER(TRIM(H.CUSTREF)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          OR UPPER(TRIM(H.ORDREF)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          OR EXISTS (
+            SELECT 1
+            FROM MYLIB.SVCJOB J
+            WHERE J.SVCNO = H.SVCNO
+              AND TRIM(J.JOBFLG) <> 'D'
+              AND UPPER(TRIM(J.SERIALNO)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          )
+        )
+      ORDER BY H.SVCNO DESC
+
+  - name: get_service_order
+    title: Get service order
+    toolset: service
+    description: >
+      One service order. Returns one row per job, with the installed unit and the customer
+      who owns that unit. Deleted jobs are left out.
+    parameters:
+      svc_no:
+        type: integer
+        required: true
+        description: Service order number
+    maxRows: 100
+    sql: |
+      SELECT
+        H.SVCNO,
+        H.STATUS,
+        TRIM(H.ORDTYPE) AS ORDTYPE,
+        TRIM(T.TYPEDESC) AS ORDTYPE_DESC,
+        TRIM(H.CUSTNO) AS CUSTNO,
+        TRIM(C.CUSTNAME) AS CUSTNAME,
+        TRIM(H.HANDLER) AS HANDLER,
+        TRIM(H.CUSTREF) AS CUSTREF,
+        SUBSTR(DIGITS(H.ORDERDAT), 1, 4) || '-' ||
+          SUBSTR(DIGITS(H.ORDERDAT), 5, 2) || '-' ||
+          SUBSTR(DIGITS(H.ORDERDAT), 7, 2) AS ORDER_DATE,
+        J.JOBNO,
+        TRIM(J.ITEMNO) AS ITEMNO,
+        TRIM(I.ITEMTEXT) AS ITEMTEXT,
+        TRIM(J.SERIALNO) AS SERIALNO,
+        TRIM(J.CLOSEDFLG) AS CLOSEDFLG,
+        TRIM(J.JOBFLG) AS JOBFLG,
+        TRIM(O.LOCATN) AS LOCATN,
+        TRIM(O.CUSTNO) AS OBJECT_CUSTNO,
+        TRIM(OC.CUSTNAME) AS OBJECT_CUSTNAME
+      FROM MYLIB.SVCHDR H
+      INNER JOIN MYLIB.ORDTYPE T
+        ON T.ORDTYPE = H.ORDTYPE
+        AND TRIM(T.SVCFLAG) = 'Y'
+      LEFT JOIN MYLIB.CUSTOMERS C ON C.CUSTNO = H.CUSTNO
+      LEFT JOIN MYLIB.SVCJOB J
+        ON J.SVCNO = H.SVCNO
+        AND TRIM(J.JOBFLG) <> 'D'
+      LEFT JOIN MYLIB.ITEMS I ON I.ITEMNO = J.ITEMNO
+      LEFT JOIN MYLIB.SVCOBJ O
+        ON O.ITEMNO = J.ITEMNO
+        AND O.SERIALNO = J.SERIALNO
+      LEFT JOIN MYLIB.CUSTOMERS OC ON OC.CUSTNO = O.CUSTNO
+      WHERE H.SVCNO = :svc_no
+        AND TRIM(H.STATFLG) <> 'D'
+      ORDER BY J.JOBNO
+
+  - name: list_service_order_lines
+    title: List service order lines
+    toolset: service
+    description: >
+      Lines for one service order. LINETYPE J is labor on the job, P is a part.
+      Deleted jobs and lines are left out.
+    parameters:
+      svc_no:
+        type: integer
+        required: true
+        description: Service order number
+    maxRows: 500
+    sql: |
+      SELECT
+        J.JOBNO,
+        L.LINENO,
+        CASE WHEN TRIM(L.LINETYPE) = 'J' THEN 'job' ELSE 'part' END AS LINE_KIND,
+        TRIM(L.ITEMNO) AS ITEMNO,
+        TRIM(I.ITEMTEXT) AS ITEMTEXT,
+        L.QTY,
+        L.PRICE,
+        L.LINESTAT
+      FROM MYLIB.SVCHDR H
+      JOIN MYLIB.SVCJOB J
+        ON J.SVCNO = H.SVCNO
+        AND TRIM(J.JOBFLG) <> 'D'
+      LEFT JOIN MYLIB.SVCLINE L
+        ON L.SVCNO = J.SVCNO
+        AND L.JOBNO = J.JOBNO
+        AND TRIM(L.STATFLG) <> 'D'
+      LEFT JOIN MYLIB.ITEMS I ON I.ITEMNO = L.ITEMNO
+      WHERE H.SVCNO = :svc_no
+      ORDER BY J.JOBNO, L.LINENO
+
+  - name: count_service_orders_by_status
+    title: Count service orders by status
+    toolset: service
+    description: >
+      Counts service orders by derived status. error is STATFLG E, invoiced is STATUS 60,
+      closed is every job CLOSEDFLG Y, otherwise open.
+    maxRows: 10
+    sql: |
+      SELECT DERIVED.DERIVED_STATUS, COUNT(*) AS ORDER_COUNT
+      FROM (
+        SELECT
+          CASE
+            WHEN TRIM(H.STATFLG) = 'E' THEN 'error'
+            WHEN H.STATUS = 60 THEN 'invoiced'
+            WHEN COUNT(J.JOBNO) > 0
+              AND SUM(CASE WHEN TRIM(J.CLOSEDFLG) <> 'Y' THEN 1 ELSE 0 END) = 0
+              THEN 'closed'
+            ELSE 'open'
+          END AS DERIVED_STATUS
+        FROM MYLIB.SVCHDR H
+        INNER JOIN MYLIB.ORDTYPE T
+          ON T.ORDTYPE = H.ORDTYPE
+          AND TRIM(T.SVCFLAG) = 'Y'
+        LEFT JOIN MYLIB.SVCJOB J
+          ON J.SVCNO = H.SVCNO
+          AND TRIM(J.JOBFLG) <> 'D'
+        WHERE TRIM(H.STATFLG) <> 'D'
+        GROUP BY H.SVCNO, H.STATUS, H.STATFLG
+      ) DERIVED
+      GROUP BY DERIVED.DERIVED_STATUS
+      ORDER BY DERIVED.DERIVED_STATUS
+
+annotations:
+  MYLIB.SVCHDR:
+    entity: service_order
+    description: Service order header. Join ORDTYPE and keep SVCFLAG Y. STATFLG D is deleted. ORDERDAT is YYYYMMDD.
+    columns:
+      SVCNO: Service order number
+      ORDTYPE: Order type, joins ORDTYPE.ORDTYPE
+      CUSTNO: Customer number, joins CUSTOMERS.CUSTNO
+      HANDLER: Handler code
+      STATUS: "10 entered, 20 confirmed, 40 picked, 60 invoiced"
+      STATFLG: "Blank is normal, E is an error, D is deleted"
+      ORDERDAT: Order date as a number YYYYMMDD
+      CUSTREF: Customer reference
+      ORDREF: Order reference
+    relations:
+      - table: MYLIB.SVCJOB
+        join: { SVCNO: SVCNO }
+        cardinality: one-to-many
+        description: Job packages on the order
+      - table: MYLIB.ORDTYPE
+        join: { ORDTYPE: ORDTYPE }
+        cardinality: many-to-one
+        description: Order type. SVCFLAG Y means the type is a service order
+      - table: MYLIB.CUSTOMERS
+        join: { CUSTNO: CUSTNO }
+        cardinality: many-to-one
+        description: Customer
+  MYLIB.SVCJOB:
+    entity: service_job
+    description: One job package on a service order. Points at an installed unit by item and serial number.
+    columns:
+      SVCNO: Service order number
+      JOBNO: Job number
+      ITEMNO: Item on the installed unit
+      SERIALNO: Serial number of the installed unit
+      CLOSEDFLG: Y when the job is closed
+      JOBFLG: "Blank is normal, E is an error, D is deleted"
+    relations:
+      - table: MYLIB.SVCLINE
+        join: { SVCNO: SVCNO, JOBNO: JOBNO }
+        cardinality: one-to-many
+        description: Lines on the job
+      - table: MYLIB.SVCOBJ
+        join: { ITEMNO: ITEMNO, SERIALNO: SERIALNO }
+        cardinality: many-to-one
+        description: Installed unit for the job
+  MYLIB.SVCLINE:
+    entity: service_order_line
+    description: A labor or part line on a service job. LINETYPE J is labor, P is a part.
+    columns:
+      LINENO: Line number
+      LINETYPE: J is labor, P is a part
+      LINESTAT: "10 entered, 20 confirmed, 40 picked, 60 invoiced"
+      STATFLG: D is deleted
+    relations:
+      - table: MYLIB.SVCJOB
+        join: { SVCNO: SVCNO, JOBNO: JOBNO }
+        cardinality: many-to-one
+        description: Job the line belongs to
+      - table: MYLIB.ITEMS
+        join: { ITEMNO: ITEMNO }
+        cardinality: many-to-one
+        description: Item or part
+  MYLIB.SVCOBJ:
+    entity: service_object
+    description: An installed unit, identified by item and serial number.
+    columns:
+      ITEMNO: Item number
+      SERIALNO: Serial number
+      CUSTNO: Customer that owns the unit
+      LOCATN: Where the unit is installed
+    relations:
+      - table: MYLIB.ITEMS
+        join: { ITEMNO: ITEMNO }
+        cardinality: many-to-one
+        description: Item master
+      - table: MYLIB.CUSTOMERS
+        join: { CUSTNO: CUSTNO }
+        cardinality: many-to-one
+        description: Owning customer
+      - table: MYLIB.SVCJOB
+        join: { ITEMNO: ITEMNO, SERIALNO: SERIALNO }
+        cardinality: one-to-many
+        description: Jobs raised against this unit

@@ -56,6 +56,7 @@ graph LR
 - **Current MCP spec** - Speaks [2026-07-28](https://modelcontextprotocol.io/) and still serves stateless 2025-era clients
 - **Dual Transport** - Run stdio and HTTP simultaneously
 - **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
+- **Business SQL tools** - Load read-only ERP queries and table notes from YAML. See [Business SQL tools](docs/custom-tools.md)
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens
 - **Statement checks and DDL** - Validate object names, return the SQL that recreates an object, and list what depends on a table
 
@@ -122,6 +123,7 @@ See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, C
 | `validate_query` | Check a statement without running it, including catalog names |
 | `get_object_ddl` | Return the SQL DDL that recreates an object |
 | `get_related_objects` | List objects that depend on a table |
+| `get_business_context` | List business descriptions and relations loaded from YAML |
 
 ### Filter Syntax
 
@@ -147,6 +149,7 @@ Once connected, you can ask the AI assistant:
 | [HTTP Transport](docs/http-transport.md) | HTTP API, auth, and protocol versions |
 | [Configuration](docs/configuration.md) | All environment variables and JDBC options |
 | [Security](docs/security.md) | Credentials, rate limiting, query validation |
+| [Business SQL tools](docs/custom-tools.md) | YAML tools for orders, ledgers, and master data |
 | [Client Setup](docs/client-setup.md) | Cursor, Claude, Claude Code setup |
 | [Docker Guide](docs/docker.md) | Container deployment |
 | [Development](docs/development.md) | Contributing and local setup |

@@ -79,6 +79,7 @@ mcp-server-db2i/
 │   │   ├── queries.ts     # Query functions
 │   │   ├── sqlServices.ts # PARSE_STATEMENT, GENERATE_SQL, RELATED_OBJECTS
 │   │   └── drivers/       # Driver implementations
+│   ├── customTools/       # YAML business SQL tools and annotations
 │   ├── tools/             # MCP tools
 │   │   ├── query.ts       # execute_query tool
 │   │   ├── metadata.ts    # Schema/table tools
@@ -92,6 +93,7 @@ mcp-server-db2i/
 │       ├── rateLimiter.ts # Rate limiting
 │       └── security/      # SQL validation
 ├── tests/                 # Test files
+├── examples/erp-tools/    # Example business SQL tools
 ├── docs/                  # Documentation
 ├── Dockerfile
 ├── docker-compose.yml

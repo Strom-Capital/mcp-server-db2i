@@ -1,0 +1,179 @@
+# Example purchase-order tools. Table and column names are placeholders.
+# ORDERDAT is a number YYYYMMDD. STATUS uses the same number ladder as sales orders.
+version: 1
+tools:
+  - name: list_purchase_orders
+    title: List purchase orders
+    toolset: purchasing
+    description: >
+      Purchase order headers, newest first, with the vendor name.
+      Omit vendor, order status, or from_date to leave that filter off.
+      from_date is YYYY-MM-DD and is compared to ORDERDAT.
+    parameters:
+      vendor:
+        type: string
+        required: false
+        maxLength: 10
+        description: Vendor number
+      status:
+        type: integer
+        required: false
+        description: Status number, such as 10 entered or 60 invoiced
+      from_date:
+        type: date
+        required: false
+        description: Include orders dated on or after this day
+    maxRows: 100
+    sql: |
+      SELECT
+        H.PONO,
+        TRIM(H.VENDNO) AS VENDNO,
+        TRIM(V.VENDNAME) AS VENDNAME,
+        H.STATUS,
+        TRIM(H.STATFLG) AS STATFLG,
+        H.ORDERDAT
+      FROM MYLIB.POHDR H
+      LEFT JOIN MYLIB.VENDORS V ON V.VENDNO = H.VENDNO
+      WHERE TRIM(H.STATFLG) <> 'D'
+        AND (CAST(:vendor AS VARCHAR(10)) IS NULL OR TRIM(H.VENDNO) = TRIM(CAST(:vendor AS VARCHAR(10))))
+        AND (CAST(:status AS INTEGER) IS NULL OR H.STATUS = :status)
+        AND (
+          CAST(:from_date AS VARCHAR(10)) IS NULL
+          OR H.ORDERDAT >= INTEGER(
+            SUBSTR(CAST(:from_date AS VARCHAR(10)), 1, 4) ||
+            SUBSTR(CAST(:from_date AS VARCHAR(10)), 6, 2) ||
+            SUBSTR(CAST(:from_date AS VARCHAR(10)), 9, 2)
+          )
+        )
+      ORDER BY H.ORDERDAT DESC, H.PONO DESC
+
+  - name: search_purchase_orders
+    title: Search purchase orders
+    toolset: purchasing
+    description: Text match on vendor name and the vendor reference. Deleted orders are left out.
+    parameters:
+      text:
+        type: string
+        required: true
+        maxLength: 30
+        description: Text to find. Matched with LIKE, case insensitive.
+    maxRows: 50
+    sql: |
+      SELECT
+        H.PONO,
+        TRIM(H.VENDNO) AS VENDNO,
+        TRIM(V.VENDNAME) AS VENDNAME,
+        TRIM(H.VENDREF) AS VENDREF,
+        H.STATUS,
+        H.ORDERDAT
+      FROM MYLIB.POHDR H
+      LEFT JOIN MYLIB.VENDORS V ON V.VENDNO = H.VENDNO
+      WHERE TRIM(H.STATFLG) <> 'D'
+        AND (
+          UPPER(TRIM(V.VENDNAME)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          OR UPPER(TRIM(H.VENDREF)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+        )
+      ORDER BY H.PONO DESC
+
+  - name: get_purchase_order
+    title: Get purchase order
+    toolset: purchasing
+    description: One purchase order with the vendor name, a formatted order date, and a line count.
+    parameters:
+      po_no:
+        type: integer
+        required: true
+        description: Purchase order number
+    maxRows: 1
+    sql: |
+      SELECT
+        H.PONO,
+        TRIM(H.VENDNO) AS VENDNO,
+        TRIM(V.VENDNAME) AS VENDNAME,
+        H.STATUS,
+        TRIM(H.STATFLG) AS STATFLG,
+        SUBSTR(DIGITS(H.ORDERDAT), 1, 4) || '-' ||
+          SUBSTR(DIGITS(H.ORDERDAT), 5, 2) || '-' ||
+          SUBSTR(DIGITS(H.ORDERDAT), 7, 2) AS ORDER_DATE,
+        COUNT(L.LINENO) AS LINE_COUNT
+      FROM MYLIB.POHDR H
+      LEFT JOIN MYLIB.VENDORS V ON V.VENDNO = H.VENDNO
+      LEFT JOIN MYLIB.POLINE L ON L.PONO = H.PONO
+      WHERE H.PONO = :po_no
+        AND TRIM(H.STATFLG) <> 'D'
+      GROUP BY H.PONO, H.VENDNO, V.VENDNAME, H.STATUS, H.STATFLG, H.ORDERDAT
+
+  - name: list_purchase_order_lines
+    title: List purchase order lines
+    toolset: purchasing
+    description: Lines for one purchase order, with the item text and the quantity still open.
+    parameters:
+      po_no:
+        type: integer
+        required: true
+        description: Purchase order number
+    maxRows: 500
+    sql: |
+      SELECT
+        L.PONO,
+        L.LINENO,
+        TRIM(L.ITEMNO) AS ITEMNO,
+        TRIM(I.ITEMTEXT) AS ITEMTEXT,
+        L.QTY,
+        L.QTYRCVD,
+        L.QTY - L.QTYRCVD AS QTYOPEN,
+        L.PRICE,
+        L.LINESTAT
+      FROM MYLIB.POLINE L
+      LEFT JOIN MYLIB.ITEMS I ON I.ITEMNO = L.ITEMNO
+      WHERE L.PONO = :po_no
+      ORDER BY L.LINENO
+
+annotations:
+  MYLIB.POHDR:
+    entity: purchase_order
+    description: Purchase order header. ORDERDAT is YYYYMMDD. STATFLG D is deleted.
+    columns:
+      PONO: Purchase order number
+      VENDNO: Vendor number, joins VENDORS.VENDNO
+      STATUS: "10 entered, 20 confirmed, 40 received, 60 invoiced"
+      STATFLG: "Blank is normal, E is an error, D is deleted"
+      ORDERDAT: Order date as a number YYYYMMDD
+      VENDREF: Vendor reference
+    relations:
+      - table: MYLIB.POLINE
+        join: { PONO: PONO }
+        cardinality: one-to-many
+        description: Purchase order lines
+      - table: MYLIB.VENDORS
+        join: { VENDNO: VENDNO }
+        cardinality: many-to-one
+        description: Vendor
+  MYLIB.POLINE:
+    entity: purchase_order_line
+    description: Purchase order line. QTYRCVD is how much has arrived. The open quantity is QTY minus QTYRCVD.
+    columns:
+      LINENO: Line number
+      QTY: Quantity ordered
+      QTYRCVD: Quantity received
+      LINESTAT: "10 entered, 20 confirmed, 40 received, 60 invoiced"
+    relations:
+      - table: MYLIB.POHDR
+        join: { PONO: PONO }
+        cardinality: many-to-one
+        description: Purchase order header
+      - table: MYLIB.ITEMS
+        join: { ITEMNO: ITEMNO }
+        cardinality: many-to-one
+        description: Item on the line
+  MYLIB.VENDORS:
+    entity: vendor
+    description: Vendor master
+    columns:
+      VENDNO: Vendor number
+      VENDNAME: Vendor name
+    relations:
+      - table: MYLIB.POHDR
+        join: { VENDNO: VENDNO }
+        cardinality: one-to-many
+        description: Purchase orders for this vendor

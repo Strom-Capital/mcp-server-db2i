@@ -217,11 +217,28 @@ environment:
   # Tool selection and response format
   - MCP_TOOLS_ENABLED=${MCP_TOOLS_ENABLED:-}
   - MCP_TOOLS_DISABLED=${MCP_TOOLS_DISABLED:-}
+  - MCP_CUSTOM_TOOLS=${MCP_CUSTOM_TOOLS:-}
   - MCP_RESPONSE_FORMAT=${MCP_RESPONSE_FORMAT:-json}
   
   # Logging
   - LOG_LEVEL=${LOG_LEVEL:-info}
 ```
+
+## Business SQL tools
+
+Mount a directory of YAML tool files and point `MCP_CUSTOM_TOOLS` at it. The example pack in `examples/erp-tools` uses placeholder names such as `MYLIB.ORDERHDR`. Edit those names before relying on the tools.
+
+```yaml
+services:
+  mcp-server-db2i:
+    environment:
+      - MCP_CUSTOM_TOOLS=/tools
+      - QUERY_ALLOWED_SCHEMAS=MYLIB
+    volumes:
+      - ./examples/erp-tools:/tools:ro
+```
+
+The server reads the files at startup. A statement that is not a query, or that names a library outside `QUERY_ALLOWED_SCHEMAS`, stops the container. See [Business SQL tools](custom-tools.md).
 
 ## Multi-Stage Build
 

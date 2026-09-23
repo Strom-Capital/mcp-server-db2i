@@ -1,0 +1,118 @@
+# Example item and customer master tools. Point SCHEMA and table names at your own files.
+version: 1
+tools:
+  - name: list_items
+    title: List items
+    toolset: master
+    description: Item master rows in item number order.
+    maxRows: 500
+    sql: |
+      SELECT I.ITEMNO, I.ITEMTEXT, I.STATUS
+      FROM MYLIB.ITEMS I
+      ORDER BY I.ITEMNO
+
+  - name: search_items
+    title: Search items
+    toolset: master
+    description: Items whose text contains the given words.
+    parameters:
+      text:
+        type: string
+        required: true
+        maxLength: 30
+        description: Words to find in the item text
+    maxRows: 100
+    sql: |
+      SELECT I.ITEMNO, TRIM(I.ITEMTEXT) AS ITEMTEXT, I.STATUS
+      FROM MYLIB.ITEMS I
+      WHERE UPPER(TRIM(I.ITEMTEXT)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+      ORDER BY I.ITEMNO
+
+  - name: get_item
+    title: Get item
+    toolset: master
+    description: One item master row by item number.
+    parameters:
+      item:
+        type: string
+        required: true
+        maxLength: 15
+        description: Item number
+    maxRows: 1
+    sql: |
+      SELECT I.ITEMNO, I.ITEMTEXT, I.STATUS
+      FROM MYLIB.ITEMS I
+      WHERE I.ITEMNO = :item
+
+  - name: list_customers
+    title: List customers
+    toolset: master
+    description: Customer master rows in customer number order.
+    maxRows: 500
+    sql: |
+      SELECT C.CUSTNO, C.CUSTNAME, C.STATUS
+      FROM MYLIB.CUSTOMERS C
+      ORDER BY C.CUSTNO
+
+  - name: search_customers
+    title: Search customers
+    toolset: master
+    description: Customers whose name contains the given words.
+    parameters:
+      name:
+        type: string
+        required: true
+        maxLength: 30
+        description: Words to find in the customer name
+    maxRows: 100
+    sql: |
+      SELECT C.CUSTNO, TRIM(C.CUSTNAME) AS CUSTNAME, C.STATUS
+      FROM MYLIB.CUSTOMERS C
+      WHERE UPPER(TRIM(C.CUSTNAME)) LIKE '%' || UPPER(TRIM(CAST(:name AS VARCHAR(30)))) || '%'
+      ORDER BY C.CUSTNO
+
+  - name: get_customer
+    title: Get customer
+    toolset: master
+    description: One customer master row by customer number.
+    parameters:
+      customer:
+        type: string
+        required: true
+        maxLength: 10
+        description: Customer number
+    maxRows: 1
+    sql: |
+      SELECT C.CUSTNO, C.CUSTNAME, C.STATUS
+      FROM MYLIB.CUSTOMERS C
+      WHERE C.CUSTNO = :customer
+
+annotations:
+  MYLIB.ITEMS:
+    entity: item
+    description: Item master
+    columns:
+      STATUS: "A = active, I = inactive"
+    relations:
+      - table: MYLIB.ORDERS
+        join: { ITEMNO: ITEMNO }
+        cardinality: one-to-many
+        description: Sales order lines for this item
+      - table: MYLIB.BOMHDR
+        join: { ITEMNO: ITEMNO }
+        cardinality: one-to-one
+        description: Bill of materials, when this item is a parent
+  MYLIB.CUSTOMERS:
+    entity: customer
+    description: Customer master
+    columns:
+      STATUS: "A = active, I = inactive"
+    relations:
+      - table: MYLIB.ORDERHDR
+        join: { CUSTNO: CUSTNO }
+        cardinality: one-to-many
+        description: Sales orders for this customer
+      - table: MYLIB.SVCHDR
+        join: { CUSTNO: CUSTNO }
+        cardinality: one-to-many
+        description: Service orders for this customer

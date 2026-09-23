@@ -155,7 +155,7 @@ The JDBC connection is a second layer. It uses `access=read only` unless `DB2I_J
 
 `execute_query` asks IBM i to parse the statement with `QSYS2.PARSE_STATEMENT` before it runs. The query is rejected when the statement does not parse, or when it is not a query. This catches Db2 for i syntax that the local parser accepts.
 
-The check is on unless `QUERY_PARSE_CHECK` is `false` or `0`. It adds one round trip, often a few hundred milliseconds, on every `execute_query` call. If `QSYS2.PARSE_STATEMENT` is not installed, the query is rejected and the error tells you to turn the check off. A missing function does not skip the check on its own.
+The check is on unless `QUERY_PARSE_CHECK` is `false` or `0`. It adds one round trip, often a few hundred milliseconds, on every `execute_query` call. Business SQL tools run the same check the first time each tool is called, then cache the result. If `QSYS2.PARSE_STATEMENT` is not installed, the query is rejected and the error tells you to turn the check off. A missing function does not skip the check on its own.
 
 `validate_query` runs the same parse, then checks tables, columns, and qualified routines against the catalog. It reports findings and does not execute the statement.
 
@@ -178,11 +178,11 @@ If clients only need to browse schemas, tables, and columns, turn off free-form 
 MCP_TOOLS_DISABLED=execute_query
 ```
 
-The tool is then never registered, so validation bypasses cannot reach it. See [Tool Selection](configuration.md#tool-selection) for the full allowlist and denylist syntax.
+The tool is then never registered, so validation bypasses cannot reach it. Business SQL tools loaded from `MCP_CUSTOM_TOOLS` stay available, and they go through the same read-only check, schema allowlist, and parse check. See [Business SQL tools](custom-tools.md). See [Tool Selection](configuration.md#tool-selection) for the full allowlist and denylist syntax.
 
 ### Schema Allowlist
 
-`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the parse check and the query. The same list applies to `validate_query`, `get_object_ddl`, and `get_related_objects`. `get_related_objects` omits dependents whose schema is outside the list.
+`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the parse check and the query. The same list applies to `validate_query`, `get_object_ddl`, `get_related_objects`, and business SQL tools. `get_related_objects` omits dependents whose schema is outside the list. A business tool that fails the check is rejected at startup, and again when it is called.
 
 - Unqualified names resolve to the session schema, or to `DB2I_SCHEMA` when the session has none. If that schema is missing or not in the list, the query is rejected.
 - The list comes from the server environment. A schema chosen at `/auth` changes where unqualified names resolve. It does not add libraries to the list.
@@ -280,7 +280,7 @@ LOG_LEVEL=info
 - [ ] Set appropriate rate limits
 - [ ] Configure query limits
 - [ ] Disable tools clients don't need (e.g. `MCP_TOOLS_DISABLED=execute_query`)
-- [ ] Set `QUERY_ALLOWED_SCHEMAS` when `execute_query` is enabled, and limit the IBM i user profile to those libraries
+- [ ] Set `QUERY_ALLOWED_SCHEMAS` when `execute_query` or business SQL tools are enabled, and limit the IBM i user profile to those libraries
 - [ ] Use `info` or higher log level
 - [ ] Run as non-root user (Docker image does this by default)
 - [ ] Restrict network access to IBM i system

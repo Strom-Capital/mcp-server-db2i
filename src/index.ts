@@ -33,6 +33,8 @@ import { initializePool, testConnection, closeGlobalPool } from './db/connection
 import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { createServer, SERVER_NAME, SERVER_VERSION } from './server.js';
+import { loadCustomToolsFromEnv } from './customTools/loader.js';
+import { setCustomTools } from './customTools/registry.js';
 import { startHttpServer, shutdownHttpServer } from './transports/http.js';
 
 /**
@@ -102,13 +104,20 @@ async function main(): Promise<void> {
       );
     }
 
-    // Validates MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
-    const enabledTools = getEnabledTools();
+    // Validates tool files and MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
+    const customTools = loadCustomToolsFromEnv();
+    setCustomTools(customTools);
+    const enabledTools = getEnabledTools(customTools.tools);
     if (enabledTools.length === 0) {
       logger.warn('All tools are disabled by MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED');
     }
     logger.info(
-      { tools: enabledTools, responseFormat: getResponseFormat() },
+      {
+        tools: enabledTools,
+        customTools: customTools.tools.length,
+        annotations: customTools.annotations.length,
+        responseFormat: getResponseFormat(),
+      },
       'Tool configuration loaded'
     );
 
