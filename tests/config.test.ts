@@ -16,6 +16,7 @@ import {
   applyQueryLimit,
   getEnabledTools,
   getResponseFormat,
+  getAllowedSchemas,
   TOOL_NAMES,
   type DB2iConfig,
   type QueryLimitConfig,
@@ -516,6 +517,26 @@ describe('Config Module', () => {
       expect(connConfig['naming']).toBe('system');
       expect(connConfig['date format']).toBe('iso');
     });
+
+    it('should use the schema as the library list when libraries is not set', () => {
+      const connConfig = buildConnectionConfig({ ...baseConfig, schema: 'MYLIB' });
+      expect(connConfig['libraries']).toBe('MYLIB');
+    });
+
+    it('should not set libraries when no schema is configured', () => {
+      const connConfig = buildConnectionConfig(baseConfig);
+      expect(connConfig['libraries']).toBeUndefined();
+    });
+
+    it('should keep an explicit libraries option over the schema', () => {
+      const connConfig = buildConnectionConfig({
+        ...baseConfig,
+        schema: 'MYLIB',
+        jdbcOptions: { Libraries: 'OTHERLIB' },
+      });
+      expect(connConfig['libraries']).toBeUndefined();
+      expect(connConfig['Libraries']).toBe('OTHERLIB');
+    });
   });
 
   describe('getQueryLimitConfig', () => {
@@ -662,6 +683,28 @@ describe('Config Module', () => {
     it('should fall back to json for invalid values', () => {
       process.env.MCP_RESPONSE_FORMAT = 'xml';
       expect(getResponseFormat()).toBe('json');
+    });
+  });
+
+  describe('getAllowedSchemas', () => {
+    beforeEach(() => {
+      delete process.env.QUERY_ALLOWED_SCHEMAS;
+    });
+
+    it('should be off when unset or blank', () => {
+      expect(getAllowedSchemas()).toBeUndefined();
+      process.env.QUERY_ALLOWED_SCHEMAS = '  ,  ';
+      expect(getAllowedSchemas()).toBeUndefined();
+    });
+
+    it('should uppercase names and ignore surrounding whitespace', () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = ' mylib , QSYS2 ';
+      expect(getAllowedSchemas()).toEqual(['MYLIB', 'QSYS2']);
+    });
+
+    it('should drop duplicate names', () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB,mylib';
+      expect(getAllowedSchemas()).toEqual(['MYLIB']);
     });
   });
 });

@@ -157,6 +157,23 @@ describe('MCP Server Integration', () => {
     });
   });
 
+  describe('Schema Allowlist', () => {
+    it('should reject a query that names a library outside QUERY_ALLOWED_SCHEMAS', async () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'TESTLIB';
+      mockQuery.mockResolvedValueOnce([{ ID: 1 }]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM OTHERLIB.USERS' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      const errorText = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(errorText).toContain('OTHERLIB.USERS');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Response Format', () => {
     it('should render row results as a markdown table when MCP_RESPONSE_FORMAT=markdown', async () => {
       process.env.MCP_RESPONSE_FORMAT = 'markdown';

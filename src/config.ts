@@ -217,6 +217,16 @@ export function buildConnectionConfig(config: DB2iConfig): {
     connectionConfig['date format'] = 'iso';
   }
 
+  // Unqualified names resolve to the configured schema unless the operator
+  // already set a library list. An explicit `libraries` option wins because
+  // JDBC options are merged afterwards.
+  const hasLibraries = Object.keys(config.jdbcOptions).some(
+    (key) => key.toLowerCase() === 'libraries'
+  );
+  if (config.schema && !hasLibraries) {
+    connectionConfig['libraries'] = config.schema;
+  }
+
   // Merge additional JDBC options
   for (const [key, value] of Object.entries(config.jdbcOptions)) {
     connectionConfig[key] = value;
@@ -389,6 +399,36 @@ export function getResponseFormat(): ResponseFormat {
     return format;
   }
   return 'json';
+}
+
+/**
+ * Libraries execute_query may reference.
+ *
+ * Environment variable:
+ * - QUERY_ALLOWED_SCHEMAS: Comma-separated allowlist. Empty or unset disables the check.
+ *
+ * Read from the environment only, so an HTTP client cannot widen it by
+ * choosing a different schema at /auth. Names are uppercased; IBM i folds
+ * unquoted identifiers to uppercase.
+ *
+ * @returns Allowed schema names, or undefined when the check is off
+ */
+export function getAllowedSchemas(): string[] | undefined {
+  const value = process.env.QUERY_ALLOWED_SCHEMAS;
+  if (value === undefined || value.trim() === '') {
+    return undefined;
+  }
+
+  const names = [
+    ...new Set(
+      value
+        .split(',')
+        .map((name) => name.trim().toUpperCase())
+        .filter((name) => name.length > 0)
+    ),
+  ];
+
+  return names.length > 0 ? names : undefined;
 }
 
 // ============================================================================
