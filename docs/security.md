@@ -10,7 +10,7 @@ This guide covers security features and best practices for mcp-server-db2i.
 - **Result limiting**: Default limit of 1000 rows, configurable max limit (default: 10000)
 - **Rate limiting**: Configurable request throttling to prevent abuse (100 req/15 min default)
 - **Structured logging**: Automatic redaction of sensitive fields like passwords
-- **Token-based HTTP auth**: Per-request credentials for HTTP transport
+- **HTTP auth**: `required` (per-user credentials via `/auth`), `token` (static bearer), or `none` (trusted networks)
 
 ## Credential Management
 
@@ -158,11 +158,12 @@ Query results are automatically limited to prevent memory exhaustion:
 
 When using HTTP transport, additional security measures apply:
 
-### Token-based Authentication
+### Authentication
 
-- Credentials must be provided per-request to `/auth`
-- Environment variable credentials are **not** used for HTTP
-- Tokens expire after 1 hour by default (`MCP_TOKEN_EXPIRY`)
+- **`required`** (default): clients exchange IBM i credentials at `POST /auth`. Those credentials are not taken from the environment. Tokens expire after 1 hour by default (`MCP_TOKEN_EXPIRY`).
+- **`token`** and **`none`**: the server uses `DB2I_*` environment credentials. `token` still requires `MCP_AUTH_TOKEN`. Use `none` only on a trusted network.
+
+See [HTTP Transport](http-transport.md) for the request shapes. Protocol sessions (`Mcp-Session-Id`) are deprecated; pools stay isolated by auth token in the default stateless mode.
 
 ### Auth Endpoint Rate Limiting
 

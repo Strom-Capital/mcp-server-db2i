@@ -3,7 +3,7 @@
 [![CI](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml/badge.svg)](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/mcp-server-db2i)](https://www.npmjs.com/package/mcp-server-db2i)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MCP](https://img.shields.io/badge/MCP-2025--11--25-green?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
+[![MCP](https://img.shields.io/badge/MCP-2026--07--28-green?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
 [![IBM i](https://img.shields.io/badge/IBM%20i-V7R3+-green?logo=ibm&logoColor=white)](https://www.ibm.com/products/ibm-i)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-≥20.6-green?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -53,6 +53,7 @@ graph LR
 - **Secure by design** - Only SELECT queries allowed, credentials via environment variables
 - **Docker support** - Run as a container for easy deployment
 - **HTTP Transport** - REST API with token authentication for web/agent integration
+- **Current MCP spec** - Speaks [2026-07-28](https://modelcontextprotocol.io/) and still serves stateless 2025-era clients
 - **Dual Transport** - Run stdio and HTTP simultaneously
 
 ## Quick Start
@@ -137,7 +138,7 @@ Once connected, you can ask the AI assistant:
 
 | Guide | Description |
 |-------|-------------|
-| [HTTP Transport](docs/http-transport.md) | REST API with token authentication |
+| [HTTP Transport](docs/http-transport.md) | HTTP API, auth, and protocol versions |
 | [Configuration](docs/configuration.md) | All environment variables and JDBC options |
 | [Security](docs/security.md) | Credentials, rate limiting, query validation |
 | [Client Setup](docs/client-setup.md) | Cursor, Claude, Claude Code setup |
@@ -149,6 +150,7 @@ Once connected, you can ask the AI assistant:
 - IBM i V7R3 and later (V7R5 recommended)
 - Node.js 20.6 or higher
 - Java Runtime Environment (JRE) 11 or higher
+- MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)
 
 ## Related Projects
 
@@ -166,4 +168,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [node-jt400](https://www.npmjs.com/package/node-jt400) - JT400 JDBC driver wrapper for Node.js
 - [Model Context Protocol](https://modelcontextprotocol.io/) - The protocol specification
-- [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk) - Official TypeScript SDK
+- [@modelcontextprotocol/server](https://github.com/modelcontextprotocol/typescript-sdk) - Official TypeScript SDK (spec 2026-07-28, with stateless 2025-era clients)

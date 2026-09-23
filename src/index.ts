@@ -15,7 +15,7 @@
  * - 'both': Both transports simultaneously
  */
 
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
 import type http from 'node:http';
 import type https from 'node:https';
 
@@ -30,7 +30,7 @@ import { startHttpServer, shutdownHttpServer } from './transports/http.js';
  * Main entry point
  */
 async function main(): Promise<void> {
-  let stdioServer: ReturnType<typeof createServer> | null = null;
+  let stdioServer: StdioServerHandle | null = null;
   let httpServer: http.Server | https.Server | null = null;
 
   /**
@@ -102,10 +102,8 @@ async function main(): Promise<void> {
         logger.info('Database connection verified');
       }
 
-      // Create and connect stdio MCP server
-      stdioServer = createServer();
-      const transport = new StdioServerTransport();
-      await stdioServer.connect(transport);
+      // serveStdio pins one server per connection and speaks both 2025 and 2026-07-28
+      stdioServer = serveStdio(() => createServer());
       logger.info(
         { name: SERVER_NAME, version: SERVER_VERSION },
         'MCP server connected via stdio transport'

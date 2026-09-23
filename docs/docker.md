@@ -157,7 +157,8 @@ services:
   mcp-server-db2i:
     # ...
     environment:
-      - MCP_HTTP_HOST=127.0.0.1  # Only bind to localhost
+      # 0.0.0.0 so the proxy container can reach this process. 127.0.0.1 is only this container's loopback.
+      - MCP_HTTP_HOST=0.0.0.0
       - MCP_HTTP_PORT=3000
 
   nginx:
@@ -190,7 +191,7 @@ environment:
   - MCP_TRANSPORT=${MCP_TRANSPORT:-stdio}
   - MCP_HTTP_PORT=${MCP_HTTP_PORT:-3000}
   - MCP_HTTP_HOST=${MCP_HTTP_HOST:-127.0.0.1}
-  - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateful}
+  - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateless}
   - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}
   - MCP_MAX_SESSIONS=${MCP_MAX_SESSIONS:-100}
   
@@ -220,9 +221,10 @@ The Dockerfile uses a multi-stage build for minimal image size:
 2. **Production stage**: Contains only runtime dependencies
 
 The final image:
-- Uses Node.js Alpine for small size
+- Uses `node:20-slim` (Debian). Stay on Node 20: the `node-jt400` native bindings fail under Node 24.
 - Runs as non-root user (`mcpuser`)
 - Includes only production dependencies
+- Defaults `MCP_SESSION_MODE` to `stateless`, matching the server. `stateful` is deprecated.
 
 ## Health Checks
 
@@ -233,14 +235,14 @@ services:
   mcp-server-db2i:
     # ...
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 ```
 
-> **Note:** We use `wget` instead of `curl` because curl is not included in Node.js Alpine images.
+> **Note:** The image is Debian slim and does not include `curl` or `wget`. The check uses Node's built-in `fetch`.
 
 ## Resource Limits
 
@@ -342,6 +344,7 @@ services:
       - DB2I_PASSWORD_FILE=/run/secrets/db2i_password
       - DB2I_SCHEMA=${DB2I_SCHEMA}
       - MCP_TRANSPORT=http
+      - MCP_HTTP_HOST=0.0.0.0
       - MCP_TLS_ENABLED=true
       - MCP_TLS_CERT_PATH=/certs/server.crt
       - MCP_TLS_KEY_PATH=/certs/server.key
@@ -353,7 +356,7 @@ services:
     volumes:
       - ./certs:/certs:ro
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "--no-check-certificate", "https://localhost:3000/health"]
+      test: ["CMD", "node", "-e", "process.env.NODE_TLS_REJECT_UNAUTHORIZED='0'; fetch('https://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3

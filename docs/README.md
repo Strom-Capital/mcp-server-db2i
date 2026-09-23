@@ -6,7 +6,7 @@ Welcome to the mcp-server-db2i documentation. This guide provides detailed infor
 
 | Guide | Description |
 |-------|-------------|
-| [HTTP Transport](http-transport.md) | REST API with token authentication for web/agent integration |
+| [HTTP Transport](http-transport.md) | HTTP API, auth, and protocol 2026-07-28 |
 | [Configuration](configuration.md) | Environment variables, JDBC options, and all settings |
 | [Security](security.md) | Credentials management, rate limiting, and query validation |
 | [Client Setup](client-setup.md) | Setup for Cursor, Claude Desktop, and Claude Code |
@@ -78,6 +78,7 @@ The list tools support pattern matching:
 - IBM i V7R3 and later (V7R5 recommended)
 - Node.js 20.6 or higher
 - Java Runtime Environment (JRE) 11 or higher (for JDBC)
+- MCP spec 2026-07-28, plus stateless 2025-era clients (through 2025-11-25)
 
 ## Related Projects
 

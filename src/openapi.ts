@@ -188,10 +188,9 @@ export function getOpenApiSpec(baseUrl?: string): OpenApiSpec {
           summary: 'MCP JSON-RPC request',
           description:
             'Send MCP JSON-RPC 2.0 requests.\n\n' +
-            '**Stateful Mode Flow:**\n' +
-            '1. Send `initialize` request WITHOUT `Mcp-Session-Id` header\n' +
-            '2. Get `mcp-session-id` from response headers\n' +
-            '3. Include `Mcp-Session-Id` header in all subsequent requests\n\n' +
+            '**2026-07-28:** each request carries a `_meta` envelope plus `MCP-Protocol-Version` and `Mcp-Method` (and `Mcp-Name` for a named tool call). There is no `initialize` handshake and no `Mcp-Session-Id`. Use `server/discover` to read server capabilities.\n\n' +
+            '**2025-era (default stateless):** send `initialize` and later calls as separate requests. Do not send `Mcp-Session-Id`. `GET` and `DELETE` answer 405.\n\n' +
+            '**Deprecated stateful mode** (`MCP_SESSION_MODE=stateful`): 2025-era clients send `initialize` without `Mcp-Session-Id`, then repeat that header. 2026-07-28 requests on the same URL stay stateless.\n\n' +
             '**Authentication:** Required in `required` and `token` modes. Not required in `none` mode. Check `/health` for current mode.\n\n' +
             '**Important:** The `Accept` header must include both `application/json` and `text/event-stream`.',
           operationId: 'mcpRequest',
@@ -207,10 +206,33 @@ export function getOpenApiSpec(baseUrl?: string): OpenApiSpec {
               example: 'application/json, text/event-stream',
             },
             {
+              name: 'MCP-Protocol-Version',
+              in: 'header',
+              description:
+                'Required for 2026-07-28 requests. Must match `_meta["io.modelcontextprotocol/protocolVersion"]`. Omit for 2025-era requests.',
+              required: false,
+              schema: { type: 'string', example: '2026-07-28' },
+            },
+            {
+              name: 'Mcp-Method',
+              in: 'header',
+              description:
+                'Required for 2026-07-28 requests. Must match the JSON-RPC method (for example `server/discover` or `tools/call`).',
+              required: false,
+              schema: { type: 'string', example: 'tools/call' },
+            },
+            {
+              name: 'Mcp-Name',
+              in: 'header',
+              description: 'Required for 2026-07-28 calls that name a tool, prompt, or resource.',
+              required: false,
+              schema: { type: 'string', example: 'execute_query' },
+            },
+            {
               name: 'Mcp-Session-Id',
               in: 'header',
               description:
-                'MCP session ID. Do NOT include for `initialize` requests - the server returns a new session ID in the response headers. Required for all subsequent requests in stateful mode.',
+                'Deprecated. Only used when MCP_SESSION_MODE=stateful for 2025-era clients. Omit it for 2026-07-28 and for the default stateless mode.',
               required: false,
               schema: { type: 'string' },
             },
@@ -221,13 +243,28 @@ export function getOpenApiSpec(baseUrl?: string): OpenApiSpec {
               'application/json': {
                 schema: { $ref: '#/components/schemas/JsonRpcRequest' },
                 examples: {
+                  discover: {
+                    summary: 'Discover server (2026-07-28)',
+                    value: {
+                      jsonrpc: '2.0',
+                      method: 'server/discover',
+                      params: {
+                        _meta: {
+                          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+                          'io.modelcontextprotocol/clientInfo': { name: 'my-client', version: '1.0.0' },
+                          'io.modelcontextprotocol/clientCapabilities': {},
+                        },
+                      },
+                      id: 1,
+                    },
+                  },
                   initialize: {
-                    summary: 'Initialize session',
+                    summary: 'Initialize (2025-era, stateless)',
                     value: {
                       jsonrpc: '2.0',
                       method: 'initialize',
                       params: {
-                        protocolVersion: '2024-11-05',
+                        protocolVersion: '2025-06-18',
                         capabilities: {},
                         clientInfo: { name: 'my-client', version: '1.0.0' },
                       },
@@ -264,7 +301,7 @@ export function getOpenApiSpec(baseUrl?: string): OpenApiSpec {
               description: 'MCP response',
               headers: {
                 'Mcp-Session-Id': {
-                  description: 'Session ID (returned on initialize)',
+                  description: 'Deprecated. Returned only when MCP_SESSION_MODE=stateful.',
                   schema: { type: 'string' },
                 },
               },

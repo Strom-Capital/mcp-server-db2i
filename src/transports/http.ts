@@ -5,7 +5,7 @@
  * - OAuth-style token authentication (/auth)
  * - MCP protocol endpoints (/mcp)
  * - Health check endpoint (/health)
- * - Stateful and stateless session modes
+ * - Stateless MCP serving by default (stateful Mcp-Session-Id is deprecated)
  * - Optional TLS support
  */
 
@@ -14,8 +14,8 @@ import https from 'node:https';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { createMcpHandler, isInitializeRequest, isLegacyRequest, type McpHttpHandler } from '@modelcontextprotocol/server';
+import { toNodeHandler, toWebRequest } from '@modelcontextprotocol/node';
 
 import {
   getHttpConfig,
@@ -41,6 +41,9 @@ import { getOpenApiSpec } from '../openapi.js';
 import { initializeSessionPool, testSessionConnection, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
 
 const log = createChildLogger({ component: 'http-transport' });
+
+/** Latest HTTP MCP handler, closed on shutdown so in-flight 2026 exchanges abort. */
+let mcpHttpHandler: McpHttpHandler | undefined;
 
 /**
  * Validate auth request body
@@ -120,12 +123,240 @@ function sessionNotFoundBody(): { jsonrpc: '2.0'; error: { code: number; message
   };
 }
 
+function bearerToken(authorization: string | null | undefined): string | undefined {
+  if (!authorization) {
+    return undefined;
+  }
+  const [scheme, token] = authorization.split(' ');
+  if (!token || scheme?.toLowerCase() !== 'bearer') {
+    return undefined;
+  }
+  return token;
+}
+
+/**
+ * Build a per-request MCP server bound to the caller's database pool.
+ * Pools stay keyed by auth token (or the shared "global" key), not by MCP session id.
+ */
+function createHttpMcpServer(request?: globalThis.Request): ReturnType<typeof createMcpServer> {
+  const httpConfig = getHttpConfig();
+  let dbConfig: DB2iConfig;
+  let sessionKey: string;
+
+  if (httpConfig.authMode === 'none' || httpConfig.authMode === 'token') {
+    dbConfig = loadConfig();
+    sessionKey = resolveCallerSessionKey(httpConfig.authMode);
+  } else {
+    const token = bearerToken(request?.headers.get('authorization'));
+    const validation = token ? getTokenManager().validateToken(token) : undefined;
+    if (!token || !validation?.valid || !validation.session) {
+      throw new Error('Token session not found');
+    }
+    dbConfig = validation.session.config;
+    sessionKey = resolveCallerSessionKey(httpConfig.authMode, token);
+  }
+
+  initializeSessionPool(sessionKey, dbConfig);
+  return createMcpServer(dbConfig, sessionKey);
+}
+
+/**
+ * Deprecated MCP_SESSION_MODE=stateful path for 2025-era clients that still
+ * send Mcp-Session-Id. 2026-07-28 traffic is not routed here.
+ */
+async function handleStatefulLegacyRequest(req: Request, res: Response): Promise<void> {
+  const httpConfig = getHttpConfig();
+  const authReq = req as AuthenticatedRequest;
+
+  if (req.method === 'GET') {
+    const sessionId = req.headers['mcp-session-id'] as string;
+    if (!sessionId) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Mcp-Session-Id header required',
+      });
+      return;
+    }
+
+    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
+    const sessionManager = getSessionManager();
+    const mcpSession = sessionManager.getSession(sessionId);
+
+    if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
+      res.status(404).json({
+        error: 'not_found',
+        error_description: 'Session not found or expired',
+      });
+      return;
+    }
+
+    await mcpSession.transport.handleRequest(req, res);
+    return;
+  }
+
+  if (req.method === 'DELETE') {
+    const sessionId = req.headers['mcp-session-id'] as string;
+    if (!sessionId) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Mcp-Session-Id header required',
+      });
+      return;
+    }
+
+    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
+    const sessionManager = getSessionManager();
+    const mcpSession = sessionManager.getSession(sessionId);
+
+    if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
+      res.status(404).json({
+        error: 'not_found',
+        error_description: 'Session not found',
+      });
+      return;
+    }
+
+    const closed = await sessionManager.closeSession(sessionId);
+    if (closed) {
+      res.json({ status: 'session_closed', sessionId });
+    } else {
+      res.status(404).json({
+        error: 'not_found',
+        error_description: 'Session not found',
+      });
+    }
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    res.status(405).json({
+      error: 'method_not_allowed',
+      error_description: 'Method not allowed',
+    });
+    return;
+  }
+
+  try {
+    let dbConfig: DB2iConfig;
+    let sessionKey: string;
+
+    if (httpConfig.authMode === 'none' || httpConfig.authMode === 'token') {
+      try {
+        dbConfig = loadConfig();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Configuration error';
+        log.error({ err }, 'Failed to load DB config from environment');
+        res.status(500).json({
+          jsonrpc: '2.0',
+          error: { code: -32603, message: `DB configuration error: ${message}` },
+          id: null,
+        });
+        return;
+      }
+      sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
+    } else {
+      if (!authReq.tokenSession || !authReq.authToken) {
+        log.error('Token session or auth token missing in required mode');
+        res.status(401).json({
+          jsonrpc: '2.0',
+          error: { code: -32001, message: 'Token session not found' },
+          id: null,
+        });
+        return;
+      }
+      dbConfig = authReq.tokenSession.config;
+      sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
+    }
+
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    const sessionManager = getSessionManager();
+
+    if (sessionId) {
+      const mcpSession = sessionManager.getSession(sessionId);
+      if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
+        res.status(404).json(sessionNotFoundBody());
+        return;
+      }
+
+      sessionManager.incrementActiveRequests(sessionId);
+      try {
+        await mcpSession.transport.handleRequest(req, res, req.body);
+      } finally {
+        sessionManager.decrementActiveRequests(sessionId);
+      }
+      return;
+    }
+
+    if (!isInitializeRequest(req.body)) {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'Session ID required for non-initialize requests' },
+        id: null,
+      });
+      return;
+    }
+
+    initializeSessionPool(sessionKey, dbConfig);
+
+    let mcpServer: ReturnType<typeof createMcpServer> | undefined;
+    let transport: Awaited<ReturnType<typeof sessionManager.createSession>>['transport'];
+    let newSessionId: string;
+
+    try {
+      mcpServer = createMcpServer(dbConfig, sessionKey);
+      const result = await sessionManager.createSession(mcpServer, sessionKey);
+      transport = result.transport;
+      newSessionId = result.sessionId;
+    } catch (err) {
+      if (mcpServer) {
+        await mcpServer.close().catch(() => {});
+      }
+      if (sessionKey !== 'global') {
+        await closeSessionPool(sessionKey);
+      }
+      throw err;
+    }
+
+    if (httpConfig.authMode === 'required') {
+      getTokenManager().setMcpSessionId(sessionKey, newSessionId);
+    }
+
+    await transport.handleRequest(req, res, req.body);
+  } catch (err) {
+    log.error({ err }, 'Error handling legacy MCP session request');
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: { code: -32603, message: 'Internal server error' },
+        id: null,
+      });
+    }
+  }
+}
+
 /**
  * Create the Express application
  */
 export function createHttpApp(): Express {
   const app = express();
   const httpConfig = getHttpConfig();
+
+  if (httpConfig.sessionMode === 'stateful') {
+    log.warn(
+      'MCP_SESSION_MODE=stateful is deprecated. Protocol sessions were removed in MCP 2026-07-28. ' +
+      'The default stateless mode still isolates database pools by auth token. ' +
+      'Stateful mode only keeps Mcp-Session-Id for 2025-era clients.'
+    );
+  }
+
+  mcpHttpHandler = createMcpHandler(
+    (ctx) => createHttpMcpServer(ctx.requestInfo),
+    {
+      legacy: httpConfig.sessionMode === 'stateful' ? 'reject' : 'stateless',
+      onerror: (error) => log.error({ err: error }, 'MCP handler error'),
+    }
+  );
+  const mcpNodeHandler = toNodeHandler(mcpHttpHandler);
 
   // Middleware
   app.use(express.json());
@@ -165,7 +396,10 @@ export function createHttpApp(): Express {
           res.setHeader('Access-Control-Allow-Credentials', 'true');
         }
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id, Accept');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name'
+        );
       }
     }
 
@@ -346,142 +580,19 @@ export function createHttpApp(): Express {
     }
   });
 
-  // MCP endpoint - POST (main request handler)
-  app.post('/mcp', authMiddleware, async (req: Request, res: Response) => {
-    const authReq = req as AuthenticatedRequest;
-
+  // MCP endpoint. Default serves 2026-07-28 per request and stateless 2025 clients.
+  // MCP_SESSION_MODE=stateful (deprecated) still routes claim-less 2025 traffic
+  // through the session manager.
+  app.all('/mcp', authMiddleware, async (req: Request, res: Response) => {
     try {
-      // Determine DB config and session key based on auth mode
-      let dbConfig: DB2iConfig;
-      let sessionKey: string;
-
-      if (httpConfig.authMode === 'none' || httpConfig.authMode === 'token') {
-        // Use env-based config (like stdio mode)
-        try {
-          dbConfig = loadConfig();
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Configuration error';
-          log.error({ err }, 'Failed to load DB config from environment');
-          res.status(500).json({
-            jsonrpc: '2.0',
-            error: { code: -32603, message: `DB configuration error: ${message}` },
-            id: null,
-          });
-          return;
-        }
-        // Use a single shared pool for none/token modes (similar to stdio mode).
-        // This pool persists for the server's lifetime and is cleaned up on shutdown
-        // via closeAllSessionPools(). This is intentional connection reuse, not a leak.
-        sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
-      } else {
-        // Required mode - use per-user config from token
-        if (!authReq.tokenSession || !authReq.authToken) {
-          log.error('Token session or auth token missing in required mode');
-          res.status(401).json({
-            jsonrpc: '2.0',
-            error: { code: -32001, message: 'Token session not found' },
-            id: null,
-          });
-          return;
-        }
-        const session = authReq.tokenSession;
-        const authToken = authReq.authToken;
-        dbConfig = session.config;
-        sessionKey = resolveCallerSessionKey(httpConfig.authMode, authToken);
-      }
-
-      const sessionId = req.headers['mcp-session-id'] as string | undefined;
-      const sessionManager = getSessionManager();
-
       if (httpConfig.sessionMode === 'stateful') {
-        // Stateful mode - reuse or create sessions
-        if (sessionId) {
-          // Existing session
-          const mcpSession = sessionManager.getSession(sessionId);
-          if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
-            res.status(404).json(sessionNotFoundBody());
-            return;
-          }
-
-          sessionManager.incrementActiveRequests(sessionId);
-          try {
-            await mcpSession.transport.handleRequest(req, res, req.body);
-          } finally {
-            sessionManager.decrementActiveRequests(sessionId);
-          }
-        } else if (isInitializeRequest(req.body)) {
-          // New session initialization
-          // Initialize DB pool for this session key
-          initializeSessionPool(sessionKey, dbConfig);
-
-          // Create MCP server and session with proper cleanup on failure
-          let mcpServer: ReturnType<typeof createMcpServer> | undefined;
-          let transport: Awaited<ReturnType<typeof sessionManager.createSession>>['transport'];
-          let newSessionId: string;
-
-          try {
-            mcpServer = createMcpServer(dbConfig, sessionKey);
-            const result = await sessionManager.createSession(mcpServer, sessionKey);
-            transport = result.transport;
-            newSessionId = result.sessionId;
-          } catch (err) {
-            // Clean up resources if server or session creation fails
-            if (mcpServer) {
-              await mcpServer.close().catch(() => {});
-            }
-            // Only close the pool if it's a per-user pool (required auth mode).
-            // For 'none'/'token' modes, sessionKey='global' and the pool is shared
-            // across all sessions - closing it would break other active sessions.
-            // The global pool is only closed on server shutdown.
-            if (sessionKey !== 'global') {
-              await closeSessionPool(sessionKey);
-            }
-            throw err;
-          }
-
-          // Associate MCP session with token (only in required mode)
-          if (httpConfig.authMode === 'required') {
-            const tokenManager = getTokenManager();
-            tokenManager.setMcpSessionId(sessionKey, newSessionId);
-          }
-
-          // Handle the initial request
-          // Note: errors here are handled by the outer try-catch, and the session
-          // will be cleaned up via normal session management (not here)
-          await transport.handleRequest(req, res, req.body);
-        } else {
-          res.status(400).json({
-            jsonrpc: '2.0',
-            error: { code: -32000, message: 'Session ID required for non-initialize requests' },
-            id: null,
-          });
+        const probe = await toWebRequest(req, req.body);
+        if (await isLegacyRequest(probe)) {
+          await handleStatefulLegacyRequest(req, res);
+          return;
         }
-      } else {
-        // Stateless mode - new server per request
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined,
-        });
-
-        // Initialize or reuse pool for this session key.
-        // In 'required' auth mode, sessionKey = authToken, so the pool is shared
-        // across all requests with the same token. This is intentional for efficiency.
-        // Pool cleanup is handled by TokenManager when the token expires or is revoked
-        // (see setCleanupCallback in startHttpServer).
-        initializeSessionPool(sessionKey, dbConfig);
-
-        const mcpServer = createMcpServer(dbConfig, sessionKey);
-        
-        // Clean up MCP server and transport on response close.
-        // Note: The database connection pool is NOT closed here - it's reused across
-        // requests with the same auth token and cleaned up on token expiration.
-        res.on('close', () => {
-          mcpServer.close().catch(() => {});
-          transport.close().catch(() => {});
-        });
-
-        await mcpServer.connect(transport);
-        await transport.handleRequest(req, res, req.body);
       }
+      await mcpNodeHandler(req, res, req.body);
     } catch (err) {
       log.error({ err }, 'Error handling MCP request');
       if (!res.headersSent) {
@@ -491,80 +602,6 @@ export function createHttpApp(): Express {
           id: null,
         });
       }
-    }
-  });
-
-  // MCP endpoint - GET (SSE for stateful mode)
-  app.get('/mcp', authMiddleware, async (req: Request, res: Response) => {
-    const authReq = req as AuthenticatedRequest;
-    const httpConfig = getHttpConfig();
-
-    if (httpConfig.sessionMode !== 'stateful') {
-      res.status(405).json({
-        error: 'method_not_allowed',
-        error_description: 'GET requests only supported in stateful mode',
-      });
-      return;
-    }
-
-    const sessionId = req.headers['mcp-session-id'] as string;
-    if (!sessionId) {
-      res.status(400).json({
-        error: 'invalid_request',
-        error_description: 'Mcp-Session-Id header required',
-      });
-      return;
-    }
-
-    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
-    const sessionManager = getSessionManager();
-    const mcpSession = sessionManager.getSession(sessionId);
-
-    if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
-      res.status(404).json({
-        error: 'not_found',
-        error_description: 'Session not found or expired',
-      });
-      return;
-    }
-
-    await mcpSession.transport.handleRequest(req, res);
-  });
-
-  // MCP endpoint - DELETE (close session)
-  app.delete('/mcp', authMiddleware, async (req: Request, res: Response) => {
-    const authReq = req as AuthenticatedRequest;
-    const sessionId = req.headers['mcp-session-id'] as string;
-
-    if (!sessionId) {
-      res.status(400).json({
-        error: 'invalid_request',
-        error_description: 'Mcp-Session-Id header required',
-      });
-      return;
-    }
-
-    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
-    const sessionManager = getSessionManager();
-    const mcpSession = sessionManager.getSession(sessionId);
-
-    if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
-      res.status(404).json({
-        error: 'not_found',
-        error_description: 'Session not found',
-      });
-      return;
-    }
-
-    const closed = await sessionManager.closeSession(sessionId);
-
-    if (closed) {
-      res.json({ status: 'session_closed', sessionId });
-    } else {
-      res.status(404).json({
-        error: 'not_found',
-        error_description: 'Session not found',
-      });
     }
   });
 
@@ -650,6 +687,13 @@ export async function startHttpServer(): Promise<http.Server | https.Server> {
  */
 export async function shutdownHttpServer(server: http.Server | https.Server): Promise<void> {
   log.info('Shutting down HTTP server...');
+
+  if (mcpHttpHandler) {
+    await mcpHttpHandler.close().catch((err) => {
+      log.error({ err }, 'Error closing MCP HTTP handler');
+    });
+    mcpHttpHandler = undefined;
+  }
 
   // Close session manager (closes MCP sessions)
   const sessionManager = getSessionManager();
