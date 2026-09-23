@@ -4,7 +4,7 @@ This guide covers setting up a development environment and contributing to mcp-s
 
 ## Prerequisites
 
-- **Node.js** 20.6 or higher (required for `--env-file` flag)
+- **Node.js** 22 or higher (required for `--env-file` flag)
 - **Java Runtime Environment (JRE)** 11 or higher (for JDBC)
 - **npm** or **yarn**
 - Access to an IBM i system (for integration testing)
@@ -379,7 +379,7 @@ Releases are automated via GitHub Actions using [Release Please](https://github.
 1. Squash-merged conventional commits on `main` are analyzed
 2. A release PR is automatically created/updated with the version bump and `CHANGELOG.md`
 3. Merging the release PR tags `vX.Y.Z`, creates the GitHub release, and publishes `mcp-server-db2i` to npm via OIDC trusted publishing
-4. CI runs once (reusable workflow) on Node 20; `npm publish` uses Node 24 only for the OIDC step
+4. CI and npm publish both run on Node 22. Publish installs the latest npm so trusted publishing works.
 
 To retry publishing an already-tagged release (for example after an npm outage), run the **Release** workflow with `workflow_dispatch` and set `tag` to `vX.Y.Z`. That path skips Release Please and republishes the existing tag.
 

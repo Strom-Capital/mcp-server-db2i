@@ -248,7 +248,7 @@ The Dockerfile uses a multi-stage build for minimal image size:
 2. **Production stage**: Contains only runtime dependencies
 
 The final image:
-- Uses `node:20-slim` (Debian). Stay on Node 20: the `node-jt400` native bindings fail under Node 24.
+- Uses `node:22-bookworm-slim`. Bookworm is pinned so OpenJDK 17 stays available. Debian trixie does not package it.
 - Runs as non-root user (`mcpuser`)
 - Includes only production dependencies
 - Defaults `MCP_SESSION_MODE` to `stateless`, matching the server. `stateful` is deprecated.
