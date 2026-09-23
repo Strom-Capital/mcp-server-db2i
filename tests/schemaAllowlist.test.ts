@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { checkQuerySchemas } from '../src/utils/security/schemaAllowlist.js';
+import { checkQuerySchemas, isSchemaAllowed } from '../src/utils/security/schemaAllowlist.js';
 
 const allowed = ['MYLIB'];
 
@@ -84,5 +84,19 @@ describe('checkQuerySchemas', () => {
     });
     expect(result.ok).toBe(true);
     expect(check('SELECT * FROM QSYS2.SYSTABLES').ok).toBe(false);
+  });
+});
+
+describe('isSchemaAllowed', () => {
+  it('should match names case-insensitively', () => {
+    expect(isSchemaAllowed('mylib', ['MYLIB'])).toBe(true);
+  });
+
+  it('should reject a schema that is not listed', () => {
+    expect(isSchemaAllowed('OTHERLIB', ['MYLIB'])).toBe(false);
+  });
+
+  it('should reject a blank schema', () => {
+    expect(isSchemaAllowed('  ', ['MYLIB'])).toBe(false);
   });
 });

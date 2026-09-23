@@ -151,6 +151,16 @@ Before the keyword scan, string literals, comments, and the quotes around delimi
 
 The JDBC connection is a second layer. It uses `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`. An explicit override is logged at startup.
 
+### Statement parse check
+
+`execute_query` asks IBM i to parse the statement with `QSYS2.PARSE_STATEMENT` before it runs. The query is rejected when the statement does not parse, or when it is not a query. This catches Db2 for i syntax that the local parser accepts.
+
+The check is on unless `QUERY_PARSE_CHECK` is `false` or `0`. It adds one round trip, often a few hundred milliseconds, on every `execute_query` call. If `QSYS2.PARSE_STATEMENT` is not installed, the query is rejected and the error tells you to turn the check off. A missing function does not skip the check on its own.
+
+`validate_query` runs the same parse, then checks tables, columns, and qualified routines against the catalog. It reports findings and does not execute the statement.
+
+`get_object_ddl` calls `QSYS2.GENERATE_SQL` on a separate connection that is not marked read-only, because that procedure is rejected on a read-only connection. That connection runs only the procedure call. It does not execute the DDL it returns. The connection used by `execute_query` stays read-only.
+
 ### Result Limiting
 
 Query results are automatically limited to prevent memory exhaustion:
@@ -172,7 +182,7 @@ The tool is then never registered, so validation bypasses cannot reach it. See [
 
 ### Schema Allowlist
 
-`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the query reaches IBM i.
+`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the parse check and the query. The same list applies to `validate_query`, `get_object_ddl`, and `get_related_objects`. `get_related_objects` omits dependents whose schema is outside the list.
 
 - Unqualified names resolve to the session schema, or to `DB2I_SCHEMA` when the session has none. If that schema is missing or not in the list, the query is rejected.
 - The list comes from the server environment. A schema chosen at `/auth` changes where unqualified names resolve. It does not add libraries to the list.

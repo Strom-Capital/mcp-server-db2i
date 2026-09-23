@@ -77,10 +77,12 @@ mcp-server-db2i/
 │   ├── db/                # Database layer
 │   │   ├── connection.ts  # Connection pool management
 │   │   ├── queries.ts     # Query functions
+│   │   ├── sqlServices.ts # PARSE_STATEMENT, GENERATE_SQL, RELATED_OBJECTS
 │   │   └── drivers/       # Driver implementations
 │   ├── tools/             # MCP tools
 │   │   ├── query.ts       # execute_query tool
-│   │   └── metadata.ts    # Schema/table tools
+│   │   ├── metadata.ts    # Schema/table tools
+│   │   └── sqlServices.ts # validate_query, DDL, related objects
 │   ├── transports/        # Transport implementations
 │   │   ├── http.ts        # HTTP/Express server
 │   │   ├── sessionManager.ts

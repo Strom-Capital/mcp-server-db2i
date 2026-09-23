@@ -56,6 +56,7 @@ describe('MCP Server Integration', () => {
       DB2I_USERNAME: 'test-user',
       DB2I_PASSWORD: 'test-pass',
       DB2I_SCHEMA: 'TESTLIB',
+      QUERY_PARSE_CHECK: 'false',
     };
 
     // Initialize the connection pool (uses mocked node-jt400)
@@ -92,10 +93,10 @@ describe('MCP Server Integration', () => {
   });
 
   describe('Tool Discovery', () => {
-    it('should list all 7 registered tools', async () => {
+    it('should list all 10 registered tools', async () => {
       const { tools } = await client.listTools();
 
-      expect(tools).toHaveLength(7);
+      expect(tools).toHaveLength(10);
 
       const toolNames = tools.map((t) => t.name);
       expect(toolNames).toContain('execute_query');
@@ -105,6 +106,9 @@ describe('MCP Server Integration', () => {
       expect(toolNames).toContain('list_views');
       expect(toolNames).toContain('list_indexes');
       expect(toolNames).toContain('get_table_constraints');
+      expect(toolNames).toContain('validate_query');
+      expect(toolNames).toContain('get_object_ddl');
+      expect(toolNames).toContain('get_related_objects');
     });
 
     it('should have correct metadata for execute_query tool', async () => {
@@ -147,7 +151,7 @@ describe('MCP Server Integration', () => {
 
       const { tools } = await filteredClient.listTools();
       const toolNames = tools.map((t) => t.name);
-      expect(toolNames).toHaveLength(6);
+      expect(toolNames).toHaveLength(9);
       expect(toolNames).not.toContain('execute_query');
       expect(toolNames).toContain('list_schemas');
 
@@ -171,6 +175,59 @@ describe('MCP Server Integration', () => {
       const errorText = (result.content[0] as { type: 'text'; text: string }).text;
       expect(errorText).toContain('OTHERLIB.USERS');
       expect(mockQuery).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PARSE_STATEMENT check', () => {
+    it('should reject a statement that does not parse', async () => {
+      process.env.QUERY_PARSE_CHECK = 'true';
+      mockQuery.mockResolvedValueOnce([]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM MYLIB.ORDERS' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      const errorText = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(errorText).toContain('could not be parsed');
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('PARSE_STATEMENT'),
+        expect.any(Array)
+      );
+    });
+
+    it('should reject a statement whose type is not a query', async () => {
+      process.env.QUERY_PARSE_CHECK = 'true';
+      mockQuery.mockResolvedValueOnce([
+        { NAME_TYPE: 'TABLE', SCHEMA: 'MYLIB', NAME: 'ORDERS', COLUMN_NAME: null, SQL_STATEMENT_TYPE: 'INSERT' },
+      ]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM MYLIB.ORDERS' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      const errorText = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(errorText).toContain('INSERT');
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('should reject the query when PARSE_STATEMENT is missing', async () => {
+      process.env.QUERY_PARSE_CHECK = 'true';
+      mockQuery.mockRejectedValueOnce(new Error('PARSE_STATEMENT in QSYS2 type *N not found. SQL0204'));
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM MYLIB.ORDERS' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      const errorText = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(errorText).toContain('QUERY_PARSE_CHECK=false');
+      expect(mockQuery).toHaveBeenCalledTimes(1);
     });
   });
 
