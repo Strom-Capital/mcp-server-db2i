@@ -1,0 +1,61 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Strom-Capital/mcp-server-db2i",
+  "title": "IBM DB2 for i",
+  "description": "Read-only SQL queries and schema inspection for IBM DB2 for i (AS/400). Requires Java.",
+  "repository": {
+    "url": "https://github.com/Strom-Capital/mcp-server-db2i",
+    "source": "github"
+  },
+  "version": "2.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "mcp-server-db2i",
+      "version": "2.2.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DB2I_HOSTNAME",
+          "description": "IBM i hostname or IPv4 address",
+          "isRequired": true,
+          "placeholder": "ibmi.example.com"
+        },
+        {
+          "name": "DB2I_USERNAME",
+          "description": "IBM i user profile",
+          "isRequired": true
+        },
+        {
+          "name": "DB2I_PASSWORD",
+          "description": "IBM i password",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "DB2I_PORT",
+          "description": "DRDA port",
+          "format": "number",
+          "default": "446"
+        },
+        {
+          "name": "DB2I_DATABASE",
+          "description": "Database name",
+          "default": "*LOCAL"
+        },
+        {
+          "name": "DB2I_SCHEMA",
+          "description": "Default schema (library)",
+          "placeholder": "MYLIB"
+        },
+        {
+          "name": "QUERY_ALLOWED_SCHEMAS",
+          "description": "Comma-separated schemas the server may read. Empty disables the check.",
+          "placeholder": "MYLIB,OTHERLIB"
+        }
+      ]
+    }
+  ]
+}
