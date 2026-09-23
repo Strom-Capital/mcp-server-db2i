@@ -1,0 +1,113 @@
+# Example general-ledger tools. Point SCHEMA and table names at your own files.
+version: 1
+tools:
+  - name: list_gl_accounts
+    title: List general ledger accounts
+    toolset: ledger
+    description: General ledger accounts in account number order.
+    maxRows: 500
+    sql: |
+      SELECT A.ACCTNO, A.ACCTNAME
+      FROM MYLIB.GLACCT A
+      ORDER BY A.ACCTNO
+
+  - name: search_gl_accounts
+    title: Search general ledger accounts
+    toolset: ledger
+    description: Accounts whose name contains the given words.
+    parameters:
+      name:
+        type: string
+        required: true
+        maxLength: 30
+        description: Words to find in the account name
+    maxRows: 100
+    sql: |
+      SELECT A.ACCTNO, A.ACCTNAME
+      FROM MYLIB.GLACCT A
+      WHERE A.ACCTNAME LIKE '%' || :name || '%'
+      ORDER BY A.ACCTNO
+
+  - name: get_gl_account
+    title: Get general ledger account
+    toolset: ledger
+    description: One general ledger account by account number.
+    parameters:
+      account:
+        type: string
+        required: true
+        maxLength: 10
+        description: Account number
+    maxRows: 1
+    sql: |
+      SELECT A.ACCTNO, A.ACCTNAME
+      FROM MYLIB.GLACCT A
+      WHERE A.ACCTNO = :account
+
+  - name: list_gl_transactions
+    title: List general ledger transactions
+    toolset: ledger
+    description: >
+      Transactions for one account. TRANSDATE is a real DATE, so the arguments compare
+      directly. Omit a date to leave that side of the range open. A numeric YYYYMMDD
+      column needs the conversion shown on the order tools.
+    parameters:
+      account:
+        type: string
+        required: true
+        maxLength: 10
+        description: Account number
+      from_date:
+        type: date
+        required: false
+        description: First transaction date, YYYY-MM-DD
+      to_date:
+        type: date
+        required: false
+        description: Last transaction date, YYYY-MM-DD
+    maxRows: 500
+    sql: |
+      SELECT T.ACCTNO, T.TRANSDATE, T.AMOUNT, T.REFTEXT
+      FROM MYLIB.GLTRANS T
+      WHERE T.ACCTNO = :account
+        AND (CAST(:from_date AS DATE) IS NULL OR T.TRANSDATE >= :from_date)
+        AND (CAST(:to_date AS DATE) IS NULL OR T.TRANSDATE <= :to_date)
+      ORDER BY T.TRANSDATE, T.ACCTNO
+
+  - name: get_gl_balance
+    title: Get general ledger balance
+    toolset: ledger
+    description: Sum of transactions for one account.
+    parameters:
+      account:
+        type: string
+        required: true
+        maxLength: 10
+        description: Account number
+    maxRows: 1
+    sql: |
+      SELECT A.ACCTNO, A.ACCTNAME, COALESCE(SUM(T.AMOUNT), 0) AS BALANCE
+      FROM MYLIB.GLACCT A
+      LEFT JOIN MYLIB.GLTRANS T ON T.ACCTNO = A.ACCTNO
+      WHERE A.ACCTNO = :account
+      GROUP BY A.ACCTNO, A.ACCTNAME
+
+annotations:
+  MYLIB.GLACCT:
+    entity: gl_account
+    description: General ledger account
+    relations:
+      - table: MYLIB.GLTRANS
+        join: { ACCTNO: ACCTNO }
+        cardinality: one-to-many
+        description: Transactions posted to the account
+  MYLIB.GLTRANS:
+    entity: gl_transaction
+    description: One posted general ledger amount
+    columns:
+      AMOUNT: Signed amount. Credits may be negative, depending on how the ledger is stored.
+    relations:
+      - table: MYLIB.GLACCT
+        join: { ACCTNO: ACCTNO }
+        cardinality: many-to-one
+        description: Account

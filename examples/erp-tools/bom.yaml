@@ -1,0 +1,127 @@
+# Example bill-of-materials tools. Point SCHEMA and table names at your own files.
+version: 1
+tools:
+  - name: list_bills_of_materials
+    title: List bills of materials
+    toolset: bom
+    description: Parent items that have a bill of materials.
+    maxRows: 500
+    sql: |
+      SELECT H.ITEMNO, H.ITEMTEXT
+      FROM MYLIB.BOMHDR H
+      ORDER BY H.ITEMNO
+
+  - name: search_bill_of_materials
+    title: Search bills of materials
+    toolset: bom
+    description: Bills of materials whose item text contains the given words.
+    parameters:
+      text:
+        type: string
+        required: true
+        maxLength: 30
+        description: Words to find in the item text
+    maxRows: 100
+    sql: |
+      SELECT H.ITEMNO, H.ITEMTEXT
+      FROM MYLIB.BOMHDR H
+      WHERE H.ITEMTEXT LIKE '%' || :text || '%'
+      ORDER BY H.ITEMNO
+
+  - name: get_bill_of_materials
+    title: Get bill of materials
+    toolset: bom
+    description: Single-level components for one parent item.
+    parameters:
+      item:
+        type: string
+        required: true
+        maxLength: 15
+        description: Parent item number
+    maxRows: 500
+    sql: |
+      SELECT H.ITEMNO, H.ITEMTEXT, C.COMPNO, C.QTYPER
+      FROM MYLIB.BOMHDR H
+      LEFT JOIN MYLIB.BOMCOMP C ON C.ITEMNO = H.ITEMNO
+      WHERE H.ITEMNO = :item
+      ORDER BY C.COMPNO
+
+  - name: list_where_used
+    title: List where used
+    toolset: bom
+    description: Parent items that consume one component, one level up.
+    parameters:
+      item:
+        type: string
+        required: true
+        maxLength: 15
+        description: Component item number
+    maxRows: 200
+    sql: |
+      SELECT
+        TRIM(C.ITEMNO) AS PARENT,
+        TRIM(H.ITEMTEXT) AS PARENT_TEXT,
+        TRIM(C.COMPNO) AS COMPNO,
+        C.QTYPER
+      FROM MYLIB.BOMCOMP C
+      LEFT JOIN MYLIB.BOMHDR H ON H.ITEMNO = C.ITEMNO
+      WHERE TRIM(C.COMPNO) = TRIM(CAST(:item AS VARCHAR(15)))
+      ORDER BY C.ITEMNO
+
+  - name: explode_bill_of_materials
+    title: Explode bill of materials
+    toolset: bom
+    description: Multi-level components under one parent item. Depth defaults to 5.
+    parameters:
+      item:
+        type: string
+        required: true
+        maxLength: 15
+        description: Parent item number
+      depth:
+        type: integer
+        default: 5
+        description: How many levels to expand
+    maxRows: 2000
+    sql: |
+      WITH RECURSIVE EXPLOSION (PARENT, COMPNO, QTYPER, LVL) AS (
+        SELECT C.ITEMNO, C.COMPNO, C.QTYPER, 1
+        FROM MYLIB.BOMCOMP C
+        WHERE C.ITEMNO = :item
+        UNION ALL
+        SELECT C.ITEMNO, C.COMPNO, C.QTYPER, E.LVL + 1
+        FROM EXPLOSION E
+        INNER JOIN MYLIB.BOMCOMP C ON C.ITEMNO = E.COMPNO
+        WHERE E.LVL < :depth
+      )
+      SELECT PARENT, COMPNO, QTYPER, LVL
+      FROM EXPLOSION
+      ORDER BY LVL, COMPNO
+
+annotations:
+  MYLIB.BOMHDR:
+    entity: bill_of_materials
+    description: Bill of materials header, one row per parent item
+    relations:
+      - table: MYLIB.BOMCOMP
+        join: { ITEMNO: ITEMNO }
+        cardinality: one-to-many
+        description: Single-level components
+      - table: MYLIB.ITEMS
+        join: { ITEMNO: ITEMNO }
+        cardinality: one-to-one
+        description: Parent item
+  MYLIB.BOMCOMP:
+    entity: bill_of_materials_component
+    description: One component of a parent item
+    columns:
+      QTYPER: Quantity of the component per parent
+    relations:
+      - table: MYLIB.BOMHDR
+        join: { ITEMNO: ITEMNO }
+        cardinality: many-to-one
+        description: Parent bill of materials
+      - table: MYLIB.ITEMS
+        join: { COMPNO: ITEMNO }
+        cardinality: many-to-one
+        description: Component item

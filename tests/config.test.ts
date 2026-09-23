@@ -738,6 +738,44 @@ describe('Config Module', () => {
       process.env.MCP_TOOLS_DISABLED = 'exec_query';
       expect(() => getEnabledTools()).toThrow(/MCP_TOOLS_DISABLED: exec_query.*Valid tools: execute_query/);
     });
+
+    it('should enable one custom toolset and skip the others', () => {
+      process.env.MCP_TOOLS_ENABLED = 'toolset:sales';
+      const custom = [
+        { name: 'search_sales_orders', toolset: 'sales' },
+        { name: 'list_purchase_orders', toolset: 'purchasing' },
+      ];
+      expect(getEnabledTools(custom)).toEqual(['search_sales_orders']);
+    });
+
+    it('should drop a denied toolset and keep built-in tools', () => {
+      process.env.MCP_TOOLS_DISABLED = 'toolset:sales';
+      const custom = [
+        { name: 'search_sales_orders', toolset: 'sales' },
+        { name: 'get_item', toolset: 'master' },
+      ];
+      const tools = getEnabledTools(custom);
+      expect(tools).toContain('execute_query');
+      expect(tools).toContain('get_item');
+      expect(tools).not.toContain('search_sales_orders');
+      expect(tools).toHaveLength(TOOL_NAMES.length + 1);
+    });
+
+    it('should let a denylist entry win over an allowlist entry', () => {
+      process.env.MCP_TOOLS_ENABLED = 'search_sales_orders,get_item';
+      process.env.MCP_TOOLS_DISABLED = 'toolset:sales';
+      const custom = [
+        { name: 'search_sales_orders', toolset: 'sales' },
+        { name: 'get_item', toolset: 'master' },
+      ];
+      expect(getEnabledTools(custom)).toEqual(['get_item']);
+    });
+
+    it('should throw on an unknown toolset', () => {
+      process.env.MCP_TOOLS_ENABLED = 'toolset:missing';
+      expect(() => getEnabledTools([{ name: 'get_item', toolset: 'master' }]))
+        .toThrow(/MCP_TOOLS_ENABLED: toolset:missing/);
+    });
   });
 
   describe('getResponseFormat', () => {

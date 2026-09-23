@@ -9,6 +9,7 @@ Welcome to the mcp-server-db2i documentation. This guide provides detailed infor
 | [HTTP Transport](http-transport.md) | HTTP API, auth, and protocol 2026-07-28 |
 | [Configuration](configuration.md) | Environment variables, JDBC options, and all settings |
 | [Security](security.md) | Credentials management, rate limiting, and query validation |
+| [Business SQL tools](custom-tools.md) | YAML tools for orders, ledgers, and master data |
 | [Client Setup](client-setup.md) | Setup for Cursor, Claude Desktop, and Claude Code |
 | [Docker Guide](docker.md) | Container deployment with Docker and docker-compose |
 | [Development](development.md) | Contributing, testing, and local development setup |
@@ -62,6 +63,7 @@ graph LR
 | `validate_query` | Check a statement without running it, including catalog names |
 | `get_object_ddl` | Return the SQL DDL that recreates an object |
 | `get_related_objects` | List objects that depend on a table |
+| `get_business_context` | List business descriptions and relations loaded from YAML |
 
 > **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included.
 

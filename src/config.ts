@@ -384,32 +384,62 @@ export const TOOL_NAMES = [
   'validate_query',
   'get_object_ddl',
   'get_related_objects',
+  'get_business_context',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 /**
- * Parse a comma-separated list of tool names.
- * Throws if any name is not a known tool, so typos fail loudly at startup.
+ * A YAML-defined tool that tool selection can name directly or by toolset.
  */
-function parseToolList(value: string | undefined, envVar: string): ToolName[] | undefined {
+export interface CustomToolSelector {
+  name: string;
+  toolset?: string;
+}
+
+/**
+ * Parse a comma-separated list of tool names and toolset:<name> selectors.
+ * Throws if any entry is not a known tool or toolset, so typos fail loudly at startup.
+ */
+function parseToolList(
+  value: string | undefined,
+  envVar: string,
+  names: ReadonlySet<string>,
+  toolsets: ReadonlySet<string>,
+): string[] | undefined {
   if (value === undefined || value.trim() === '') {
     return undefined;
   }
 
-  const names = value
+  const entries = value
     .split(',')
     .map((name) => name.trim().toLowerCase())
     .filter((name) => name.length > 0);
 
-  const unknown = names.filter((name) => !(TOOL_NAMES as readonly string[]).includes(name));
+  const unknown = entries.filter((entry) => {
+    if (entry.startsWith('toolset:')) {
+      return !toolsets.has(entry.slice('toolset:'.length));
+    }
+    return !names.has(entry);
+  });
   if (unknown.length > 0) {
+    const valid = [...names].join(', ');
+    const toolsetHint = toolsets.size > 0
+      ? `. Toolsets: ${[...toolsets].sort().map((toolset) => `toolset:${toolset}`).join(', ')}`
+      : '';
     throw new Error(
-      `Unknown tool name(s) in ${envVar}: ${unknown.join(', ')}. Valid tools: ${TOOL_NAMES.join(', ')}`
+      `Unknown tool name(s) in ${envVar}: ${unknown.join(', ')}. Valid tools: ${valid}${toolsetHint}`
     );
   }
 
-  return names as ToolName[];
+  return entries;
+}
+
+function selectorMatches(selector: string, name: string, toolset: string | undefined): boolean {
+  if (selector.startsWith('toolset:')) {
+    return toolset?.toLowerCase() === selector.slice('toolset:'.length);
+  }
+  return selector === name.toLowerCase();
 }
 
 /**
@@ -419,16 +449,38 @@ function parseToolList(value: string | undefined, envVar: string): ToolName[] | 
  * - MCP_TOOLS_ENABLED: Comma-separated allowlist. If set, only these tools are registered.
  * - MCP_TOOLS_DISABLED: Comma-separated denylist, applied after the allowlist.
  *
- * @returns Enabled tool names, in registration order
- * @throws Error if either variable contains an unknown tool name
+ * Entries may be a built-in name, a custom tool name, or toolset:<name>.
+ * A toolset selector matches custom tools only.
+ *
+ * @param customTools - YAML tools loaded for this process. Omit when none are loaded.
+ * @returns Enabled tool names. Built-ins stay in registration order, then custom tools in load order.
+ * @throws Error if either variable contains an unknown tool name or toolset
  */
-export function getEnabledTools(): ToolName[] {
-  const allowlist = parseToolList(process.env.MCP_TOOLS_ENABLED, 'MCP_TOOLS_ENABLED');
-  const denylist = parseToolList(process.env.MCP_TOOLS_DISABLED, 'MCP_TOOLS_DISABLED') ?? [];
+export function getEnabledTools(customTools: readonly CustomToolSelector[] = []): string[] {
+  const names = new Set<string>(TOOL_NAMES);
+  const toolsets = new Set<string>();
+  for (const tool of customTools) {
+    names.add(tool.name.toLowerCase());
+    if (tool.toolset) {
+      toolsets.add(tool.toolset.toLowerCase());
+    }
+  }
 
-  return TOOL_NAMES.filter(
-    (name) => (!allowlist || allowlist.includes(name)) && !denylist.includes(name)
-  );
+  const allowlist = parseToolList(process.env.MCP_TOOLS_ENABLED, 'MCP_TOOLS_ENABLED', names, toolsets);
+  const denylist = parseToolList(process.env.MCP_TOOLS_DISABLED, 'MCP_TOOLS_DISABLED', names, toolsets) ?? [];
+
+  const enabled = (name: string, toolset: string | undefined): boolean => {
+    const allowed = !allowlist || allowlist.some((entry) => selectorMatches(entry, name, toolset));
+    const denied = denylist.some((entry) => selectorMatches(entry, name, toolset));
+    return allowed && !denied;
+  };
+
+  const builtins = TOOL_NAMES.filter((name) => enabled(name, undefined));
+  const custom = customTools
+    .filter((tool) => enabled(tool.name, tool.toolset))
+    .map((tool) => tool.name);
+
+  return [...builtins, ...custom];
 }
 
 /**

@@ -34,6 +34,7 @@ vi.mock('../../src/utils/rateLimiter.js', async (importOriginal) => {
 });
 
 // Now import the server after mocks are set up
+import { TOOL_NAMES } from '../../src/config.js';
 import { createServer } from '../../src/server.js';
 import { initializePool } from '../../src/db/connection.js';
 import { getRateLimiter } from '../../src/utils/rateLimiter.js';
@@ -93,13 +94,14 @@ describe('MCP Server Integration', () => {
   });
 
   describe('Tool Discovery', () => {
-    it('should list all 10 registered tools', async () => {
+    it('should list every built-in tool', async () => {
       const { tools } = await client.listTools();
 
-      expect(tools).toHaveLength(10);
+      expect(tools).toHaveLength(TOOL_NAMES.length);
 
       const toolNames = tools.map((t) => t.name);
       expect(toolNames).toContain('execute_query');
+      expect(toolNames).toContain('get_business_context');
       expect(toolNames).toContain('list_schemas');
       expect(toolNames).toContain('list_tables');
       expect(toolNames).toContain('describe_table');
@@ -151,7 +153,7 @@ describe('MCP Server Integration', () => {
 
       const { tools } = await filteredClient.listTools();
       const toolNames = tools.map((t) => t.name);
-      expect(toolNames).toHaveLength(9);
+      expect(toolNames).toHaveLength(TOOL_NAMES.length - 1);
       expect(toolNames).not.toContain('execute_query');
       expect(toolNames).toContain('list_schemas');
 

@@ -1,0 +1,161 @@
+# Example manufacturing-order tools. Table and column names are placeholders.
+# ORDERDAT is a number YYYYMMDD. STATUS stays a character because completion is not the sales ladder.
+version: 1
+tools:
+  - name: list_manufacturing_orders
+    title: List manufacturing orders
+    toolset: manufacturing
+    description: >
+      Manufacturing orders, newest first, with quantity ordered and quantity completed.
+      Omit item, status, or from_date to leave that filter off.
+    parameters:
+      item:
+        type: string
+        required: false
+        maxLength: 15
+        description: Item number being built
+      status:
+        type: string
+        required: false
+        enum: ['R', 'C']
+        description: R is released, C is complete
+      from_date:
+        type: date
+        required: false
+        description: Include orders dated on or after this day
+    maxRows: 100
+    sql: |
+      SELECT
+        H.MONO,
+        TRIM(H.ITEMNO) AS ITEMNO,
+        TRIM(I.ITEMTEXT) AS ITEMTEXT,
+        H.QTY,
+        H.QTYCMP,
+        H.QTY - H.QTYCMP AS QTYOPEN,
+        TRIM(H.STATUS) AS STATUS,
+        H.ORDERDAT
+      FROM MYLIB.MOHDR H
+      LEFT JOIN MYLIB.ITEMS I ON I.ITEMNO = H.ITEMNO
+      WHERE (CAST(:item AS VARCHAR(15)) IS NULL OR TRIM(H.ITEMNO) = TRIM(CAST(:item AS VARCHAR(15))))
+        AND (CAST(:status AS VARCHAR(1)) IS NULL OR TRIM(H.STATUS) = CAST(:status AS VARCHAR(1)))
+        AND (
+          CAST(:from_date AS VARCHAR(10)) IS NULL
+          OR H.ORDERDAT >= INTEGER(
+            SUBSTR(CAST(:from_date AS VARCHAR(10)), 1, 4) ||
+            SUBSTR(CAST(:from_date AS VARCHAR(10)), 6, 2) ||
+            SUBSTR(CAST(:from_date AS VARCHAR(10)), 9, 2)
+          )
+        )
+      ORDER BY H.ORDERDAT DESC, H.MONO DESC
+
+  - name: search_manufacturing_orders
+    title: Search manufacturing orders
+    toolset: manufacturing
+    description: Manufacturing orders whose item text or item number matches, newest first.
+    parameters:
+      text:
+        type: string
+        required: true
+        maxLength: 30
+        description: Text to find in the item number or item text
+    maxRows: 50
+    sql: |
+      SELECT
+        H.MONO,
+        TRIM(H.ITEMNO) AS ITEMNO,
+        TRIM(I.ITEMTEXT) AS ITEMTEXT,
+        H.QTY,
+        H.QTYCMP,
+        TRIM(H.STATUS) AS STATUS,
+        H.ORDERDAT
+      FROM MYLIB.MOHDR H
+      LEFT JOIN MYLIB.ITEMS I ON I.ITEMNO = H.ITEMNO
+      WHERE UPPER(TRIM(H.ITEMNO)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+        OR UPPER(TRIM(I.ITEMTEXT)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+      ORDER BY H.MONO DESC
+
+  - name: get_manufacturing_order
+    title: Get manufacturing order
+    toolset: manufacturing
+    description: One manufacturing order with the item text and the quantity still open.
+    parameters:
+      mo_no:
+        type: integer
+        required: true
+        description: Manufacturing order number
+    maxRows: 1
+    sql: |
+      SELECT
+        H.MONO,
+        TRIM(H.ITEMNO) AS ITEMNO,
+        TRIM(I.ITEMTEXT) AS ITEMTEXT,
+        H.QTY,
+        H.QTYCMP,
+        H.QTY - H.QTYCMP AS QTYOPEN,
+        TRIM(H.STATUS) AS STATUS,
+        SUBSTR(DIGITS(H.ORDERDAT), 1, 4) || '-' ||
+          SUBSTR(DIGITS(H.ORDERDAT), 5, 2) || '-' ||
+          SUBSTR(DIGITS(H.ORDERDAT), 7, 2) AS ORDER_DATE
+      FROM MYLIB.MOHDR H
+      LEFT JOIN MYLIB.ITEMS I ON I.ITEMNO = H.ITEMNO
+      WHERE H.MONO = :mo_no
+
+  - name: list_manufacturing_order_lines
+    title: List manufacturing order lines
+    toolset: manufacturing
+    description: Component lines for one manufacturing order, with the component text and quantity per parent.
+    parameters:
+      mo_no:
+        type: integer
+        required: true
+        description: Manufacturing order number
+    maxRows: 500
+    sql: |
+      SELECT
+        L.MONO,
+        L.LINENO,
+        TRIM(L.COMPNO) AS COMPNO,
+        TRIM(I.ITEMTEXT) AS COMPTEXT,
+        L.QTYPER,
+        L.QTYISS
+      FROM MYLIB.MOLINE L
+      LEFT JOIN MYLIB.ITEMS I ON I.ITEMNO = L.COMPNO
+      WHERE L.MONO = :mo_no
+      ORDER BY L.LINENO
+
+annotations:
+  MYLIB.MOHDR:
+    entity: manufacturing_order
+    description: Manufacturing order header. ORDERDAT is YYYYMMDD. QTY is the quantity to build and QTYCMP is how much is finished.
+    columns:
+      MONO: Manufacturing order number
+      ITEMNO: Item being built
+      QTY: Quantity ordered
+      QTYCMP: Quantity completed
+      STATUS: "R = released, C = complete"
+      ORDERDAT: Order date as a number YYYYMMDD
+    relations:
+      - table: MYLIB.MOLINE
+        join: { MONO: MONO }
+        cardinality: one-to-many
+        description: Component lines
+      - table: MYLIB.ITEMS
+        join: { ITEMNO: ITEMNO }
+        cardinality: many-to-one
+        description: Item being built
+  MYLIB.MOLINE:
+    entity: manufacturing_order_line
+    description: Component issued to a manufacturing order
+    columns:
+      COMPNO: Component item number
+      QTYPER: Quantity of the component per parent
+      QTYISS: Quantity issued so far
+    relations:
+      - table: MYLIB.MOHDR
+        join: { MONO: MONO }
+        cardinality: many-to-one
+        description: Manufacturing order header
+      - table: MYLIB.ITEMS
+        join: { COMPNO: ITEMNO }
+        cardinality: many-to-one
+        description: Component item

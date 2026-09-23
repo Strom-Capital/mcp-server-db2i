@@ -15,6 +15,8 @@ import {
   getTableConstraints,
 } from '../db/queries.js';
 import { loadConfig, getDefaultSchema } from '../config.js';
+import { annotationFor } from '../customTools/context.js';
+import type { StoredRelation } from '../customTools/loader.js';
 
 /**
  * Standard success/error result type for metadata tools
@@ -53,6 +55,10 @@ function resolveSchema(inputSchema?: string): string {
   return defaultSchema;
 }
 
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error occurred';
+}
+
 // ============================================================================
 // List Schemas Tool
 // ============================================================================
@@ -68,37 +74,79 @@ export function listSchemasTool(input: { filter?: string; sessionId?: string }):
 // List Tables Tool
 // ============================================================================
 
-export function listTablesTool(input: { schema?: string; filter?: string; sessionId?: string }): Promise<ToolResult<{
+export async function listTablesTool(input: { schema?: string; filter?: string; sessionId?: string }): Promise<ToolResult<{
   table_name: string;
   table_type: string;
   table_text: string | null;
+  business_description?: string;
 }>> {
-  return withErrorHandling(() => {
+  try {
     const schema = resolveSchema(input.schema);
-    return listTables(schema, input.filter, input.sessionId);
-  });
+    const result = await withErrorHandling(() => listTables(schema, input.filter, input.sessionId));
+    if (!result.success) {
+      return result;
+    }
+    return {
+      ...result,
+      data: result.data.map((row) => {
+        const description = annotationFor(schema, row.table_name)?.description;
+        return description ? { ...row, business_description: description } : row;
+      }),
+    };
+  } catch (error) {
+    return { success: false, error: messageOf(error) };
+  }
 }
 
 // ============================================================================
 // Describe Table Tool
 // ============================================================================
 
-export function describeTableTool(input: { schema?: string; table: string; sessionId?: string }): Promise<ToolResult<{
-  column_name: string;
-  ordinal_position: number;
-  data_type: string;
-  length: number | null;
-  numeric_scale: number | null;
-  is_nullable: string;
-  column_default: string | null;
-  column_text: string | null;
-  system_column_name: string;
-  ccsid: number | null;
-}>> {
-  return withErrorHandling(() => {
+export async function describeTableTool(input: { schema?: string; table: string; sessionId?: string }): Promise<
+  | {
+      success: true;
+      data: Array<{
+        column_name: string;
+        ordinal_position: number;
+        data_type: string;
+        length: number | null;
+        numeric_scale: number | null;
+        is_nullable: string;
+        column_default: string | null;
+        column_text: string | null;
+        system_column_name: string;
+        ccsid: number | null;
+        business_description?: string;
+      }>;
+      count: number;
+      business_description?: string;
+      relations?: StoredRelation[];
+    }
+  | { success: false; error: string }
+> {
+  try {
     const schema = resolveSchema(input.schema);
-    return describeTable(schema, input.table, input.sessionId);
-  });
+    const result = await withErrorHandling(() => describeTable(schema, input.table, input.sessionId));
+    if (!result.success) {
+      return result;
+    }
+
+    const annotation = annotationFor(schema, input.table);
+    const data = result.data.map((column) => {
+      const description = annotation?.columns[column.column_name.toUpperCase()];
+      return description ? { ...column, business_description: description } : column;
+    });
+
+    return {
+      success: true,
+      data,
+      count: data.length,
+      ...(annotation?.description ? { business_description: annotation.description } : {}),
+      ...(annotation && annotation.relations.length > 0 ? { relations: annotation.relations } : {}),
+    };
+  } catch (error) {
+    return { success: false, error: messageOf(error) };
+  }
 }
 
 // ============================================================================

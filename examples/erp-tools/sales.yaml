@@ -1,0 +1,216 @@
+# Example sales-order tools. Table and column names are placeholders.
+# ORDERDAT is a number YYYYMMDD. STATUS is a number. STATFLG D is deleted and E is an error.
+version: 1
+tools:
+  - name: list_sales_orders
+    title: List sales orders
+    toolset: sales
+    description: >
+      Sales order headers, newest first, with the customer name and a line count.
+      Derived status is error when STATFLG is E, invoiced when STATUS is 60,
+      picked when STATUS is 40 or higher, otherwise open. Omit a filter to leave it off.
+      from_date is YYYY-MM-DD and is compared to ORDERDAT.
+    parameters:
+      customer:
+        type: string
+        required: false
+        maxLength: 10
+        description: Customer number
+      order_type:
+        type: string
+        required: false
+        maxLength: 4
+        description: Order type code
+      from_date:
+        type: date
+        required: false
+        description: Include orders dated on or after this day
+      status:
+        type: string
+        required: false
+        enum: ['open', 'picked', 'invoiced', 'error']
+        description: Derived status
+    maxRows: 100
+    sql: |
+      SELECT *
+      FROM (
+        SELECT
+          H.ORDERNO,
+          TRIM(H.CUSTNO) AS CUSTNO,
+          TRIM(C.CUSTNAME) AS CUSTNAME,
+          TRIM(H.ORDTYPE) AS ORDTYPE,
+          H.STATUS,
+          TRIM(H.STATFLG) AS STATFLG,
+          H.ORDERDAT,
+          COUNT(L.LINENO) AS LINE_COUNT,
+          CASE
+            WHEN TRIM(H.STATFLG) = 'E' THEN 'error'
+            WHEN H.STATUS = 60 THEN 'invoiced'
+            WHEN H.STATUS >= 40 THEN 'picked'
+            ELSE 'open'
+          END AS DERIVED_STATUS
+        FROM MYLIB.ORDERHDR H
+        LEFT JOIN MYLIB.CUSTOMERS C ON C.CUSTNO = H.CUSTNO
+        LEFT JOIN MYLIB.ORDERS L ON L.ORDERNO = H.ORDERNO
+        WHERE TRIM(H.STATFLG) <> 'D'
+          AND (CAST(:customer AS VARCHAR(10)) IS NULL OR TRIM(H.CUSTNO) = TRIM(CAST(:customer AS VARCHAR(10))))
+          AND (CAST(:order_type AS VARCHAR(4)) IS NULL OR TRIM(H.ORDTYPE) = TRIM(CAST(:order_type AS VARCHAR(4))))
+          AND (
+            CAST(:from_date AS VARCHAR(10)) IS NULL
+            OR H.ORDERDAT >= INTEGER(
+              SUBSTR(CAST(:from_date AS VARCHAR(10)), 1, 4) ||
+              SUBSTR(CAST(:from_date AS VARCHAR(10)), 6, 2) ||
+              SUBSTR(CAST(:from_date AS VARCHAR(10)), 9, 2)
+            )
+          )
+        GROUP BY H.ORDERNO, H.CUSTNO, C.CUSTNAME, H.ORDTYPE, H.STATUS, H.STATFLG, H.ORDERDAT
+      ) LISTED
+      WHERE (CAST(:status AS VARCHAR(10)) IS NULL OR LISTED.DERIVED_STATUS = CAST(:status AS VARCHAR(10)))
+      ORDER BY LISTED.ORDERNO DESC
+
+  - name: search_sales_orders
+    title: Search sales orders
+    toolset: sales
+    description: >
+      Text match on customer name, customer reference, and order reference,
+      plus an item number on a line. Deleted orders are left out.
+    parameters:
+      text:
+        type: string
+        required: true
+        maxLength: 30
+        description: Text to find. Matched with LIKE, case insensitive.
+    maxRows: 50
+    sql: |
+      SELECT
+        H.ORDERNO,
+        TRIM(H.CUSTNO) AS CUSTNO,
+        TRIM(C.CUSTNAME) AS CUSTNAME,
+        TRIM(H.CUSTREF) AS CUSTREF,
+        TRIM(H.ORDREF) AS ORDREF,
+        H.STATUS,
+        H.ORDERDAT
+      FROM MYLIB.ORDERHDR H
+      LEFT JOIN MYLIB.CUSTOMERS C ON C.CUSTNO = H.CUSTNO
+      WHERE TRIM(H.STATFLG) <> 'D'
+        AND (
+          UPPER(TRIM(C.CUSTNAME)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          OR UPPER(TRIM(H.CUSTREF)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          OR UPPER(TRIM(H.ORDREF)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          OR EXISTS (
+            SELECT 1
+            FROM MYLIB.ORDERS L
+            WHERE L.ORDERNO = H.ORDERNO
+              AND UPPER(TRIM(L.ITEMNO)) LIKE '%' || UPPER(TRIM(CAST(:text AS VARCHAR(30)))) || '%'
+          )
+        )
+      ORDER BY H.ORDERNO DESC
+
+  - name: get_sales_order
+    title: Get sales order
+    toolset: sales
+    description: One sales order with the customer name, a formatted order date, and a line count.
+    parameters:
+      order_no:
+        type: integer
+        required: true
+        description: Order number
+    maxRows: 1
+    sql: |
+      SELECT
+        H.ORDERNO,
+        TRIM(H.CUSTNO) AS CUSTNO,
+        TRIM(C.CUSTNAME) AS CUSTNAME,
+        TRIM(H.ORDTYPE) AS ORDTYPE,
+        TRIM(T.TYPEDESC) AS ORDTYPE_DESC,
+        H.STATUS,
+        TRIM(H.STATFLG) AS STATFLG,
+        SUBSTR(DIGITS(H.ORDERDAT), 1, 4) || '-' ||
+          SUBSTR(DIGITS(H.ORDERDAT), 5, 2) || '-' ||
+          SUBSTR(DIGITS(H.ORDERDAT), 7, 2) AS ORDER_DATE,
+        TRIM(H.CUSTREF) AS CUSTREF,
+        TRIM(H.ORDREF) AS ORDREF,
+        COUNT(L.LINENO) AS LINE_COUNT
+      FROM MYLIB.ORDERHDR H
+      LEFT JOIN MYLIB.CUSTOMERS C ON C.CUSTNO = H.CUSTNO
+      LEFT JOIN MYLIB.ORDTYPE T ON T.ORDTYPE = H.ORDTYPE
+      LEFT JOIN MYLIB.ORDERS L ON L.ORDERNO = H.ORDERNO
+      WHERE H.ORDERNO = :order_no
+        AND TRIM(H.STATFLG) <> 'D'
+      GROUP BY
+        H.ORDERNO, H.CUSTNO, C.CUSTNAME, H.ORDTYPE, T.TYPEDESC,
+        H.STATUS, H.STATFLG, H.ORDERDAT, H.CUSTREF, H.ORDREF
+
+  - name: list_sales_order_lines
+    title: List sales order lines
+    toolset: sales
+    description: Lines for one sales order, with the item text and the line status.
+    parameters:
+      order_no:
+        type: integer
+        required: true
+        description: Order number
+    maxRows: 500
+    sql: |
+      SELECT
+        L.ORDERNO,
+        L.LINENO,
+        TRIM(L.ITEMNO) AS ITEMNO,
+        TRIM(I.ITEMTEXT) AS ITEMTEXT,
+        L.QTY,
+        L.PRICE,
+        L.LINESTAT
+      FROM MYLIB.ORDERS L
+      LEFT JOIN MYLIB.ITEMS I ON I.ITEMNO = L.ITEMNO
+      WHERE L.ORDERNO = :order_no
+      ORDER BY L.LINENO
+
+annotations:
+  MYLIB.ORDERHDR:
+    entity: sales_order
+    description: Sales order header. Rows with STATFLG D are deleted. ORDERDAT is a number in YYYYMMDD form, not a DATE.
+    columns:
+      ORDERNO: Order number
+      CUSTNO: Customer number, joins CUSTOMERS.CUSTNO
+      ORDTYPE: Order type, joins ORDTYPE.ORDTYPE
+      STATUS: "Line of business status. 10 entered, 20 confirmed, 40 picked, 60 invoiced. 10 and 20 are still open."
+      STATFLG: "Blank is normal, E is an error, D is deleted"
+      ORDERDAT: Order date as a number YYYYMMDD
+      CUSTREF: Customer reference
+      ORDREF: Order reference
+    relations:
+      - table: MYLIB.ORDERS
+        join: { ORDERNO: ORDERNO }
+        cardinality: one-to-many
+        description: Order lines
+      - table: MYLIB.CUSTOMERS
+        join: { CUSTNO: CUSTNO }
+        cardinality: many-to-one
+        description: Customer who placed the order
+      - table: MYLIB.ORDTYPE
+        join: { ORDTYPE: ORDTYPE }
+        cardinality: many-to-one
+        description: Order type
+  MYLIB.ORDERS:
+    entity: sales_order_line
+    description: Sales order line. LINESTAT uses the same number ladder as the header status.
+    columns:
+      LINENO: Line number
+      ITEMNO: Item number
+      LINESTAT: "10 entered, 20 confirmed, 40 picked, 60 invoiced"
+    relations:
+      - table: MYLIB.ORDERHDR
+        join: { ORDERNO: ORDERNO }
+        cardinality: many-to-one
+        description: Order header
+      - table: MYLIB.ITEMS
+        join: { ITEMNO: ITEMNO }
+        cardinality: many-to-one
+        description: Item on the line
+  MYLIB.ORDTYPE:
+    entity: order_type
+    description: Order type. SVCFLAG Y means the type is used for service orders.
+    columns:
+      ORDTYPE: Order type code
+      TYPEDESC: Order type description
+      SVCFLAG: Y when this type is a service order

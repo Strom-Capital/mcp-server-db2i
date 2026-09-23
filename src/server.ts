@@ -28,6 +28,10 @@ import {
   getRelatedObjectsTool,
   validateQueryTool,
 } from './tools/sqlServices.js';
+import { getBusinessContextTool } from './customTools/context.js';
+import { executeCustomTool } from './customTools/execute.js';
+import { getCustomTools } from './customTools/registry.js';
+import { inputSchemaFor } from './customTools/schema.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { formatToolText } from './utils/formatResult.js';
@@ -101,6 +105,7 @@ const listTablesOutputSchema = z.object({
     table_name: z.string(),
     table_type: z.string(),
     table_text: z.string().nullable(),
+    business_description: z.string().optional(),
   })).optional(),
   count: z.number().int().optional(),
 });
@@ -119,8 +124,16 @@ const describeTableOutputSchema = z.object({
     column_text: z.string().nullable(),
     system_column_name: z.string(),
     ccsid: z.number().nullable(),
+    business_description: z.string().optional(),
   })).optional(),
   count: z.number().int().optional(),
+  business_description: z.string().optional(),
+  relations: z.array(z.object({
+    table: z.string(),
+    join: z.record(z.string(), z.string()),
+    cardinality: z.string().optional(),
+    description: z.string().optional(),
+  })).optional(),
 });
 
 const listViewsOutputSchema = z.object({
@@ -175,6 +188,24 @@ const relatedObjectsOutputSchema = z.object({
     library_name: z.string().nullable(),
     system_name: z.string().nullable(),
     object_text: z.string().nullable(),
+  })).optional(),
+  count: z.number().int().optional(),
+});
+
+const businessContextOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    table: z.string(),
+    entity: z.string().optional(),
+    description: z.string().optional(),
+    columns: z.record(z.string(), z.string()).optional(),
+    relations: z.array(z.object({
+      table: z.string(),
+      join: z.record(z.string(), z.string()),
+      cardinality: z.string().optional(),
+      description: z.string().optional(),
+    })).optional(),
   })).optional(),
   count: z.number().int().optional(),
 });
@@ -277,7 +308,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     return process.env.DB2I_SCHEMA || undefined;
   };
 
-  const enabledTools = new Set(getEnabledTools());
+  const loadedTools = getCustomTools();
+  const enabledTools = new Set(getEnabledTools(loadedTools.tools));
 
   if (enabledTools.has('execute_query')) {
     server.registerTool(
@@ -525,6 +557,55 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           defaultSchema: getDefaultSchema(),
         }),
         'Failed to list related objects',
+        sessionContext
+      )
+    );
+  }
+
+  if (enabledTools.has('get_business_context')) {
+    server.registerTool(
+      'get_business_context',
+      {
+        title: 'Get Business Context',
+        description: 'List business entities, table and column descriptions, and relations that the catalog does not declare as foreign keys. Filter by entity or table. Omit both to return every annotation loaded from MCP_CUSTOM_TOOLS.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          entity: z.string().optional().describe('Entity name, for example sales_order'),
+          table: z.string().optional().describe('Table name, or SCHEMA.TABLE'),
+        }),
+        outputSchema: businessContextOutputSchema,
+      },
+      withToolHandler(
+        (args) => Promise.resolve(getBusinessContextTool({
+          entity: args.entity,
+          table: args.table,
+        })),
+        'Failed to read business context',
+        sessionContext
+      )
+    );
+  }
+
+  for (const tool of loadedTools.tools) {
+    if (!enabledTools.has(tool.name)) {
+      continue;
+    }
+
+    server.registerTool(
+      tool.name,
+      {
+        title: tool.title,
+        description: tool.description,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: inputSchemaFor(tool.parameters),
+        outputSchema: queryOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => executeCustomTool(tool, args, {
+          sessionId,
+          defaultSchema: getDefaultSchema(),
+        }),
+        'Query failed',
         sessionContext
       )
     );
