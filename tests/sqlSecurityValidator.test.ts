@@ -224,6 +224,78 @@ describe('SqlSecurityValidator', () => {
       expect(result.isValid).toBe(false);
       expect(result.violations.some(v => v.includes('QCMDEXC'))).toBe(true);
     });
+
+    it('should block a call hidden behind an earlier string that contains the same name', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        "SELECT 'QCMDEXC' AS label, QSYS2.QCMDEXC('DLTLIB X') FROM SYSIBM.SYSDUMMY1"
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.violations.some(v => v.includes('QCMDEXC'))).toBe(true);
+    });
+
+    it('should block a delimited identifier used as a function name', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        'SELECT QSYS2."QCMDEXC"(\'DLTLIB X\') FROM SYSIBM.SYSDUMMY1'
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.violations.some(v => v.includes('QCMDEXC'))).toBe(true);
+    });
+
+    it('should block QCMDEXC inside a CASE expression', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        "SELECT CASE WHEN 1 = 1 THEN QSYS2.QCMDEXC('DLTLIB X') END FROM SYSIBM.SYSDUMMY1"
+      );
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should block QCMDEXC inside a subquery', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        "SELECT * FROM (SELECT QSYS2.QCMDEXC('DLTLIB X') AS c FROM SYSIBM.SYSDUMMY1) s"
+      );
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should block QCMDEXC used as a table function', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        "SELECT * FROM TABLE(QSYS2.QCMDEXC('DLTLIB X')) x"
+      );
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should block HTTP services that can send data off the system', () => {
+      for (const sql of [
+        "SELECT QSYS2.HTTP_GET('http://example.test/x', '') FROM SYSIBM.SYSDUMMY1",
+        "SELECT SYSTOOLS.HTTPGETCLOB('http://example.test/x', '') FROM SYSIBM.SYSDUMMY1",
+        "SELECT QSYS2.HTTP_POST('http://example.test/x', '', '') FROM SYSIBM.SYSDUMMY1",
+      ]) {
+        expect(SqlSecurityValidator.validateQuery(sql).isValid).toBe(false);
+      }
+    });
+
+    it('should block IFS write, spreadsheet, and email services', () => {
+      for (const sql of [
+        "SELECT QSYS2.IFS_WRITE_UTF8(PATH_NAME => '/tmp/x', LINE => 'a') FROM SYSIBM.SYSDUMMY1",
+        "SELECT * FROM TABLE(QSYS2.IFS_WRITE('/tmp/x', 'a')) x",
+        "SELECT QSYS2.GENERATE_SPREADSHEET('a', 'b') FROM SYSIBM.SYSDUMMY1",
+        "SELECT QSYS2.SEND_EMAIL('a@b.example', 'x', 'y') FROM SYSIBM.SYSDUMMY1",
+      ]) {
+        expect(SqlSecurityValidator.validateQuery(sql).isValid).toBe(false);
+      }
+    });
+
+    it('should allow catalog table functions that only read metadata', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        "SELECT * FROM TABLE(QSYS2.OBJECT_STATISTICS('QSYS', '*LIB')) x"
+      );
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should allow a user-defined function that is not on the denylist', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        'SELECT MYLIB.MYUDF(1) FROM SYSIBM.SYSDUMMY1'
+      );
+      expect(result.isValid).toBe(true);
+    });
   });
 
   describe('BLOCK - Case insensitivity', () => {
@@ -258,12 +330,19 @@ describe('SqlSecurityValidator', () => {
       expect(result.isValid).toBe(false);
     });
 
-    it('should detect comment-based bypass attempts', () => {
+    it('should ignore dangerous words that appear only inside a comment', () => {
       const result = SqlSecurityValidator.validateQuery(
         'SELECT * FROM users /* DROP TABLE users */'
       );
-      // This should still be flagged as suspicious
-      expect(result.violations.some(v => v.includes('comment') || v.includes('DROP'))).toBe(true);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should still block a statement that follows a comment', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        'SELECT * FROM users /* note */; DROP TABLE users'
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.violations.some(v => v.includes('DROP'))).toBe(true);
     });
   });
 

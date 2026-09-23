@@ -13,7 +13,7 @@ vi.mock('node-jt400', () => ({
   })),
 }));
 
-import { createHttpApp } from '../src/transports/http.js';
+import { createHttpApp, startHttpServer } from '../src/transports/http.js';
 import { getSessionManager } from '../src/transports/sessionManager.js';
 import { getTokenManager } from '../src/auth/tokenManager.js';
 import { createServer } from '../src/server.js';
@@ -36,6 +36,33 @@ async function listen(app: Express): Promise<{ server: http.Server; baseUrl: str
   });
   const { port } = server.address() as AddressInfo;
   return { server, baseUrl: `http://127.0.0.1:${port}` };
+}
+
+function rawRequest(
+  baseUrl: string,
+  headers: Record<string, string>
+): Promise<{ status: number; body: string }> {
+  const url = new URL(baseUrl);
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: url.port,
+        path: '/health',
+        method: 'GET',
+        headers,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString() });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 async function closeServer(server: http.Server): Promise<void> {
@@ -95,6 +122,110 @@ describe('HTTP Origin validation', () => {
     try {
       const res = await fetch(`${baseUrl}/health`);
       expect(res.status).toBe(200);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('rejects a Host that is not loopback or allowlisted', async () => {
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await rawRequest(`${baseUrl}/health`, {
+        Host: 'evil.example',
+        Origin: 'http://evil.example',
+      });
+      expect(res.status).toBe(403);
+      expect(res.body).toContain('Forbidden: Host not allowed');
+      expect(res.body).not.toContain('evil.example');
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('allows a loopback Host', async () => {
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await rawRequest(`${baseUrl}/health`, { Host: 'localhost' });
+      expect(res.status).toBe(200);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('allows a Host from MCP_ALLOWED_HOSTS', async () => {
+    process.env.MCP_ALLOWED_HOSTS = 'app.example.com';
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await rawRequest(`${baseUrl}/health`, { Host: 'app.example.com' });
+      expect(res.status).toBe(200);
+    } finally {
+      await closeServer(server);
+    }
+  });
+});
+
+describe('HTTP bind guard', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      MCP_AUTH_MODE: 'none',
+      MCP_HTTP_HOST: '0.0.0.0',
+      MCP_SESSION_MODE: 'stateless',
+    };
+    delete process.env.MCP_ALLOW_UNAUTHENTICATED_HTTP;
+    delete process.env.MCP_TLS_ENABLED;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('refuses to start off loopback when authentication is disabled', async () => {
+    await expect(startHttpServer()).rejects.toThrow(/MCP_ALLOW_UNAUTHENTICATED_HTTP/);
+  });
+});
+
+describe('HTTP /auth database host allowlist', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      MCP_AUTH_MODE: 'required',
+      MCP_SESSION_MODE: 'stateless',
+      DB2I_HOSTNAME: 'test-host',
+      DB2I_USERNAME: 'test-user',
+      DB2I_PASSWORD: 'test-pass',
+    };
+    delete process.env.MCP_AUTH_ALLOWED_DB_HOSTS;
+  });
+
+  afterEach(async () => {
+    await getTokenManager().shutdown();
+    process.env = originalEnv;
+  });
+
+  it('rejects a database host outside the allowlist before opening a connection', async () => {
+    const { pool } = await import('node-jt400');
+    vi.mocked(pool).mockClear();
+
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await fetch(`${baseUrl}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'user',
+          password: 'pass',
+          host: 'other.example.com',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json() as { error_description: string };
+      expect(body.error_description).toBe('Host is not allowed');
+      expect(pool).not.toHaveBeenCalled();
     } finally {
       await closeServer(server);
     }

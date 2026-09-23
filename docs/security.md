@@ -4,7 +4,7 @@ This guide covers security features and best practices for mcp-server-db2i.
 
 ## Security Features
 
-- **Read-only access**: Only SELECT statements are permitted
+- **Read-only access**: Only SELECT statements are permitted, and the JDBC driver is opened with `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`
 - **No credentials in code**: All sensitive data via environment variables or file-based secrets
 - **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
 - **Result limiting**: Default limit of 1000 rows, configurable max limit (default: 10000)
@@ -141,9 +141,15 @@ Queries are parsed into an Abstract Syntax Tree (AST) to verify:
 ### Regex Validation
 
 Additional regex patterns block:
+
 - Command execution attempts
 - System procedure calls
-- Dangerous functions
+- Dangerous functions, including schema-qualified calls. The check uses the unqualified name
+- IBM i services that send data off the system or write outside the database: HTTP services, IFS write services, spreadsheet generation, and email
+
+Before the keyword scan, string literals, comments, and the quotes around delimited identifiers are removed. A literal or a quoted name earlier in the statement cannot hide a later call. Words that appear only inside a literal or a comment are ignored.
+
+The JDBC connection is a second layer. It uses `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`. An explicit override is logged at startup.
 
 ### Result Limiting
 
@@ -182,7 +188,11 @@ When using HTTP transport, additional security measures apply:
 ### Authentication
 
 - **`required`** (default): clients exchange IBM i credentials at `POST /auth`. Those credentials are not taken from the environment. Tokens expire after 1 hour by default (`MCP_TOKEN_EXPIRY`).
-- **`token`** and **`none`**: the server uses `DB2I_*` environment credentials. `token` still requires `MCP_AUTH_TOKEN`. Use `none` only on a trusted network.
+- **`token`** and **`none`**: the server uses `DB2I_*` environment credentials. `token` still requires `MCP_AUTH_TOKEN`. Use `none` only on a trusted network. A non-loopback bind with `MCP_AUTH_MODE=none` refuses to start unless `MCP_ALLOW_UNAUTHENTICATED_HTTP=true`.
+
+`POST /auth` opens a database connection to test the credentials. By default that host must be `DB2I_HOSTNAME`. Set `MCP_AUTH_ALLOWED_DB_HOSTS` to a comma-separated list to allow more than one. When neither value is set, any host is accepted and a warning is logged. A rejected host returns 400 and counts as a failed attempt. It does not open a connection.
+
+Every request is checked against an allowlist of `Host` values before it is routed. Loopback names are always allowed. Add public names with `MCP_ALLOWED_HOSTS` when the server is reached by a hostname other than the bind address. A rejected `Host` returns 403. The rejected value is logged and is not echoed in the response. This blocks a page that rebinds its name onto the loopback address and sends that name in both `Host` and `Origin`.
 
 See [HTTP Transport](http-transport.md) for the request shapes. Protocol sessions (`Mcp-Session-Id`) are deprecated; pools stay isolated by auth token in the default stateless mode.
 
@@ -254,6 +264,9 @@ LOG_LEVEL=info
 
 - [ ] Use Docker secrets or external secret management
 - [ ] Enable TLS for HTTP transport
+- [ ] Set `secure=true` in `DB2I_JDBC_OPTIONS` after the IBM i host servers are configured for SSL
+- [ ] Set `MCP_ALLOWED_HOSTS` to the public hostname when the HTTP server is not loopback-only
+- [ ] Leave `access` unset so the JDBC connection stays `read only`, or treat an explicit `access` as a deliberate override
 - [ ] Set appropriate rate limits
 - [ ] Configure query limits
 - [ ] Disable tools clients don't need (e.g. `MCP_TOOLS_DISABLED=execute_query`)

@@ -17,6 +17,9 @@ import {
   getEnabledTools,
   getResponseFormat,
   getAllowedSchemas,
+  getAuthAllowedDbHosts,
+  hostnameOf,
+  jdbcConnectionSecurity,
   TOOL_NAMES,
   type DB2iConfig,
   type QueryLimitConfig,
@@ -481,6 +484,20 @@ describe('Config Module', () => {
       expect(connConfig['date format']).toBe('iso');
     });
 
+    it('should default the driver access mode to read only', () => {
+      const connConfig = buildConnectionConfig(baseConfig);
+      expect(connConfig['access']).toBe('read only');
+    });
+
+    it('should keep an explicit access option', () => {
+      const connConfig = buildConnectionConfig({
+        ...baseConfig,
+        jdbcOptions: { access: 'all' },
+      });
+      expect(connConfig['access']).toBe('all');
+      expect(connConfig['Access']).toBeUndefined();
+    });
+
     it('should not override user-specified naming', () => {
       const config: DB2iConfig = {
         ...baseConfig,
@@ -536,6 +553,53 @@ describe('Config Module', () => {
       });
       expect(connConfig['libraries']).toBeUndefined();
       expect(connConfig['Libraries']).toBe('OTHERLIB');
+    });
+  });
+
+  describe('jdbcConnectionSecurity', () => {
+    it('should report TLS as disabled when secure is unset', () => {
+      delete process.env.DB2I_JDBC_OPTIONS;
+      expect(jdbcConnectionSecurity().secure).toBe(false);
+      expect(jdbcConnectionSecurity().accessOverride).toBeUndefined();
+    });
+
+    it('should report an explicit access override and secure=true', () => {
+      const security = jdbcConnectionSecurity({ access: 'all', secure: 'true' });
+      expect(security.accessOverride).toBe('all');
+      expect(security.secure).toBe(true);
+    });
+  });
+
+  describe('hostnameOf', () => {
+    it('should strip a port, brackets, and a trailing dot', () => {
+      expect(hostnameOf('App.Example.com:3000')).toBe('app.example.com');
+      expect(hostnameOf('[::1]:3000')).toBe('::1');
+      expect(hostnameOf('localhost.')).toBe('localhost');
+    });
+
+    it('should reject userinfo and paths', () => {
+      expect(hostnameOf('user@host')).toBeUndefined();
+      expect(hostnameOf('host/path')).toBeUndefined();
+    });
+  });
+
+  describe('getAuthAllowedDbHosts', () => {
+    it('should use DB2I_HOSTNAME when the allowlist is unset', () => {
+      delete process.env.MCP_AUTH_ALLOWED_DB_HOSTS;
+      process.env.DB2I_HOSTNAME = 'Public.Example.com';
+      expect(getAuthAllowedDbHosts()).toEqual(['public.example.com']);
+    });
+
+    it('should prefer an explicit allowlist', () => {
+      process.env.MCP_AUTH_ALLOWED_DB_HOSTS = 'one.example.com, two.example.com';
+      process.env.DB2I_HOSTNAME = 'public.example.com';
+      expect(getAuthAllowedDbHosts()).toEqual(['one.example.com', 'two.example.com']);
+    });
+
+    it('should be unrestricted when neither value is set', () => {
+      delete process.env.MCP_AUTH_ALLOWED_DB_HOSTS;
+      delete process.env.DB2I_HOSTNAME;
+      expect(getAuthAllowedDbHosts()).toBeNull();
     });
   });
 

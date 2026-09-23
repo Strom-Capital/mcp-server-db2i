@@ -105,6 +105,24 @@ export const DANGEROUS_FUNCTIONS = [
 ] as const;
 
 /**
+ * Prefixes of IBM i services that send data off the system or write outside the database.
+ * Matched against the unqualified function name, so QSYS2.HTTP_GET and SYSTOOLS.HTTPGETCLOB both hit.
+ */
+const SIDE_EFFECT_FUNCTION_PREFIXES = [
+  'HTTP_',
+  'HTTPGET',
+  'HTTPPOST',
+  'HTTPPUT',
+  'HTTPDELETE',
+  'HTTPHEAD',
+  'HTTPBLOB',
+  'HTTPCLOB',
+  'IFS_WRITE',
+  'GENERATE_SPREADSHEET',
+  'SEND_EMAIL',
+] as const;
+
+/**
  * All dangerous operations combined
  */
 const ALL_DANGEROUS_OPERATIONS = [
@@ -142,13 +160,12 @@ export class SqlSecurityValidator {
       return { isValid: false, violations, validationMethod: 'regex' };
     }
 
-    // 2. If read-only mode, validate for write operations
+    // 2. If read-only mode, validate for write operations.
+    // Regex runs on text with literals, comments, and delimited-identifier quotes removed,
+    // so a string or a quoted name earlier in the statement cannot hide a later call.
     if (readOnly) {
-      // Try AST-based validation first
       const astResult = this.validateQueryAST(query);
-      
-      // Also run regex validation for additional coverage
-      const regexResult = this.validateQueryRegex(query);
+      const regexResult = this.validateQueryRegex(normalizeForScan(query));
       
       // Combine violations from both methods
       violations.push(...astResult.violations);
@@ -161,9 +178,9 @@ export class SqlSecurityValidator {
       }
     }
 
-    // 3. Check for custom forbidden keywords
+    // 3. Check for custom forbidden keywords on the same normalized text
     if (forbiddenKeywords.length > 0) {
-      const keywordViolations = this.checkForbiddenKeywords(query, forbiddenKeywords);
+      const keywordViolations = this.checkForbiddenKeywords(normalizeForScan(query), forbiddenKeywords);
       violations.push(...keywordViolations);
     }
 
@@ -232,31 +249,26 @@ export class SqlSecurityValidator {
   private static validateQueryRegex(query: string): SecurityValidationResult {
     const violations: string[] = [];
 
-    // Check for dangerous operations
+    // query is already normalized: literals and comments are gone, delimited names are unquoted
     for (const operation of ALL_DANGEROUS_OPERATIONS) {
       const pattern = new RegExp(`\\b${operation}\\b`, 'i');
       if (pattern.test(query)) {
-        // Make sure it's not inside a string literal
-        if (!this.isInsideStringLiteral(query, operation)) {
-          violations.push(`Dangerous operation detected: ${operation}`);
-        }
+        violations.push(`Dangerous operation detected: ${operation}`);
       }
     }
 
-    // Check for dangerous function calls
     for (const func of DANGEROUS_FUNCTIONS) {
       const pattern = new RegExp(`\\b${func}\\s*\\(`, 'i');
       if (pattern.test(query)) {
-        // Make sure it's not inside a string literal (same check as operations)
-        if (!this.isInsideStringLiteral(query, func)) {
-          violations.push(`Dangerous function call detected: ${func}`);
-        }
+        violations.push(`Dangerous function call detected: ${func}`);
       }
     }
 
-    // Check for comment-based bypass attempts
-    if (/\/\*.*?(DROP|DELETE|INSERT|UPDATE|TRUNCATE).*?\*\//i.test(query)) {
-      violations.push('Suspicious comment pattern detected');
+    for (const prefix of SIDE_EFFECT_FUNCTION_PREFIXES) {
+      const pattern = new RegExp(`\\b(?:\\w+\\.)?${prefix}\\w*\\s*\\(`, 'i');
+      if (pattern.test(query)) {
+        violations.push(`Dangerous function call detected: ${prefix}`);
+      }
     }
 
     // Check for semicolon followed by dangerous operation (multi-statement)
@@ -278,22 +290,6 @@ export class SqlSecurityValidator {
   }
 
   /**
-   * Check if a keyword is inside a string literal
-   */
-  private static isInsideStringLiteral(query: string, keyword: string): boolean {
-    // Simple heuristic: check if the keyword appears after an odd number of quotes
-    const keywordIndex = query.toUpperCase().indexOf(keyword.toUpperCase());
-    if (keywordIndex === -1) return false;
-
-    const beforeKeyword = query.substring(0, keywordIndex);
-    const singleQuotes = (beforeKeyword.match(/'/g) || []).length;
-    const doubleQuotes = (beforeKeyword.match(/"/g) || []).length;
-
-    // If odd number of quotes, we're inside a string
-    return singleQuotes % 2 !== 0 || doubleQuotes % 2 !== 0;
-  }
-
-  /**
    * Check if an operation is dangerous
    */
   private static isDangerousOperation(operation: string): boolean {
@@ -312,11 +308,12 @@ export class SqlSecurityValidator {
 
     const nodeObj = node as Record<string, unknown>;
 
-    // Check if this node is a function call
+    // Check if this node is a function call. Match the unqualified name so
+    // QSYS2.QCMDEXC is compared as QCMDEXC, not as the whole schema-qualified form.
     if (nodeObj.type === 'function' && nodeObj.name) {
-      const funcName = String(nodeObj.name).toUpperCase();
-      if (DANGEROUS_FUNCTIONS.some((f) => f.toUpperCase() === funcName)) {
-        found.push(funcName);
+      const funcName = unqualifiedFunctionName(nodeObj.name);
+      if (funcName && isBlockedFunction(funcName)) {
+        found.push(funcName.toUpperCase());
       }
     }
 
@@ -343,7 +340,7 @@ export class SqlSecurityValidator {
 
     for (const keyword of keywords) {
       const pattern = new RegExp(`\\b${this.escapeRegex(keyword)}\\b`, 'i');
-      if (pattern.test(query) && !this.isInsideStringLiteral(query, keyword)) {
+      if (pattern.test(query)) {
         violations.push(`Forbidden keyword detected: ${keyword}`);
       }
     }
@@ -357,6 +354,106 @@ export class SqlSecurityValidator {
   private static escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
+}
+
+/**
+ * Remove text that must not affect keyword detection:
+ * string literals (including '' escapes), -- and block comments, and the quotes
+ * around delimited identifiers. "QCMDEXC" becomes QCMDEXC. Replaced regions become
+ * a space so adjacent tokens are not glued together.
+ */
+function normalizeForScan(query: string): string {
+  let out = '';
+  let i = 0;
+
+  while (i < query.length) {
+    const current = query[i];
+    const next = query[i + 1];
+
+    if (current === '-' && next === '-') {
+      i += 2;
+      while (i < query.length && query[i] !== '\n') i++;
+      out += ' ';
+      continue;
+    }
+
+    if (current === '/' && next === '*') {
+      i += 2;
+      while (i < query.length && !(query[i] === '*' && query[i + 1] === '/')) i++;
+      if (i < query.length) i += 2;
+      out += ' ';
+      continue;
+    }
+
+    if (current === "'") {
+      i++;
+      while (i < query.length) {
+        if (query[i] === "'" && query[i + 1] === "'") {
+          i += 2;
+          continue;
+        }
+        if (query[i] === "'") {
+          i++;
+          break;
+        }
+        i++;
+      }
+      out += ' ';
+      continue;
+    }
+
+    if (current === '"') {
+      i++;
+      let ident = '';
+      while (i < query.length) {
+        if (query[i] === '"' && query[i + 1] === '"') {
+          ident += '"';
+          i += 2;
+          continue;
+        }
+        if (query[i] === '"') {
+          i++;
+          break;
+        }
+        ident += query[i];
+        i++;
+      }
+      out += ident;
+      continue;
+    }
+
+    out += current;
+    i++;
+  }
+
+  return out;
+}
+
+/**
+ * Unqualified function name from a node-sql-parser name node.
+ * The name may be a string, "schema.name", or { name: [{ value }] }.
+ */
+function unqualifiedFunctionName(name: unknown): string | undefined {
+  if (typeof name === 'string') {
+    const parts = name.split('.');
+    return parts[parts.length - 1];
+  }
+  if (!name || typeof name !== 'object') return undefined;
+
+  const obj = name as Record<string, unknown>;
+  if (Array.isArray(obj.name) && obj.name.length > 0) {
+    const last = obj.name[obj.name.length - 1] as { value?: unknown };
+    if (last && typeof last.value === 'string') return last.value;
+  }
+  if (typeof obj.name === 'string') return obj.name;
+  if (typeof obj.value === 'string') return obj.value;
+  return undefined;
+}
+
+function isBlockedFunction(name: string): boolean {
+  const upper = name.toUpperCase();
+  if (DANGEROUS_FUNCTIONS.some((func) => func.toUpperCase() === upper)) return true;
+  return SIDE_EFFECT_FUNCTION_PREFIXES.some((prefix) => upper.startsWith(prefix));
 }
 
 /**

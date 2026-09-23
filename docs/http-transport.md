@@ -24,9 +24,12 @@ MCP_TRANSPORT=stdio
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
 | `MCP_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` when Docker publishes the port or another container connects. Put TLS on this process or on the proxy in front of it |
+| `MCP_ALLOWED_HOSTS` | loopback | Extra `Host` names, comma-separated. Loopback is always allowed. Required for a public hostname when the process binds `0.0.0.0` |
 | `MCP_SESSION_MODE` | `stateless` | `stateless` (default) or deprecated `stateful` |
 | `MCP_AUTH_MODE` | `required` | Authentication mode: `required`, `token`, or `none` |
 | `MCP_AUTH_TOKEN` | - | Static token for `token` auth mode |
+| `MCP_ALLOW_UNAUTHENTICATED_HTTP` | `false` | Allow `none` when the bind address is not loopback |
+| `MCP_AUTH_ALLOWED_DB_HOSTS` | `DB2I_HOSTNAME` | Hosts `POST /auth` may connect to |
 | `MCP_TLS_ENABLED` | `false` | Enable built-in TLS |
 | `MCP_TLS_CERT_PATH` | - | Path to TLS certificate (required if TLS enabled) |
 | `MCP_TLS_KEY_PATH` | - | Path to TLS private key (required if TLS enabled) |
@@ -85,7 +88,11 @@ No authentication required:
 - Database connection uses `DB2I_*` environment variables
 - `/auth` endpoint returns 404
 
-**Warning:** Only use this mode on trusted networks (localhost, internal VPNs) or for development/testing.
+**Warning:** Only use this mode on trusted networks (localhost, internal VPNs) or for development/testing. The process will not listen on a non-loopback address in this mode unless `MCP_ALLOW_UNAUTHENTICATED_HTTP=true`.
+
+Requests whose `Host` header is not loopback and not listed in `MCP_ALLOWED_HOSTS` are rejected with 403. Set `MCP_ALLOWED_HOSTS` to the name clients use when the server is published beyond localhost.
+
+In `required` mode, the `host` field on `POST /auth` must be `DB2I_HOSTNAME` or a name in `MCP_AUTH_ALLOWED_DB_HOSTS`. Other hosts are rejected before a connection is opened.
 
 ## Authentication Flow (Required Mode)
 
