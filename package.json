@@ -42,25 +42,25 @@
   },
   "homepage": "https://github.com/Strom-Capital/mcp-server-db2i#readme",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "express": "^5.2.1",
     "node-jt400": "^6.0.1",
     "node-sql-parser": "^5.4.0",
-    "pino": "^10.2.0",
+    "pino": "^10.3.1",
     "pino-pretty": "^13.1.3",
-    "zod": "^4.3.5"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.9",
-    "@vitest/coverage-v8": "^4.0.17",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^9.39.2",
     "knip": "^5.81.0",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.53.0",
-    "vitest": "^4.0.17"
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=20.6"

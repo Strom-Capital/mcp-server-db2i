@@ -15,3 +15,9 @@ export {
   SessionManager,
   type McpSession,
 } from './sessionManager.js';
+
+export {
+  GLOBAL_SESSION_KEY,
+  resolveCallerSessionKey,
+  isSessionOwnedByCaller,
+} from './sessionAuth.js';

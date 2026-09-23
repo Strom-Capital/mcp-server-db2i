@@ -6,6 +6,7 @@ import { executeQuery } from '../db/connection.js';
 import { validateQuery } from '../db/queries.js';
 import { createChildLogger } from '../utils/logger.js';
 import { applyQueryLimit, getQueryLimitConfig } from '../config.js';
+import { applySqlRowLimit } from './sqlLimit.js';
 
 const log = createChildLogger({ component: 'query-tool' });
 
@@ -54,24 +55,15 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   }
 
   try {
-    // Add FETCH FIRST clause if not already present to limit results
-    let limitedSql = sql.trim();
-    if (!limitedSql.toUpperCase().includes('FETCH FIRST') && 
-        !limitedSql.toUpperCase().includes('LIMIT')) {
-      // Remove trailing semicolon if present
-      if (limitedSql.endsWith(';')) {
-        limitedSql = limitedSql.slice(0, -1);
-      }
-      limitedSql = `${limitedSql} FETCH FIRST ${effectiveLimit} ROWS ONLY`;
-    }
-
+    const limitedSql = applySqlRowLimit(sql, effectiveLimit);
     const result = await executeQuery(limitedSql, params as unknown[], sessionId);
+    const rows = result.rows.slice(0, effectiveLimit);
 
-    log.info({ rowCount: result.rows.length, effectiveLimit }, 'Query executed successfully');
+    log.info({ rowCount: rows.length, effectiveLimit }, 'Query executed successfully');
     return {
       success: true,
-      data: result.rows,
-      rowCount: result.rows.length,
+      data: rows,
+      rowCount: rows.length,
       limitApplied: effectiveLimit,
     };
   } catch (error) {

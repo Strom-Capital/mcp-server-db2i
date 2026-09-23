@@ -35,6 +35,7 @@ import {
   type AuthResponse,
 } from '../auth/index.js';
 import { getSessionManager } from './sessionManager.js';
+import { isSessionOwnedByCaller, resolveCallerSessionKey } from './sessionAuth.js';
 import { createServer as createMcpServer, SERVER_NAME, SERVER_VERSION } from '../server.js';
 import { getOpenApiSpec } from '../openapi.js';
 import { initializeSessionPool, testSessionConnection, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
@@ -98,6 +99,28 @@ function validateAuthRequest(body: unknown): { valid: boolean; request?: AuthReq
 }
 
 /**
+ * Whether Origin matches the request Host (same-origin browser traffic).
+ */
+function isSameOriginRequest(origin: string, req: Request): boolean {
+  try {
+    return new URL(origin).host === req.get('host');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * JSON-RPC 404 used when a session is missing or not owned by the caller.
+ */
+function sessionNotFoundBody(): { jsonrpc: '2.0'; error: { code: number; message: string }; id: null } {
+  return {
+    jsonrpc: '2.0',
+    error: { code: -32001, message: 'Session not found or expired' },
+    id: null,
+  };
+}
+
+/**
  * Create the Express application
  */
 export function createHttpApp(): Express {
@@ -111,26 +134,33 @@ export function createHttpApp(): Express {
   app.use((req: Request, res: Response, next: express.NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
   });
 
-  // CORS - validate against allowed origins list
-  // By default (MCP_CORS_ORIGINS not set), no CORS headers are sent = same-origin only
+  // CORS and Origin validation (Streamable HTTP requires Origin checks)
+  // By default (MCP_CORS_ORIGINS not set), only same-origin or missing Origin is allowed
   // Set MCP_CORS_ORIGINS='*' to allow all origins, or comma-separated list for specific origins
   app.use((req: Request, res: Response, next: express.NextFunction) => {
     const origin = req.headers.origin;
     const allowedOrigins = httpConfig.corsOrigins;
-    
-    if (origin && allowedOrigins.length > 0) {
-      // CORS is explicitly configured - check if origin is allowed
-      const isAllowed = 
-        allowedOrigins.includes('*') || // Wildcard = allow all
-        allowedOrigins.includes(origin); // Specific origin match
-      
-      if (isAllowed) {
+
+    if (origin) {
+      const isConfiguredOrigin =
+        allowedOrigins.includes('*') ||
+        allowedOrigins.includes(origin);
+      const isSameOrigin = isSameOriginRequest(origin, req);
+      const isAllowed = isConfiguredOrigin || isSameOrigin;
+
+      if (!isAllowed) {
+        res.status(403).json({
+          error: 'forbidden',
+          error_description: 'Origin not allowed',
+        });
+        return;
+      }
+
+      if (isConfiguredOrigin) {
         res.setHeader('Access-Control-Allow-Origin', origin);
-        // Only set credentials when origin is explicitly allowed (not wildcard)
         if (!allowedOrigins.includes('*')) {
           res.setHeader('Access-Control-Allow-Credentials', 'true');
         }
@@ -138,9 +168,7 @@ export function createHttpApp(): Express {
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id, Accept');
       }
     }
-    // When allowedOrigins is empty (default), no CORS headers are set.
-    // Browser will enforce same-origin policy, blocking cross-origin requests.
-    
+
     if (req.method === 'OPTIONS') {
       res.status(204).end();
       return;
@@ -344,7 +372,7 @@ export function createHttpApp(): Express {
         // Use a single shared pool for none/token modes (similar to stdio mode).
         // This pool persists for the server's lifetime and is cleaned up on shutdown
         // via closeAllSessionPools(). This is intentional connection reuse, not a leak.
-        sessionKey = 'global';
+        sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
       } else {
         // Required mode - use per-user config from token
         if (!authReq.tokenSession || !authReq.authToken) {
@@ -359,7 +387,7 @@ export function createHttpApp(): Express {
         const session = authReq.tokenSession;
         const authToken = authReq.authToken;
         dbConfig = session.config;
-        sessionKey = authToken;
+        sessionKey = resolveCallerSessionKey(httpConfig.authMode, authToken);
       }
 
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
@@ -370,12 +398,8 @@ export function createHttpApp(): Express {
         if (sessionId) {
           // Existing session
           const mcpSession = sessionManager.getSession(sessionId);
-          if (!mcpSession) {
-            res.status(404).json({
-              jsonrpc: '2.0',
-              error: { code: -32001, message: 'Session not found or expired' },
-              id: null,
-            });
+          if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
+            res.status(404).json(sessionNotFoundBody());
             return;
           }
 
@@ -472,6 +496,7 @@ export function createHttpApp(): Express {
 
   // MCP endpoint - GET (SSE for stateful mode)
   app.get('/mcp', authMiddleware, async (req: Request, res: Response) => {
+    const authReq = req as AuthenticatedRequest;
     const httpConfig = getHttpConfig();
 
     if (httpConfig.sessionMode !== 'stateful') {
@@ -491,10 +516,11 @@ export function createHttpApp(): Express {
       return;
     }
 
+    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
     const sessionManager = getSessionManager();
     const mcpSession = sessionManager.getSession(sessionId);
 
-    if (!mcpSession) {
+    if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
       res.status(404).json({
         error: 'not_found',
         error_description: 'Session not found or expired',
@@ -507,6 +533,7 @@ export function createHttpApp(): Express {
 
   // MCP endpoint - DELETE (close session)
   app.delete('/mcp', authMiddleware, async (req: Request, res: Response) => {
+    const authReq = req as AuthenticatedRequest;
     const sessionId = req.headers['mcp-session-id'] as string;
 
     if (!sessionId) {
@@ -517,7 +544,18 @@ export function createHttpApp(): Express {
       return;
     }
 
+    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
     const sessionManager = getSessionManager();
+    const mcpSession = sessionManager.getSession(sessionId);
+
+    if (!mcpSession || !isSessionOwnedByCaller(mcpSession.authToken, sessionKey)) {
+      res.status(404).json({
+        error: 'not_found',
+        error_description: 'Session not found',
+      });
+      return;
+    }
+
     const closed = await sessionManager.closeSession(sessionId);
 
     if (closed) {

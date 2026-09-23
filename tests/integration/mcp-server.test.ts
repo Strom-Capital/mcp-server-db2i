@@ -124,6 +124,17 @@ describe('MCP Server Integration', () => {
       for (const tool of tools) {
         // The annotations should indicate read-only operations
         expect(tool.annotations?.readOnlyHint).toBe(true);
+        expect(tool.annotations?.destructiveHint).toBe(false);
+        expect(tool.annotations?.idempotentHint).toBe(true);
+        expect(tool.annotations?.openWorldHint).toBe(false);
+      }
+    });
+
+    it('should declare outputSchema on all tools', async () => {
+      const { tools } = await client.listTools();
+
+      for (const tool of tools) {
+        expect(tool.outputSchema).toBeDefined();
       }
     });
   });
@@ -151,6 +162,11 @@ describe('MCP Server Integration', () => {
       expect(content.success).toBe(true);
       expect(content.data).toEqual(mockRows);
       expect(content.rowCount).toBe(2);
+      expect(result.structuredContent).toMatchObject({
+        success: true,
+        data: mockRows,
+        rowCount: 2,
+      });
     });
 
     it('should reject dangerous queries (SQL injection attempt)', async () => {
@@ -206,6 +222,44 @@ describe('MCP Server Integration', () => {
       // Check that the query was modified to include FETCH FIRST
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('FETCH FIRST 50 ROWS ONLY'),
+        expect.any(Array)
+      );
+    });
+
+    it('should apply FETCH FIRST when a column name contains LIMIT', async () => {
+      mockQuery.mockResolvedValueOnce([{ CREDIT_LIMIT: 5000 }]);
+
+      await client.callTool({
+        name: 'execute_query',
+        arguments: {
+          sql: 'SELECT CREDIT_LIMIT FROM MYLIB.ACCOUNTS',
+          limit: 25,
+        },
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('FETCH FIRST 25 ROWS ONLY'),
+        expect.any(Array)
+      );
+    });
+
+    it('should clamp an oversized FETCH FIRST in the SQL text', async () => {
+      mockQuery.mockResolvedValueOnce([{ ID: 1 }]);
+
+      await client.callTool({
+        name: 'execute_query',
+        arguments: {
+          sql: 'SELECT * FROM MYLIB.USERS FETCH FIRST 10000000 ROWS ONLY',
+          limit: 100,
+        },
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('FETCH FIRST 100 ROWS ONLY'),
+        expect.any(Array)
+      );
+      expect(mockQuery).not.toHaveBeenCalledWith(
+        expect.stringContaining('10000000'),
         expect.any(Array)
       );
     });
@@ -514,6 +568,59 @@ describe('MCP Server Integration', () => {
       await newClient.close();
       await newClientTransport.close();
       await newServerTransport.close();
+    });
+
+    it('should key the rate limiter by session or stdio', async () => {
+      const checkLimit = vi.fn(() => ({ allowed: true, remaining: 99 }));
+      const mockRateLimiter = getRateLimiter as ReturnType<typeof vi.fn>;
+      mockRateLimiter.mockReturnValue({
+        checkLimit,
+        formatError: vi.fn(),
+      });
+
+      mockQuery.mockResolvedValue([{ ID: 1 }]);
+
+      const stdioResult = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT 1 FROM SYSIBM.SYSDUMMY1' },
+      }) as CallToolResult;
+      expect(stdioResult.isError).toBeUndefined();
+      expect(checkLimit).toHaveBeenCalledWith('stdio');
+
+      const [sessionClientTransport, sessionServerTransport] = InMemoryTransport.createLinkedPair();
+      const sessionServer = createServer({
+        hostname: 'test-host',
+        port: 446,
+        username: 'test-user',
+        password: 'test-pass',
+        database: '*LOCAL',
+        schema: 'TESTLIB',
+        jdbcOptions: {},
+      }, 'session-token-abc');
+      await sessionServer.connect(sessionServerTransport);
+      const sessionClient = new Client({ name: 'session-test', version: '1.0.0' });
+      await sessionClient.connect(sessionClientTransport);
+
+      await sessionClient.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT 1 FROM SYSIBM.SYSDUMMY1' },
+      });
+      expect(checkLimit).toHaveBeenCalledWith('session-token-abc');
+
+      await sessionClient.close();
+      await sessionClientTransport.close();
+      await sessionServerTransport.close();
+
+      mockRateLimiter.mockReset();
+      mockRateLimiter.mockImplementation(() => ({
+        checkLimit: vi.fn(() => ({ allowed: true, remaining: 99 })),
+        formatError: vi.fn(() => ({
+          error: 'Rate limit exceeded',
+          waitTimeSeconds: 60,
+          limit: 100,
+          windowMs: 900000,
+        })),
+      }));
     });
   });
 
