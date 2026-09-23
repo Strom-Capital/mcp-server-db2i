@@ -360,23 +360,26 @@ Then create a Pull Request on GitHub.
 
 ### Pull Request Guidelines
 
+- Use a [Conventional Commits](https://www.conventionalcommits.org/) PR title (`feat:`, `fix:`, `ci:`, …). That title becomes the squash-commit subject.
+- Squash-merge only. Merge commits make Release Please list the same change twice in `CHANGELOG.md`.
 - Describe the changes clearly
-- Reference any related issues
+- Reference any related issues (`Fixes #123` in the PR body)
 - Ensure all tests pass
 - Update documentation as needed
 - Keep changes focused and atomic
 
 ## Release Process
 
-Releases are automated via GitHub Actions using Release Please:
+Releases are automated via GitHub Actions using [Release Please](https://github.com/googleapis/release-please):
 
-1. Commits to `main` are analyzed
-2. A release PR is automatically created/updated
-3. Merging the release PR triggers:
-   - Version bump
-   - Changelog update
-   - npm publish
-   - GitHub release
+1. Squash-merged conventional commits on `main` are analyzed
+2. A release PR is automatically created/updated with the version bump and `CHANGELOG.md`
+3. Merging the release PR tags `vX.Y.Z`, creates the GitHub release, and publishes `mcp-server-db2i` to npm via OIDC trusted publishing
+4. CI runs once (reusable workflow) on Node 20; `npm publish` uses Node 24 only for the OIDC step
+
+To retry publishing an already-tagged release (for example after an npm outage), run the **Release** workflow with `workflow_dispatch` and set `tag` to `vX.Y.Z`. That path skips Release Please and republishes the existing tag.
+
+`ci:` commits appear under **CI/CD** in the next version’s changelog but do not bump the version by themselves.
 
 ## Getting Help
 

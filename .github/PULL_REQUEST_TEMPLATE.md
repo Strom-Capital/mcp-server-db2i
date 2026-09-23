@@ -19,7 +19,7 @@
 - [ ] My code builds successfully (`npm run build`)
 - [ ] I have tested my changes locally
 - [ ] I have updated the documentation (if applicable)
-- [ ] My commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+- [ ] The PR title is a [Conventional Commit](https://www.conventionalcommits.org/) (it becomes the squash-merge subject)
 
 ## Testing
 
