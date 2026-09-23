@@ -19,7 +19,15 @@ import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server
 import type http from 'node:http';
 import type https from 'node:https';
 
-import { loadConfig, isHttpEnabled, isStdioEnabled, getTransportMode, getHttpConfig } from './config.js';
+import {
+  loadConfig,
+  isHttpEnabled,
+  isStdioEnabled,
+  getTransportMode,
+  getHttpConfig,
+  getEnabledTools,
+  getResponseFormat,
+} from './config.js';
 import { initializePool, testConnection, closeGlobalPool } from './db/connection.js';
 import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
@@ -79,6 +87,16 @@ async function main(): Promise<void> {
 
     // Initialize rate limiter (logs its own config)
     getRateLimiter();
+
+    // Validates MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
+    const enabledTools = getEnabledTools();
+    if (enabledTools.length === 0) {
+      logger.warn('All tools are disabled by MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED');
+    }
+    logger.info(
+      { tools: enabledTools, responseFormat: getResponseFormat() },
+      'Tool configuration loaded'
+    );
 
     // Check which transports are enabled
     const stdioEnabled = isStdioEnabled();

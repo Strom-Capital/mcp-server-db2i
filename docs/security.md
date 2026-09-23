@@ -154,6 +154,16 @@ Query results are automatically limited to prevent memory exhaustion:
 | `QUERY_DEFAULT_LIMIT` | `1000` | Applied when no limit specified |
 | `QUERY_MAX_LIMIT` | `10000` | Maximum allowed (caps user limits) |
 
+### Metadata-Only Mode
+
+If clients only need to browse schemas, tables, and columns, turn off free-form SQL entirely:
+
+```bash
+MCP_TOOLS_DISABLED=execute_query
+```
+
+The tool is then never registered, so validation bypasses cannot reach it. See [Tool Selection](configuration.md#tool-selection) for the full allowlist and denylist syntax.
+
 ## HTTP Transport Security
 
 When using HTTP transport, additional security measures apply:
@@ -235,6 +245,7 @@ LOG_LEVEL=info
 - [ ] Enable TLS for HTTP transport
 - [ ] Set appropriate rate limits
 - [ ] Configure query limits
+- [ ] Disable tools clients don't need (e.g. `MCP_TOOLS_DISABLED=execute_query`)
 - [ ] Use `info` or higher log level
 - [ ] Run as non-root user (Docker image does this by default)
 - [ ] Restrict network access to IBM i system

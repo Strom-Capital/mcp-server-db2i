@@ -14,6 +14,9 @@ import {
   validateHostname,
   getQueryLimitConfig,
   applyQueryLimit,
+  getEnabledTools,
+  getResponseFormat,
+  TOOL_NAMES,
   type DB2iConfig,
   type QueryLimitConfig,
 } from '../src/config.js';
@@ -585,6 +588,80 @@ describe('Config Module', () => {
 
     it('should handle edge case where requested equals max', () => {
       expect(applyQueryLimit(10000, testConfig)).toBe(10000);
+    });
+  });
+
+  describe('getEnabledTools', () => {
+    beforeEach(() => {
+      delete process.env.MCP_TOOLS_ENABLED;
+      delete process.env.MCP_TOOLS_DISABLED;
+    });
+
+    it('should enable all tools by default', () => {
+      expect(getEnabledTools()).toEqual([...TOOL_NAMES]);
+    });
+
+    it('should treat empty values as unset', () => {
+      process.env.MCP_TOOLS_ENABLED = '  ';
+      process.env.MCP_TOOLS_DISABLED = '';
+      expect(getEnabledTools()).toEqual([...TOOL_NAMES]);
+    });
+
+    it('should only enable allowlisted tools', () => {
+      process.env.MCP_TOOLS_ENABLED = 'list_schemas,describe_table';
+      expect(getEnabledTools()).toEqual(['list_schemas', 'describe_table']);
+    });
+
+    it('should drop denylisted tools', () => {
+      process.env.MCP_TOOLS_DISABLED = 'execute_query';
+      const tools = getEnabledTools();
+      expect(tools).not.toContain('execute_query');
+      expect(tools).toHaveLength(TOOL_NAMES.length - 1);
+    });
+
+    it('should apply the denylist after the allowlist', () => {
+      process.env.MCP_TOOLS_ENABLED = 'execute_query,list_tables';
+      process.env.MCP_TOOLS_DISABLED = 'execute_query';
+      expect(getEnabledTools()).toEqual(['list_tables']);
+    });
+
+    it('should ignore whitespace, case, and empty entries', () => {
+      process.env.MCP_TOOLS_ENABLED = ' List_Tables , ,LIST_VIEWS ';
+      expect(getEnabledTools()).toEqual(['list_tables', 'list_views']);
+    });
+
+    it('should keep registration order regardless of list order', () => {
+      process.env.MCP_TOOLS_ENABLED = 'get_table_constraints,execute_query';
+      expect(getEnabledTools()).toEqual(['execute_query', 'get_table_constraints']);
+    });
+
+    it('should throw on unknown names in MCP_TOOLS_ENABLED', () => {
+      process.env.MCP_TOOLS_ENABLED = 'list_tables,drop_table';
+      expect(() => getEnabledTools()).toThrow(/MCP_TOOLS_ENABLED: drop_table/);
+    });
+
+    it('should throw on unknown names in MCP_TOOLS_DISABLED', () => {
+      process.env.MCP_TOOLS_DISABLED = 'exec_query';
+      expect(() => getEnabledTools()).toThrow(/MCP_TOOLS_DISABLED: exec_query.*Valid tools: execute_query/);
+    });
+  });
+
+  describe('getResponseFormat', () => {
+    it('should default to json', () => {
+      delete process.env.MCP_RESPONSE_FORMAT;
+      expect(getResponseFormat()).toBe('json');
+    });
+
+    it('should accept pretty and markdown case-insensitively', () => {
+      process.env.MCP_RESPONSE_FORMAT = 'Pretty';
+      expect(getResponseFormat()).toBe('pretty');
+      process.env.MCP_RESPONSE_FORMAT = ' MARKDOWN ';
+      expect(getResponseFormat()).toBe('markdown');
+    });
+
+    it('should fall back to json for invalid values', () => {
+      process.env.MCP_RESPONSE_FORMAT = 'xml';
+      expect(getResponseFormat()).toBe('json');
     });
   });
 });

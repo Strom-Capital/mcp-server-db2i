@@ -135,6 +135,44 @@ describe('MCP Server Integration', () => {
         expect(tool.outputSchema).toBeDefined();
       }
     });
+
+    it('should omit tools disabled via MCP_TOOLS_DISABLED', async () => {
+      process.env.MCP_TOOLS_DISABLED = 'execute_query';
+
+      const [filteredClientTransport, filteredServerTransport] = InMemoryTransport.createLinkedPair();
+      const filteredServer = createServer();
+      await filteredServer.connect(filteredServerTransport);
+      const filteredClient = new Client({ name: 'filtered-test', version: '1.0.0' });
+      await filteredClient.connect(filteredClientTransport);
+
+      const { tools } = await filteredClient.listTools();
+      const toolNames = tools.map((t) => t.name);
+      expect(toolNames).toHaveLength(6);
+      expect(toolNames).not.toContain('execute_query');
+      expect(toolNames).toContain('list_schemas');
+
+      await filteredClient.close();
+      await filteredClientTransport.close();
+      await filteredServerTransport.close();
+    });
+  });
+
+  describe('Response Format', () => {
+    it('should render row results as a markdown table when MCP_RESPONSE_FORMAT=markdown', async () => {
+      process.env.MCP_RESPONSE_FORMAT = 'markdown';
+      const mockRows = [{ ID: 1, NAME: 'Alice' }];
+      mockQuery.mockResolvedValueOnce(mockRows);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM MYLIB.USERS' },
+      }) as CallToolResult;
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('| ID | NAME |');
+      expect(text).toContain('| 1 | Alice |');
+      expect(result.structuredContent).toMatchObject({ success: true, data: mockRows });
+    });
   });
 
   describe('execute_query Tool', () => {
