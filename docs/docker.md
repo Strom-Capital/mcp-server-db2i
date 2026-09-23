@@ -208,6 +208,7 @@ environment:
   # Query limits
   - QUERY_DEFAULT_LIMIT=${QUERY_DEFAULT_LIMIT:-1000}
   - QUERY_MAX_LIMIT=${QUERY_MAX_LIMIT:-10000}
+  - QUERY_ALLOWED_SCHEMAS=${QUERY_ALLOWED_SCHEMAS:-}
   
   # Tool selection and response format
   - MCP_TOOLS_ENABLED=${MCP_TOOLS_ENABLED:-}
