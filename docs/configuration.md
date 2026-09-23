@@ -70,6 +70,37 @@ DB2I_PASSWORD=your-password
 | `QUERY_DEFAULT_LIMIT` | `1000` | Default number of rows returned by queries |
 | `QUERY_MAX_LIMIT` | `10000` | Maximum rows allowed (caps user-provided limits) |
 
+### Tool Selection
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_TOOLS_ENABLED` | - | Comma-separated allowlist. If set, only these tools are registered |
+| `MCP_TOOLS_DISABLED` | - | Comma-separated denylist, applied after the allowlist |
+
+Valid names: `execute_query`, `list_schemas`, `list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
+
+```env
+# Metadata browsing only, no free-form SQL
+MCP_TOOLS_DISABLED=execute_query
+
+# Only schema and table discovery
+MCP_TOOLS_ENABLED=list_schemas,list_tables,describe_table
+```
+
+Disabled tools are not listed by `tools/list` and cannot be called. The setting applies to both stdio and HTTP transports.
+
+### Response Format
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_RESPONSE_FORMAT` | `json` | Text format of tool results: `json`, `pretty`, or `markdown` |
+
+- **`json`** (default): Compact JSON, no indentation.
+- **`pretty`**: Indented JSON. Easier to read, but uses more tokens.
+- **`markdown`**: Row results (`data`) become a markdown table with a summary line such as `rowCount: 2, limitApplied: 1000`. Results without rows fall back to compact JSON.
+
+`structuredContent` always holds the raw result object, whatever this setting is. Only the text content changes.
+
 ### Rate Limiting
 
 | Variable | Default | Description |
@@ -129,6 +160,11 @@ MCP_TLS_KEY_PATH=/certs/server.key
 # Query limits
 QUERY_DEFAULT_LIMIT=1000
 QUERY_MAX_LIMIT=10000
+
+# Tool selection and response format
+# MCP_TOOLS_ENABLED=list_schemas,list_tables,describe_table
+MCP_TOOLS_DISABLED=execute_query
+MCP_RESPONSE_FORMAT=json
 
 # Rate limiting
 RATE_LIMIT_WINDOW_MS=900000

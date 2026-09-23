@@ -55,6 +55,8 @@ graph LR
 - **HTTP Transport** - REST API with token authentication for web/agent integration
 - **Current MCP spec** - Speaks [2026-07-28](https://modelcontextprotocol.io/) and still serves stateless 2025-era clients
 - **Dual Transport** - Run stdio and HTTP simultaneously
+- **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
+- **Compact responses** - Compact JSON by default, or markdown tables to save tokens
 
 ## Quick Start
 

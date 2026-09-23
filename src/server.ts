@@ -13,7 +13,7 @@ import { createRequire } from 'module';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
-import type { DB2iConfig } from './config.js';
+import { getEnabledTools, getResponseFormat, type DB2iConfig } from './config.js';
 import { executeQueryTool } from './tools/query.js';
 import {
   listSchemasTool,
@@ -24,6 +24,7 @@ import {
   getTableConstraintsTool,
 } from './tools/metadata.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
+import { formatToolText } from './utils/formatResult.js';
 
 // Read version from package.json to keep it in sync with npm releases
 const require = createRequire(import.meta.url);
@@ -175,7 +176,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       const error = rateLimiter.formatError(rateResult);
       const structured = { success: false, error: error.error };
       return {
-        content: [{ type: 'text', text: JSON.stringify(error, null, 2) }],
+        content: [{ type: 'text', text: formatToolText(error, getResponseFormat()) }],
         structuredContent: structured,
         isError: true,
       };
@@ -200,7 +201,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
     }
 
     return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      content: [{ type: 'text', text: formatToolText(result, getResponseFormat()) }],
       structuredContent: result,
     };
   };
@@ -236,170 +237,179 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     return process.env.DB2I_SCHEMA || undefined;
   };
 
-  // Register execute_query tool
-  server.registerTool(
-    'execute_query',
-    {
-      title: 'Execute SQL Query',
-      description: 'Execute a read-only SQL SELECT query against the IBM DB2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
-      annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: z.object({
-        sql: z.string().describe('SQL SELECT query to execute'),
-        params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
-        limit: z.number().int().positive().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
-      }),
-      outputSchema: queryOutputSchema,
-    },
-    withToolHandler(
-      (args, sessionId) => executeQueryTool({
-        sql: args.sql,
-        params: args.params,
-        limit: args.limit,
-        sessionId,
-      }),
-      'Query failed',
-      sessionContext
-    )
-  );
+  const enabledTools = new Set(getEnabledTools());
 
-  // Register list_schemas tool
-  server.registerTool(
-    'list_schemas',
-    {
-      title: 'List Schemas',
-      description: 'List all schemas (libraries) in the IBM DB2i database. Optionally filter by name pattern using * as wildcard.',
-      annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: z.object({
-        filter: z.string().optional().describe('Filter pattern for schema names. Use * as wildcard. Example: "QSYS*" matches schemas starting with QSYS'),
-      }),
-      outputSchema: listSchemasOutputSchema,
-    },
-    withToolHandler(
-      (args, sessionId) => listSchemasTool({ filter: args.filter, sessionId }),
-      'Failed to list schemas',
-      sessionContext
-    )
-  );
+  if (enabledTools.has('execute_query')) {
+    server.registerTool(
+      'execute_query',
+      {
+        title: 'Execute SQL Query',
+        description: 'Execute a read-only SQL SELECT query against the IBM DB2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          sql: z.string().describe('SQL SELECT query to execute'),
+          params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
+          limit: z.number().int().positive().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
+        }),
+        outputSchema: queryOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => executeQueryTool({
+          sql: args.sql,
+          params: args.params,
+          limit: args.limit,
+          sessionId,
+        }),
+        'Query failed',
+        sessionContext
+      )
+    );
+  }
 
-  // Register list_tables tool
-  server.registerTool(
-    'list_tables',
-    {
-      title: 'List Tables',
-      description: `List all tables in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
-      annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: z.object({
-        schema: z.string().optional().describe(`Schema (library) name to list tables from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
-        filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "CUST*" matches tables starting with CUST'),
-      }),
-      outputSchema: listTablesOutputSchema,
-    },
-    withToolHandler(
-      (args, sessionId) => listTablesTool({ 
-        schema: args.schema ?? getDefaultSchema(), 
-        filter: args.filter,
-        sessionId,
-      }),
-      'Failed to list tables',
-      sessionContext
-    )
-  );
+  if (enabledTools.has('list_schemas')) {
+    server.registerTool(
+      'list_schemas',
+      {
+        title: 'List Schemas',
+        description: 'List all schemas (libraries) in the IBM DB2i database. Optionally filter by name pattern using * as wildcard.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          filter: z.string().optional().describe('Filter pattern for schema names. Use * as wildcard. Example: "QSYS*" matches schemas starting with QSYS'),
+        }),
+        outputSchema: listSchemasOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => listSchemasTool({ filter: args.filter, sessionId }),
+        'Failed to list schemas',
+        sessionContext
+      )
+    );
+  }
 
-  // Register describe_table tool
-  server.registerTool(
-    'describe_table',
-    {
-      title: 'Describe Table',
-      description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
-      annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: z.object({
-        schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
-        table: z.string().describe('Table name to describe'),
-      }),
-      outputSchema: describeTableOutputSchema,
-    },
-    withToolHandler(
-      (args, sessionId) => describeTableTool({ 
-        schema: args.schema ?? getDefaultSchema(), 
-        table: args.table,
-        sessionId,
-      }),
-      'Failed to describe table',
-      sessionContext
-    )
-  );
+  if (enabledTools.has('list_tables')) {
+    server.registerTool(
+      'list_tables',
+      {
+        title: 'List Tables',
+        description: `List all tables in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) name to list tables from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "CUST*" matches tables starting with CUST'),
+        }),
+        outputSchema: listTablesOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => listTablesTool({ 
+          schema: args.schema ?? getDefaultSchema(), 
+          filter: args.filter,
+          sessionId,
+        }),
+        'Failed to list tables',
+        sessionContext
+      )
+    );
+  }
 
-  // Register list_views tool
-  server.registerTool(
-    'list_views',
-    {
-      title: 'List Views',
-      description: `List all views in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
-      annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: z.object({
-        schema: z.string().optional().describe(`Schema (library) name to list views from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
-        filter: z.string().optional().describe('Filter pattern for view names. Use * as wildcard.'),
-      }),
-      outputSchema: listViewsOutputSchema,
-    },
-    withToolHandler(
-      (args, sessionId) => listViewsTool({ 
-        schema: args.schema ?? getDefaultSchema(), 
-        filter: args.filter,
-        sessionId,
-      }),
-      'Failed to list views',
-      sessionContext
-    )
-  );
+  if (enabledTools.has('describe_table')) {
+    server.registerTool(
+      'describe_table',
+      {
+        title: 'Describe Table',
+        description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          table: z.string().describe('Table name to describe'),
+        }),
+        outputSchema: describeTableOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => describeTableTool({ 
+          schema: args.schema ?? getDefaultSchema(), 
+          table: args.table,
+          sessionId,
+        }),
+        'Failed to describe table',
+        sessionContext
+      )
+    );
+  }
 
-  // Register list_indexes tool
-  server.registerTool(
-    'list_indexes',
-    {
-      title: 'List Indexes',
-      description: `List all indexes for a specific table including uniqueness and column information. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
-      annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: z.object({
-        schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
-        table: z.string().describe('Table name to list indexes for'),
-      }),
-      outputSchema: listIndexesOutputSchema,
-    },
-    withToolHandler(
-      (args, sessionId) => listIndexesTool({ 
-        schema: args.schema ?? getDefaultSchema(), 
-        table: args.table,
-        sessionId,
-      }),
-      'Failed to list indexes',
-      sessionContext
-    )
-  );
+  if (enabledTools.has('list_views')) {
+    server.registerTool(
+      'list_views',
+      {
+        title: 'List Views',
+        description: `List all views in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) name to list views from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          filter: z.string().optional().describe('Filter pattern for view names. Use * as wildcard.'),
+        }),
+        outputSchema: listViewsOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => listViewsTool({ 
+          schema: args.schema ?? getDefaultSchema(), 
+          filter: args.filter,
+          sessionId,
+        }),
+        'Failed to list views',
+        sessionContext
+      )
+    );
+  }
 
-  // Register get_table_constraints tool
-  server.registerTool(
-    'get_table_constraints',
-    {
-      title: 'Get Table Constraints',
-      description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
-      annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: z.object({
-        schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
-        table: z.string().describe('Table name to get constraints for'),
-      }),
-      outputSchema: tableConstraintsOutputSchema,
-    },
-    withToolHandler(
-      (args, sessionId) => getTableConstraintsTool({ 
-        schema: args.schema ?? getDefaultSchema(), 
-        table: args.table,
-        sessionId,
-      }),
-      'Failed to get constraints',
-      sessionContext
-    )
-  );
+  if (enabledTools.has('list_indexes')) {
+    server.registerTool(
+      'list_indexes',
+      {
+        title: 'List Indexes',
+        description: `List all indexes for a specific table including uniqueness and column information. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          table: z.string().describe('Table name to list indexes for'),
+        }),
+        outputSchema: listIndexesOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => listIndexesTool({ 
+          schema: args.schema ?? getDefaultSchema(), 
+          table: args.table,
+          sessionId,
+        }),
+        'Failed to list indexes',
+        sessionContext
+      )
+    );
+  }
+
+  if (enabledTools.has('get_table_constraints')) {
+    server.registerTool(
+      'get_table_constraints',
+      {
+        title: 'Get Table Constraints',
+        description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          table: z.string().describe('Table name to get constraints for'),
+        }),
+        outputSchema: tableConstraintsOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => getTableConstraintsTool({ 
+          schema: args.schema ?? getDefaultSchema(), 
+          table: args.table,
+          sessionId,
+        }),
+        'Failed to get constraints',
+        sessionContext
+      )
+    );
+  }
 
   return server;
 }

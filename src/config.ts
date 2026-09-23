@@ -310,6 +310,88 @@ export function applyQueryLimit(
 }
 
 // ============================================================================
+// Tool Selection and Response Format
+// ============================================================================
+
+/**
+ * Names of all tools the server can register
+ */
+export const TOOL_NAMES = [
+  'execute_query',
+  'list_schemas',
+  'list_tables',
+  'describe_table',
+  'list_views',
+  'list_indexes',
+  'get_table_constraints',
+] as const;
+
+export type ToolName = (typeof TOOL_NAMES)[number];
+
+/**
+ * Parse a comma-separated list of tool names.
+ * Throws if any name is not a known tool, so typos fail loudly at startup.
+ */
+function parseToolList(value: string | undefined, envVar: string): ToolName[] | undefined {
+  if (value === undefined || value.trim() === '') {
+    return undefined;
+  }
+
+  const names = value
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter((name) => name.length > 0);
+
+  const unknown = names.filter((name) => !(TOOL_NAMES as readonly string[]).includes(name));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown tool name(s) in ${envVar}: ${unknown.join(', ')}. Valid tools: ${TOOL_NAMES.join(', ')}`
+    );
+  }
+
+  return names as ToolName[];
+}
+
+/**
+ * Get the list of tools to register.
+ *
+ * Environment variables:
+ * - MCP_TOOLS_ENABLED: Comma-separated allowlist. If set, only these tools are registered.
+ * - MCP_TOOLS_DISABLED: Comma-separated denylist, applied after the allowlist.
+ *
+ * @returns Enabled tool names, in registration order
+ * @throws Error if either variable contains an unknown tool name
+ */
+export function getEnabledTools(): ToolName[] {
+  const allowlist = parseToolList(process.env.MCP_TOOLS_ENABLED, 'MCP_TOOLS_ENABLED');
+  const denylist = parseToolList(process.env.MCP_TOOLS_DISABLED, 'MCP_TOOLS_DISABLED') ?? [];
+
+  return TOOL_NAMES.filter(
+    (name) => (!allowlist || allowlist.includes(name)) && !denylist.includes(name)
+  );
+}
+
+/**
+ * Text content format for tool responses
+ * - 'json': Compact JSON (default)
+ * - 'pretty': Indented JSON
+ * - 'markdown': Row results as a markdown table, other results as compact JSON
+ */
+export type ResponseFormat = 'json' | 'pretty' | 'markdown';
+
+/**
+ * Get the configured response format from MCP_RESPONSE_FORMAT.
+ * Defaults to 'json' if not set or invalid.
+ */
+export function getResponseFormat(): ResponseFormat {
+  const format = process.env.MCP_RESPONSE_FORMAT?.trim().toLowerCase();
+  if (format === 'pretty' || format === 'markdown') {
+    return format;
+  }
+  return 'json';
+}
+
+// ============================================================================
 // HTTP Transport Configuration
 // ============================================================================
 
