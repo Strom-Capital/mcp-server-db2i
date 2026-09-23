@@ -160,6 +160,8 @@ services:
       # 0.0.0.0 so the proxy container can reach this process. 127.0.0.1 is only this container's loopback.
       - MCP_HTTP_HOST=0.0.0.0
       - MCP_HTTP_PORT=3000
+      # Name clients send in Host. Loopback alone is not enough once a proxy forwards a public hostname.
+      - MCP_ALLOWED_HOSTS=db2i.example.com
 
   nginx:
     image: nginx:alpine
@@ -191,6 +193,7 @@ environment:
   - MCP_TRANSPORT=${MCP_TRANSPORT:-stdio}
   - MCP_HTTP_PORT=${MCP_HTTP_PORT:-3000}
   - MCP_HTTP_HOST=${MCP_HTTP_HOST:-127.0.0.1}
+  - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
   - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateless}
   - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}
   - MCP_MAX_SESSIONS=${MCP_MAX_SESSIONS:-100}
@@ -351,6 +354,7 @@ services:
       - DB2I_SCHEMA=${DB2I_SCHEMA}
       - MCP_TRANSPORT=http
       - MCP_HTTP_HOST=0.0.0.0
+      - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
       - MCP_TLS_ENABLED=true
       - MCP_TLS_CERT_PATH=/certs/server.crt
       - MCP_TLS_KEY_PATH=/certs/server.key

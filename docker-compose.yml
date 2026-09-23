@@ -42,6 +42,8 @@ services:
       - MCP_HTTP_PORT=${MCP_HTTP_PORT:-3000}
       # 127.0.0.1 is correct when nothing publishes this port. Use 0.0.0.0 when ports are published or another container connects in.
       - MCP_HTTP_HOST=${MCP_HTTP_HOST:-127.0.0.1}
+      # Extra Host names when clients use a public hostname. Loopback is always allowed.
+      - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
       # stateless (default). Set stateful only for 2025-era clients that require Mcp-Session-Id.
       - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateless}
       - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}
@@ -53,6 +55,10 @@ services:
       # none: No auth required (trusted networks only)
       - MCP_AUTH_MODE=${MCP_AUTH_MODE:-required}
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-}
+      # Allow MCP_AUTH_MODE=none on a non-loopback bind (default: false)
+      - MCP_ALLOW_UNAUTHENTICATED_HTTP=${MCP_ALLOW_UNAUTHENTICATED_HTTP:-false}
+      # Hosts POST /auth may connect to. Empty uses DB2I_HOSTNAME only.
+      - MCP_AUTH_ALLOWED_DB_HOSTS=${MCP_AUTH_ALLOWED_DB_HOSTS:-}
       
       # CORS allowed origins (comma-separated, * for all, empty for same-origin only)
       - MCP_CORS_ORIGINS=${MCP_CORS_ORIGINS:-}

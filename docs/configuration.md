@@ -38,6 +38,7 @@ DB2I_PASSWORD=your-password
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
 | `MCP_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` for a published Docker port or a reverse proxy on another container. Terminate TLS here or at that proxy |
+| `MCP_ALLOWED_HOSTS` | loopback | Extra `Host` header names, comma-separated. `localhost`, `127.0.0.1`, and `::1` are always allowed. The bind address is included unless it is `0.0.0.0` |
 | `MCP_SESSION_MODE` | `stateless` | `stateless` (default). `stateful` is deprecated and only keeps `Mcp-Session-Id` for 2025-era clients |
 | `MCP_TOKEN_EXPIRY` | `3600` | Token lifetime in seconds (for `required` auth mode) |
 | `MCP_MAX_SESSIONS` | `100` | Maximum concurrent sessions |
@@ -48,12 +49,14 @@ DB2I_PASSWORD=your-password
 |----------|---------|-------------|
 | `MCP_AUTH_MODE` | `required` | Authentication mode (see below) |
 | `MCP_AUTH_TOKEN` | - | Static token for `token` auth mode |
+| `MCP_ALLOW_UNAUTHENTICATED_HTTP` | `false` | Allow `MCP_AUTH_MODE=none` when `MCP_HTTP_HOST` is not a loopback address |
+| `MCP_AUTH_ALLOWED_DB_HOSTS` | `DB2I_HOSTNAME` | Comma-separated hosts `POST /auth` may connect to. When unset, only `DB2I_HOSTNAME` is accepted. When both are unset, any host is accepted and a warning is logged |
 
 **Authentication Modes:**
 
 - **`required`** (default): Full `/auth` flow with per-user DB credentials. Most secure.
 - **`token`**: Pre-shared static token. Uses environment DB credentials. Requires `MCP_AUTH_TOKEN`.
-- **`none`**: No authentication. Uses environment DB credentials. Only for trusted networks.
+- **`none`**: No authentication. Uses environment DB credentials. Only for trusted networks. The server refuses to start if `MCP_HTTP_HOST` is not loopback, unless `MCP_ALLOW_UNAUTHENTICATED_HTTP=true`.
 
 ### TLS Settings
 
@@ -193,7 +196,12 @@ The `DB2I_JDBC_OPTIONS` variable accepts semicolon-separated JDBC options for th
 | `time format` | `iso`, `usa`, `eur`, `jis`, `hms` | Time format for time fields |
 | `errors` | `full`, `basic` | Level of detail in error messages (`full` helps debugging) |
 | `translate binary` | `true`, `false` | Whether to translate binary/CCSID data |
-| `secure` | `true`, `false` | Enable SSL/TLS encryption for JDBC connection |
+| `secure` | `true`, `false` | Enable SSL/TLS encryption for the JDBC connection. Off unless set. Startup logs a warning when it is not `true` |
+| `access` | `all`, `read only`, `read call` | Statement access mode. Defaults to `read only` when omitted. An explicit value overrides that default and is logged at startup |
+
+The server sets `access=read only` on every connection unless `DB2I_JDBC_OPTIONS` already contains `access`. That stops a statement the SQL validator misses from running as a write. Built-in tools only issue `SELECT`, so the default does not change them.
+
+Set `secure=true` only after the IBM i host servers are configured for SSL (Digital Certificate Manager). Until then the user, password, and results cross the network in cleartext, and the server says so at startup.
 
 ### Examples
 

@@ -27,6 +27,7 @@ import {
   getHttpConfig,
   getEnabledTools,
   getResponseFormat,
+  jdbcConnectionSecurity,
 } from './config.js';
 import { initializePool, testConnection, closeGlobalPool } from './db/connection.js';
 import { logger, flushLogger } from './utils/logger.js';
@@ -87,6 +88,19 @@ async function main(): Promise<void> {
 
     // Initialize rate limiter (logs its own config)
     getRateLimiter();
+
+    const jdbcSecurity = jdbcConnectionSecurity();
+    if (jdbcSecurity.accessOverride !== undefined) {
+      logger.warn(
+        { access: jdbcSecurity.accessOverride },
+        'DB2I_JDBC_OPTIONS sets access and overrides the read only default'
+      );
+    }
+    if (!jdbcSecurity.secure) {
+      logger.warn(
+        'Database connection is not using TLS. Set secure=true in DB2I_JDBC_OPTIONS after the IBM i host servers are configured for SSL.'
+      );
+    }
 
     // Validates MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
     const enabledTools = getEnabledTools();

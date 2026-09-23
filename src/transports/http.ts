@@ -19,6 +19,8 @@ import { toNodeHandler, toWebRequest } from '@modelcontextprotocol/node';
 
 import {
   getHttpConfig,
+  hostnameOf,
+  isLoopbackHost,
   loadConfig,
   loadPartialConfig,
   type DB2iConfig,
@@ -368,6 +370,29 @@ export function createHttpApp(): Express {
     next();
   });
 
+  // Host allowlist. Runs before Origin checks so a rebinding request, which
+  // sends the attacker's name in both Host and Origin, is rejected first.
+  app.use((req: Request, res: Response, next: express.NextFunction) => {
+    const hostHeader = req.headers.host;
+    const hostname = typeof hostHeader === 'string' ? hostnameOf(hostHeader) : undefined;
+    if (!hostname || !httpConfig.allowedHosts.includes(hostname)) {
+      log.warn(
+        {
+          host: typeof hostHeader === 'string' ? hostHeader : undefined,
+          reason: 'host_not_allowed',
+          clientIp: req.socket.remoteAddress,
+        },
+        'Rejected request'
+      );
+      res.status(403).json({
+        error: 'forbidden',
+        error_description: 'Forbidden: Host not allowed',
+      });
+      return;
+    }
+    next();
+  });
+
   // CORS and Origin validation (Streamable HTTP requires Origin checks)
   // By default (MCP_CORS_ORIGINS not set), only same-origin or missing Origin is allowed
   // Set MCP_CORS_ORIGINS='*' to allow all origins, or comma-separated list for specific origins
@@ -488,6 +513,17 @@ export function createHttpApp(): Express {
         res.status(400).json({
           error: 'invalid_request',
           error_description: message,
+        });
+        return;
+      }
+
+      const allowedDbHosts = httpConfig.authAllowedDbHosts;
+      const requestedHost = dbConfig.hostname.trim().replace(/\.$/, '').toLowerCase();
+      if (allowedDbHosts && !allowedDbHosts.includes(requestedHost)) {
+        recordFailedAuthAttempt(req);
+        res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Host is not allowed',
         });
         return;
       }
@@ -613,6 +649,25 @@ export function createHttpApp(): Express {
  */
 export async function startHttpServer(): Promise<http.Server | https.Server> {
   const httpConfig = getHttpConfig();
+
+  if (
+    !isLoopbackHost(httpConfig.host) &&
+    httpConfig.authMode === 'none' &&
+    !httpConfig.allowUnauthenticatedHttp
+  ) {
+    throw new Error(
+      `Refusing to listen on ${httpConfig.host} with MCP_AUTH_MODE=none. ` +
+      'Enable authentication, bind a loopback address, or set MCP_ALLOW_UNAUTHENTICATED_HTTP=true.'
+    );
+  }
+
+  if (httpConfig.authMode === 'required' && httpConfig.authAllowedDbHosts === null) {
+    log.warn(
+      'MCP_AUTH_ALLOWED_DB_HOSTS and DB2I_HOSTNAME are unset. ' +
+      '/auth will open a database connection to any host the client names.'
+    );
+  }
+
   const app = createHttpApp();
 
   // Register cleanup callback to close session pools when tokens expire or are revoked.

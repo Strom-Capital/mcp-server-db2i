@@ -9,6 +9,13 @@ dist/
 .env.local
 .env.*.local
 
+# Secrets and certificates
+secrets/
+certs/
+*.pem
+*.key
+*.p12
+
 # IDE
 .idea/
 .vscode/

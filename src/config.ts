@@ -18,6 +18,9 @@
  * - MCP_TOKEN_EXPIRY: Token lifetime in seconds (default: 3600)
  * - MCP_MAX_SESSIONS: Maximum concurrent sessions (default: 100)
  * - MCP_CORS_ORIGINS: CORS allowed origins (comma-separated, '*' for all)
+ * - MCP_ALLOWED_HOSTS: Extra Host header names, added to loopback (comma-separated)
+ * - MCP_ALLOW_UNAUTHENTICATED_HTTP: Allow MCP_AUTH_MODE=none on a non-loopback bind
+ * - MCP_AUTH_ALLOWED_DB_HOSTS: Hosts /auth may open a database connection to
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -144,6 +147,29 @@ function parseJdbcOptions(optionsString: string | undefined): Record<string, str
 }
 
 /**
+ * Look up a JDBC option by name, ignoring key case.
+ */
+function jdbcOption(options: Record<string, string>, name: string): string | undefined {
+  const key = Object.keys(options).find((candidate) => candidate.toLowerCase() === name);
+  return key === undefined ? undefined : options[key];
+}
+
+/**
+ * Security-relevant JDBC settings derived from DB2I_JDBC_OPTIONS.
+ * `access` is unset when the driver default of read only should apply.
+ */
+export function jdbcConnectionSecurity(
+  options: Record<string, string> = parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS)
+): { accessOverride?: string; secure: boolean } {
+  const accessOverride = jdbcOption(options, 'access');
+  const secureValue = jdbcOption(options, 'secure');
+  return {
+    accessOverride,
+    secure: secureValue?.toLowerCase() === 'true',
+  };
+}
+
+/**
  * Load configuration from environment variables.
  *
  * Supports file-based secrets for sensitive values (recommended for production):
@@ -215,6 +241,12 @@ export function buildConnectionConfig(config: DB2iConfig): {
   // Add date format if not specified
   if (!config.jdbcOptions['date format']) {
     connectionConfig['date format'] = 'iso';
+  }
+
+  // Read-only at the driver, unless the operator set access explicitly.
+  // An explicit value is merged below and overrides this default.
+  if (jdbcOption(config.jdbcOptions, 'access') === undefined) {
+    connectionConfig['access'] = 'read only';
   }
 
   // Unqualified names resolve to the configured schema unless the operator
@@ -489,6 +521,15 @@ export interface HttpConfig {
   maxSessions: number;
   /** CORS allowed origins (comma-separated, '*' for all, empty for none) */
   corsOrigins: string[];
+  /** Host header names that may reach this server. Always includes loopback. */
+  allowedHosts: string[];
+  /** Permit MCP_AUTH_MODE=none when the bind address is not loopback. */
+  allowUnauthenticatedHttp: boolean;
+  /**
+   * Hosts /auth may connect to. Null means neither MCP_AUTH_ALLOWED_DB_HOSTS
+   * nor DB2I_HOSTNAME is set, so any host is accepted.
+   */
+  authAllowedDbHosts: string[] | null;
 }
 
 /**
@@ -506,6 +547,9 @@ export const DEFAULT_HTTP_CONFIG: HttpConfig = {
   tokenExpiry: 3600,
   maxSessions: 100,
   corsOrigins: [],
+  allowedHosts: ['localhost', '127.0.0.1', '::1'],
+  allowUnauthenticatedHttp: false,
+  authAllowedDbHosts: null,
 };
 
 /**
@@ -518,6 +562,106 @@ export function getCorsOrigins(): string[] {
     return [];
   }
   return origins.split(',').map(o => o.trim()).filter(o => o.length > 0);
+}
+
+const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '::1'];
+
+/**
+ * Hostname from a Host header or an allowlist entry.
+ * Strips a port, IPv6 brackets, and a trailing root dot, and lowercases the result.
+ * Rejects userinfo, paths, and queries.
+ */
+export function hostnameOf(hostHeader: string): string | undefined {
+  const raw = hostHeader.trim();
+  if (
+    !raw ||
+    raw.includes('@') ||
+    raw.includes('/') ||
+    raw.includes('?') ||
+    raw.includes('\\') ||
+    raw.includes('#') ||
+    /\s/.test(raw)
+  ) {
+    return undefined;
+  }
+
+  let host = raw;
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']');
+    if (end <= 1) return undefined;
+    const rest = host.slice(end + 1);
+    if (rest !== '' && !/^:\d+$/.test(rest)) return undefined;
+    host = host.slice(1, end);
+  } else {
+    const colonCount = host.split(':').length - 1;
+    if (colonCount === 1) {
+      if (!/:\d+$/.test(host)) return undefined;
+      host = host.replace(/:\d+$/, '');
+    } else if (colonCount > 1) {
+      return undefined;
+    }
+  }
+
+  host = host.replace(/\.$/, '').toLowerCase();
+  return host.length > 0 ? host : undefined;
+}
+
+/**
+ * True for localhost, 127.0.0.1, and ::1. 0.0.0.0 is not loopback.
+ */
+export function isLoopbackHost(host: string): boolean {
+  const normalized = hostnameOf(host);
+  return normalized !== undefined && LOOPBACK_HOSTS.includes(normalized);
+}
+
+/**
+ * Host names accepted on incoming requests.
+ * Loopback is always included. The bind address is included unless it is
+ * 0.0.0.0 or ::. MCP_ALLOWED_HOSTS adds more names.
+ */
+function getAllowedHosts(bindHost: string): string[] {
+  const configured = (process.env.MCP_ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map((entry) => hostnameOf(entry))
+    .filter((entry): entry is string => Boolean(entry));
+
+  const allowed = new Set<string>(LOOPBACK_HOSTS);
+  const bind = hostnameOf(bindHost);
+  if (bind && bind !== '0.0.0.0' && bind !== '::') {
+    allowed.add(bind);
+  }
+  for (const host of configured) {
+    allowed.add(host);
+  }
+  return [...allowed];
+}
+
+/**
+ * Hosts the /auth endpoint may open a database connection to.
+ * An explicit MCP_AUTH_ALLOWED_DB_HOSTS list wins. Otherwise DB2I_HOSTNAME
+ * is the only allowed host. Null when neither is set.
+ */
+export function getAuthAllowedDbHosts(): string[] | null {
+  const explicit = process.env.MCP_AUTH_ALLOWED_DB_HOSTS;
+  if (explicit !== undefined && explicit.trim() !== '') {
+    const hosts = [
+      ...new Set(
+        explicit
+          .split(',')
+          .map((host) => host.trim().replace(/\.$/, '').toLowerCase())
+          .filter((host) => host.length > 0)
+      ),
+    ];
+    return hosts.length > 0 ? hosts : null;
+  }
+
+  const dbHost = process.env.DB2I_HOSTNAME?.trim().replace(/\.$/, '').toLowerCase();
+  return dbHost ? [dbHost] : null;
+}
+
+function allowUnauthenticatedHttp(): boolean {
+  const value = process.env.MCP_ALLOW_UNAUTHENTICATED_HTTP?.toLowerCase();
+  return value === 'true' || value === '1';
 }
 
 /**
@@ -617,10 +761,12 @@ export function getHttpConfig(): HttpConfig {
     );
   }
 
+  const host = process.env.MCP_HTTP_HOST || '127.0.0.1';
+
   return {
     transport: getTransportMode(),
     port: parseInt(process.env.MCP_HTTP_PORT || '3000', 10),
-    host: process.env.MCP_HTTP_HOST || '127.0.0.1',
+    host,
     sessionMode: getSessionMode(),
     authMode,
     staticToken,
@@ -628,6 +774,9 @@ export function getHttpConfig(): HttpConfig {
     tokenExpiry: parseInt(process.env.MCP_TOKEN_EXPIRY || '3600', 10),
     maxSessions: parseInt(process.env.MCP_MAX_SESSIONS || '100', 10),
     corsOrigins: getCorsOrigins(),
+    allowedHosts: getAllowedHosts(host),
+    allowUnauthenticatedHttp: allowUnauthenticatedHttp(),
+    authAllowedDbHosts: getAuthAllowedDbHosts(),
   };
 }
 
