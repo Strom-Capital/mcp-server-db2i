@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.0.0...v2.1.0) (2026-09-23)
+
+
+### Features
+
+* configurable tool selection and compact response format ([#37](https://github.com/Strom-Capital/mcp-server-db2i/issues/37)) ([0597685](https://github.com/Strom-Capital/mcp-server-db2i/commit/05976859f731071fbb21e1c128a5272a7c062f33)), closes [#35](https://github.com/Strom-Capital/mcp-server-db2i/issues/35)
+* use DB2I_SCHEMA as the default library and add a schema allowlist ([#39](https://github.com/Strom-Capital/mcp-server-db2i/issues/39)) ([00bae64](https://github.com/Strom-Capital/mcp-server-db2i/commit/00bae64f8cc5a01a6be7f055c1eb57c626ec129c)), closes [#36](https://github.com/Strom-Capital/mcp-server-db2i/issues/36)
+
 ## [2.0.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.3.2...v2.0.0) (2026-09-23)
 
 
