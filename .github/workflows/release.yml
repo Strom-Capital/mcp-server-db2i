@@ -12,41 +12,25 @@ on:
         type: string
         default: ''
 
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  # Run CI checks first
   ci:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Check TypeScript types
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ inputs.tag }}
 
   release-please:
     needs: ci
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -55,13 +39,20 @@ jobs:
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          release-type: node
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   publish-npm:
     needs: [ci, release-please]
-    if: ${{ needs.release-please.outputs.release_created == 'true' || inputs.tag != '' }}
+    if: >-
+      always() &&
+      needs.ci.result == 'success' &&
+      (
+        needs.release-please.outputs.release_created == 'true' ||
+        (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+      )
     runs-on: ubuntu-latest
-    # OIDC trusted publishing - no tokens needed
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
@@ -69,6 +60,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.sha }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -81,15 +73,6 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Check TypeScript types
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
 
       # node-jt400 native bindings fail under Node 24; use 24 only for OIDC publish
       - name: Setup Node.js for trusted publishing

@@ -40,15 +40,18 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Commit Messages
 
-We use [Conventional Commits](https://www.conventionalcommits.org/) for automated releases:
+We use [Conventional Commits](https://www.conventionalcommits.org/) for automated releases via [Release Please](https://github.com/googleapis/release-please). The **PR title** becomes the squash-commit subject on `main`, so it must be a conventional commit.
 
 | Type | Description | Version Bump |
 |------|-------------|--------------|
 | `feat:` | New feature | Minor |
 | `fix:` | Bug fix | Patch |
+| `perf:` | Performance improvement | Patch |
+| `deps:` | Dependency update | None (listed in changelog) |
+| `ci:` | CI / release pipeline | None (listed in changelog) |
 | `docs:` | Documentation only | None |
 | `chore:` | Maintenance | None |
-| `feat!:` | Breaking change | Major |
+| `feat!:` / `fix!:` | Breaking change | Major |
 
 Examples:
 ```
@@ -60,10 +63,12 @@ docs: update JDBC options table
 ### Pull Requests
 
 1. Push your branch to your fork
-2. Open a PR against `main`
+2. Open a PR against `main` with a conventional-commit title
 3. Fill out the PR template
-4. Ensure CI passes (build check)
+4. Ensure CI passes
 5. Request review
+
+**Always squash-merge.** GitHub merge commits copy the PR title into the merge-commit body. Release Please then records both the feature commit and the merge commit, which produces duplicate changelog rows (see v1.3.2). The repository allows squash-merge only.
 
 ## Project Structure
 

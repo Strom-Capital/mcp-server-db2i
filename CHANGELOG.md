@@ -5,8 +5,7 @@
 
 ### Bug Fixes
 
-* harden HTTP transport, clamp query limits, and bump MCP SDK to 1.30 ([89248c2](https://github.com/Strom-Capital/mcp-server-db2i/commit/89248c2046b3de406cd009400c5a8b1f9bbacd87))
-* harden HTTP transport, clamp query limits, and bump MCP SDK to 1.30 ([13ca726](https://github.com/Strom-Capital/mcp-server-db2i/commit/13ca726019d66e1d5969ee61565447d3313c9abc)), closes [#26](https://github.com/Strom-Capital/mcp-server-db2i/issues/26)
+* harden HTTP transport, clamp query limits, and bump MCP SDK to 1.30 ([#28](https://github.com/Strom-Capital/mcp-server-db2i/pull/28)) ([13ca726](https://github.com/Strom-Capital/mcp-server-db2i/commit/13ca726019d66e1d5969ee61565447d3313c9abc)), closes [#26](https://github.com/Strom-Capital/mcp-server-db2i/issues/26)
 
 ## [1.3.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.3.0...v1.3.1) (2026-03-05)
 
