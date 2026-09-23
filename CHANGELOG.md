@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.1.0...v2.2.0) (2026-09-23)
+
+
+### Features
+
+* load read-only business SQL tools from YAML ([#47](https://github.com/Strom-Capital/mcp-server-db2i/issues/47)) ([690b985](https://github.com/Strom-Capital/mcp-server-db2i/commit/690b9858ff59d26e6d7dd1af1585e9f7aa064fe8))
+* validate SQL and return object DDL and dependents ([#44](https://github.com/Strom-Capital/mcp-server-db2i/issues/44)) ([932a6a8](https://github.com/Strom-Capital/mcp-server-db2i/commit/932a6a839031635068ffa57c9e3a889672e71258))
+
 ## [2.1.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.0.0...v2.1.0) (2026-09-23)
 
 
