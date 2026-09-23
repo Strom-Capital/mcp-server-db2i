@@ -54,9 +54,16 @@ describe('HTTP Configuration', () => {
   });
 
   describe('getSessionMode', () => {
-    it('should default to stateful', async () => {
+    it('should default to stateless', async () => {
       delete process.env.MCP_SESSION_MODE;
       
+      const { getSessionMode } = await import('../src/config.js');
+      expect(getSessionMode()).toBe('stateless');
+    });
+
+    it('should return stateful when explicitly set', async () => {
+      process.env.MCP_SESSION_MODE = 'stateful';
+
       const { getSessionMode } = await import('../src/config.js');
       expect(getSessionMode()).toBe('stateful');
     });
@@ -129,7 +136,7 @@ describe('HTTP Configuration', () => {
 
       expect(config.port).toBe(3000);
       expect(config.host).toBe('127.0.0.1');
-      expect(config.sessionMode).toBe('stateful');
+      expect(config.sessionMode).toBe('stateless');
       expect(config.tokenExpiry).toBe(3600);
       expect(config.maxSessions).toBe(100);
       expect(config.tls.enabled).toBe(false);

@@ -174,3 +174,107 @@ describe('HTTP session ownership', () => {
     }
   });
 });
+
+const MCP_ACCEPT = 'application/json, text/event-stream';
+
+async function readRpc(res: Response): Promise<{
+  result?: {
+    protocolVersion?: string;
+    supportedVersions?: string[];
+    serverInfo?: { name?: string };
+    _meta?: Record<string, { name?: string }>;
+  };
+}> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{')) {
+    return JSON.parse(trimmed) as Awaited<ReturnType<typeof readRpc>>;
+  }
+  const dataLine = trimmed.split('\n').find((line) => line.startsWith('data:'));
+  if (!dataLine) {
+    throw new Error(`Unexpected MCP body: ${trimmed.slice(0, 300)}`);
+  }
+  return JSON.parse(dataLine.slice('data:'.length).trim()) as Awaited<ReturnType<typeof readRpc>>;
+}
+
+describe('HTTP protocol eras', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      MCP_AUTH_MODE: 'none',
+      MCP_SESSION_MODE: 'stateless',
+      DB2I_HOSTNAME: 'test-host',
+      DB2I_USERNAME: 'test-user',
+      DB2I_PASSWORD: 'test-pass',
+    };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('serves a 2025-era initialize without a session id', async () => {
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await fetch(`${baseUrl}/mcp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: MCP_ACCEPT,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: { name: 'legacy-test', version: '1.0.0' },
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await readRpc(res);
+      expect(body.result?.protocolVersion).toBe('2025-06-18');
+      expect(body.result?.serverInfo?.name).toBe('mcp-server-db2i');
+      expect(res.headers.get('mcp-session-id')).toBeNull();
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('serves a 2026-07-28 server/discover request', async () => {
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await fetch(`${baseUrl}/mcp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: MCP_ACCEPT,
+          'MCP-Protocol-Version': '2026-07-28',
+          'Mcp-Method': 'server/discover',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'server/discover',
+          params: {
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientInfo': { name: 'modern-test', version: '1.0.0' },
+              'io.modelcontextprotocol/clientCapabilities': {},
+            },
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await readRpc(res);
+      expect(body.result?.supportedVersions).toContain('2026-07-28');
+      expect(body.result?._meta?.['io.modelcontextprotocol/serverInfo']?.name).toBe('mcp-server-db2i');
+    } finally {
+      await closeServer(server);
+    }
+  });
+});

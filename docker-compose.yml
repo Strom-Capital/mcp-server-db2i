@@ -40,8 +40,10 @@ services:
       
       # HTTP transport settings (only used when MCP_TRANSPORT=http or both)
       - MCP_HTTP_PORT=${MCP_HTTP_PORT:-3000}
+      # 127.0.0.1 is correct when nothing publishes this port. Use 0.0.0.0 when ports are published or another container connects in.
       - MCP_HTTP_HOST=${MCP_HTTP_HOST:-127.0.0.1}
-      - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateful}
+      # stateless (default). Set stateful only for 2025-era clients that require Mcp-Session-Id.
+      - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateless}
       - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}
       - MCP_MAX_SESSIONS=${MCP_MAX_SESSIONS:-100}
       

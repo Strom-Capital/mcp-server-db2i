@@ -10,7 +10,7 @@
  */
 
 import { createRequire } from 'module';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import type { DB2iConfig } from './config.js';
@@ -68,16 +68,16 @@ const READ_ONLY_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
-const queryOutputSchema = {
+const queryOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   violations: z.array(z.string()).optional(),
   data: z.array(z.unknown()).optional(),
   rowCount: z.number().int().optional(),
   limitApplied: z.number().int().optional(),
-};
+});
 
-const listSchemasOutputSchema = {
+const listSchemasOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   data: z.array(z.object({
@@ -85,9 +85,9 @@ const listSchemasOutputSchema = {
     schema_text: z.string().nullable(),
   })).optional(),
   count: z.number().int().optional(),
-};
+});
 
-const listTablesOutputSchema = {
+const listTablesOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   data: z.array(z.object({
@@ -96,9 +96,9 @@ const listTablesOutputSchema = {
     table_text: z.string().nullable(),
   })).optional(),
   count: z.number().int().optional(),
-};
+});
 
-const describeTableOutputSchema = {
+const describeTableOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   data: z.array(z.object({
@@ -114,9 +114,9 @@ const describeTableOutputSchema = {
     ccsid: z.number().nullable(),
   })).optional(),
   count: z.number().int().optional(),
-};
+});
 
-const listViewsOutputSchema = {
+const listViewsOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   data: z.array(z.object({
@@ -124,9 +124,9 @@ const listViewsOutputSchema = {
     view_text: z.string().nullable(),
   })).optional(),
   count: z.number().int().optional(),
-};
+});
 
-const listIndexesOutputSchema = {
+const listIndexesOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   data: z.array(z.object({
@@ -136,9 +136,9 @@ const listIndexesOutputSchema = {
     column_names: z.string(),
   })).optional(),
   count: z.number().int().optional(),
-};
+});
 
-const tableConstraintsOutputSchema = {
+const tableConstraintsOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   data: z.array(z.object({
@@ -151,7 +151,7 @@ const tableConstraintsOutputSchema = {
     referenced_column_name: z.string().nullable(),
   })).optional(),
   count: z.number().int().optional(),
-};
+});
 
 /**
  * Creates a tool handler wrapper that applies rate limiting and standardizes responses.
@@ -243,11 +243,11 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       title: 'Execute SQL Query',
       description: 'Execute a read-only SQL SELECT query against the IBM DB2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
       annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: {
+      inputSchema: z.object({
         sql: z.string().describe('SQL SELECT query to execute'),
         params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
         limit: z.number().int().positive().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
-      },
+      }),
       outputSchema: queryOutputSchema,
     },
     withToolHandler(
@@ -269,9 +269,9 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       title: 'List Schemas',
       description: 'List all schemas (libraries) in the IBM DB2i database. Optionally filter by name pattern using * as wildcard.',
       annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: {
+      inputSchema: z.object({
         filter: z.string().optional().describe('Filter pattern for schema names. Use * as wildcard. Example: "QSYS*" matches schemas starting with QSYS'),
-      },
+      }),
       outputSchema: listSchemasOutputSchema,
     },
     withToolHandler(
@@ -288,10 +288,10 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       title: 'List Tables',
       description: `List all tables in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
       annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: {
+      inputSchema: z.object({
         schema: z.string().optional().describe(`Schema (library) name to list tables from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "CUST*" matches tables starting with CUST'),
-      },
+      }),
       outputSchema: listTablesOutputSchema,
     },
     withToolHandler(
@@ -312,10 +312,10 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       title: 'Describe Table',
       description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
       annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: {
+      inputSchema: z.object({
         schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to describe'),
-      },
+      }),
       outputSchema: describeTableOutputSchema,
     },
     withToolHandler(
@@ -336,10 +336,10 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       title: 'List Views',
       description: `List all views in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
       annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: {
+      inputSchema: z.object({
         schema: z.string().optional().describe(`Schema (library) name to list views from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         filter: z.string().optional().describe('Filter pattern for view names. Use * as wildcard.'),
-      },
+      }),
       outputSchema: listViewsOutputSchema,
     },
     withToolHandler(
@@ -360,10 +360,10 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       title: 'List Indexes',
       description: `List all indexes for a specific table including uniqueness and column information. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
       annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: {
+      inputSchema: z.object({
         schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to list indexes for'),
-      },
+      }),
       outputSchema: listIndexesOutputSchema,
     },
     withToolHandler(
@@ -384,10 +384,10 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       title: 'Get Table Constraints',
       description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
       annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: {
+      inputSchema: z.object({
         schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to get constraints for'),
-      },
+      }),
       outputSchema: tableConstraintsOutputSchema,
     },
     withToolHandler(

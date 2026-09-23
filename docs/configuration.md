@@ -37,8 +37,8 @@ DB2I_PASSWORD=your-password
 |----------|---------|-------------|
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
-| `MCP_HTTP_HOST` | `127.0.0.1` | HTTP server bind address (use `0.0.0.0` only with TLS or reverse proxy) |
-| `MCP_SESSION_MODE` | `stateful` | Session mode: `stateful` or `stateless` |
+| `MCP_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` for a published Docker port or a reverse proxy on another container. Terminate TLS here or at that proxy |
+| `MCP_SESSION_MODE` | `stateless` | `stateless` (default). `stateful` is deprecated and only keeps `Mcp-Session-Id` for 2025-era clients |
 | `MCP_TOKEN_EXPIRY` | `3600` | Token lifetime in seconds (for `required` auth mode) |
 | `MCP_MAX_SESSIONS` | `100` | Maximum concurrent sessions |
 
@@ -113,7 +113,7 @@ DB2I_JDBC_OPTIONS=naming=sql;date format=iso;errors=full
 MCP_TRANSPORT=http
 MCP_HTTP_PORT=3000
 MCP_HTTP_HOST=127.0.0.1
-MCP_SESSION_MODE=stateful
+MCP_SESSION_MODE=stateless
 MCP_TOKEN_EXPIRY=3600
 MCP_MAX_SESSIONS=100
 

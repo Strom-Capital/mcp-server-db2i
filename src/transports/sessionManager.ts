@@ -1,13 +1,13 @@
 /**
  * MCP Session Manager for HTTP Transport
  * 
- * Manages stateful MCP sessions using the SDK's StreamableHTTPServerTransport.
+ * Manages deprecated stateful MCP sessions (MCP_SESSION_MODE=stateful).
  * Each session maintains its own transport and server instance.
  */
 
 import { randomUUID } from 'node:crypto';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
+import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger({ component: 'session-manager' });
@@ -21,7 +21,7 @@ export interface McpSession {
   /** The MCP server instance for this session */
   server: McpServer;
   /** The transport for this session */
-  transport: StreamableHTTPServerTransport;
+  transport: NodeStreamableHTTPServerTransport;
   /** Associated auth token */
   authToken: string;
   /** When the session was created */
@@ -69,10 +69,10 @@ class SessionManager {
   async createSession(
     server: McpServer,
     authToken: string
-  ): Promise<{ sessionId: string; transport: StreamableHTTPServerTransport }> {
+  ): Promise<{ sessionId: string; transport: NodeStreamableHTTPServerTransport }> {
     const sessionId = randomUUID();
     
-    const transport = new StreamableHTTPServerTransport({
+    const transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: () => sessionId,
       onsessioninitialized: (id) => {
         log.info({ sessionId: id }, 'MCP session initialized');

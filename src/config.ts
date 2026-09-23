@@ -9,7 +9,7 @@
  * - MCP_TRANSPORT: 'stdio' | 'http' | 'both' (default: 'stdio')
  * - MCP_HTTP_PORT: HTTP server port (default: 3000)
  * - MCP_HTTP_HOST: HTTP bind address (default: '127.0.0.1')
- * - MCP_SESSION_MODE: 'stateful' | 'stateless' (default: 'stateful')
+ * - MCP_SESSION_MODE: 'stateful' | 'stateless' (default: 'stateless'; stateful is deprecated)
  * - MCP_AUTH_MODE: 'required' | 'token' | 'none' (default: 'required')
  * - MCP_AUTH_TOKEN: Static token for 'token' auth mode
  * - MCP_TLS_ENABLED: Enable built-in TLS (default: false)
@@ -353,7 +353,7 @@ export interface HttpConfig {
   port: number;
   /** HTTP server bind address (default: 127.0.0.1) */
   host: string;
-  /** Session mode: stateful or stateless (default: stateful) */
+  /** Session mode: stateful (deprecated) or stateless (default) */
   sessionMode: SessionMode;
   /** Authentication mode: required, token, or none (default: required) */
   authMode: AuthMode;
@@ -376,7 +376,7 @@ export const DEFAULT_HTTP_CONFIG: HttpConfig = {
   transport: 'stdio',
   port: 3000,
   host: '127.0.0.1',
-  sessionMode: 'stateful',
+  sessionMode: 'stateless',
   authMode: 'required',
   tls: {
     enabled: false,
@@ -411,15 +411,16 @@ export function getTransportMode(): TransportMode {
 }
 
 /**
- * Get the configured session mode
- * Defaults to 'stateful'
+ * Get the configured session mode.
+ * Defaults to 'stateless'. `stateful` is deprecated: protocol sessions were
+ * removed in MCP 2026-07-28, and database pools are already keyed by auth token.
  */
 export function getSessionMode(): SessionMode {
   const mode = process.env.MCP_SESSION_MODE?.toLowerCase();
-  if (mode === 'stateless') {
-    return 'stateless';
+  if (mode === 'stateful') {
+    return 'stateful';
   }
-  return 'stateful';
+  return 'stateless';
 }
 
 /**

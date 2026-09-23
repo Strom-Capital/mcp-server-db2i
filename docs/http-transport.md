@@ -23,8 +23,8 @@ MCP_TRANSPORT=stdio
 |----------|---------|-------------|
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
-| `MCP_HTTP_HOST` | `127.0.0.1` | HTTP server bind address (use `0.0.0.0` only with TLS) |
-| `MCP_SESSION_MODE` | `stateful` | Session mode: `stateful` or `stateless` |
+| `MCP_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` when Docker publishes the port or another container connects. Put TLS on this process or on the proxy in front of it |
+| `MCP_SESSION_MODE` | `stateless` | `stateless` (default) or deprecated `stateful` |
 | `MCP_AUTH_MODE` | `required` | Authentication mode: `required`, `token`, or `none` |
 | `MCP_AUTH_TOKEN` | - | Static token for `token` auth mode |
 | `MCP_TLS_ENABLED` | `false` | Enable built-in TLS |
@@ -173,9 +173,9 @@ curl -X POST http://localhost:3000/mcp \
 | GET | `/openapi.json` | None | OpenAPI 3.1 specification |
 | POST | `/auth` | None | Exchange credentials for token (`required` mode only) |
 | GET | `/health` | None | Health check with session stats and config |
-| POST | `/mcp` | Depends on mode* | MCP JSON-RPC requests |
-| GET | `/mcp` | Depends on mode* | SSE stream (stateful mode) |
-| DELETE | `/mcp` | Depends on mode* | Close MCP session |
+| POST | `/mcp` | Depends on mode* | MCP JSON-RPC requests (2026-07-28 and 2025-era) |
+| GET | `/mcp` | Depends on mode* | SSE stream (deprecated `stateful` mode only; otherwise 405) |
+| DELETE | `/mcp` | Depends on mode* | Close MCP session (deprecated `stateful` mode only; otherwise 405) |
 
 *Authentication depends on `MCP_AUTH_MODE`:
 - `required`: Bearer token from `/auth`
@@ -184,69 +184,24 @@ curl -X POST http://localhost:3000/mcp \
 
 **API Documentation**: Import `/openapi.json` into [Postman](https://learning.postman.com/docs/design-apis/specifications/import-a-specification/), Insomnia, or other API clients for interactive exploration.
 
+## Protocol versions
+
+HTTP serves two protocol eras from the same `/mcp` endpoint:
+
+- **2026-07-28** (current). No `initialize` handshake and no `Mcp-Session-Id`. Each request carries a `_meta` envelope (`io.modelcontextprotocol/protocolVersion`, client info, capabilities) plus `MCP-Protocol-Version`, `Mcp-Method`, and (for named calls) `Mcp-Name`. `server/discover` replaces `initialize`.
+- **2025-era** (through 2025-11-25). Stateless by default: each `initialize` / `tools/call` is its own request. `GET` and `DELETE /mcp` answer `405`.
+
+Database connection pools are keyed by the auth token (or one shared pool in `token` / `none` mode), so dropping protocol sessions does not mix users' IBM i credentials.
+
 ## Session Modes
 
-### Stateful (default)
+### Stateless (default)
 
-Maintains MCP session context across requests. Use the `Mcp-Session-Id` header to continue conversations.
+Each HTTP request builds a fresh MCP server on the caller's existing database pool. This is the mode 2026-07-28 clients use, and it also serves 2025-era clients without `Mcp-Session-Id`.
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Server as MCP Server
+### Stateful (deprecated)
 
-    Client->>Server: POST /mcp (initialize)
-    Server-->>Client: Response + Mcp-Session-Id header
-
-    Client->>Server: POST /mcp + Mcp-Session-Id (tools/list)
-    Server-->>Client: Available tools
-
-    Client->>Server: POST /mcp + Mcp-Session-Id (tools/call)
-    Server-->>Client: Tool result
-
-    Client->>Server: DELETE /mcp + Mcp-Session-Id
-    Server-->>Client: Session closed
-```
-
-**Flow:**
-1. Send `initialize` request to `/mcp` (POST)
-2. Receive `Mcp-Session-Id` header in response
-3. Include `Mcp-Session-Id` header in subsequent requests
-4. Optionally open SSE stream via GET `/mcp` for notifications
-
-```bash
-# Initialize session
-curl -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer abc123..." \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "initialize",
-    "params": {
-      "protocolVersion": "2024-11-05",
-      "capabilities": {},
-      "clientInfo": { "name": "my-client", "version": "1.0.0" }
-    },
-    "id": 1
-  }'
-
-# Response includes Mcp-Session-Id header
-# Use it in subsequent requests:
-curl -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer abc123..." \
-  -H "Mcp-Session-Id: session-id-from-response" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/list",
-    "params": {},
-    "id": 2
-  }'
-```
-
-### Stateless
-
-Each request is independent. Simpler but no conversation context. The server creates a new MCP session for each request.
+Set `MCP_SESSION_MODE=stateful` only when a 2025-era client requires `Mcp-Session-Id`, `GET /mcp`, or `DELETE /mcp`. The process logs a deprecation warning. 2026-07-28 requests on the same endpoint stay stateless. Database pools are still keyed by the auth token, not by that session id.
 
 ## TLS Configuration
 
@@ -299,29 +254,22 @@ TOKEN=$(curl -s -X POST http://localhost:3000/auth \
   -d '{"username":"MYUSER","password":"mypass","host":"ibmi.example.com"}' \
   | jq -r '.access_token')
 
-# 3. Initialize MCP session
-SESSION=$(curl -s -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}},"id":1}' \
-  -D - | grep -i mcp-session-id | cut -d' ' -f2 | tr -d '\r')
-
-# 4. List available tools
+# 3. Discover the server (spec 2026-07-28). No session id.
 curl -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Mcp-Session-Id: $SESSION" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}'
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: server/discover" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
 
-# 5. Call a tool
+# 4. Call a tool on the same stateless endpoint
 curl -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Mcp-Session-Id: $SESSION" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"list_schemas","arguments":{"filter":"QSYS*"}},"id":3}'
-
-# 6. Close session when done
-curl -X DELETE http://localhost:3000/mcp \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Mcp-Session-Id: $SESSION"
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: tools/call" \
+  -H "Mcp-Name: list_schemas" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_schemas","arguments":{"filter":"QSYS*"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
 ```

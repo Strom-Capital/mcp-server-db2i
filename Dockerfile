@@ -85,7 +85,8 @@ ENV DB2I_JDBC_OPTIONS=""
 ENV MCP_TRANSPORT="stdio"
 ENV MCP_HTTP_PORT="3000"
 ENV MCP_HTTP_HOST="127.0.0.1"
-ENV MCP_SESSION_MODE="stateful"
+# stateless (default). stateful is deprecated and only keeps Mcp-Session-Id for 2025-era clients.
+ENV MCP_SESSION_MODE="stateless"
 ENV MCP_TOKEN_EXPIRY="3600"
 ENV MCP_MAX_SESSIONS="100"
 

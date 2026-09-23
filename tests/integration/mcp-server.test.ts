@@ -6,9 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 
 // Mock node-jt400 before importing modules that use it
 const mockQuery = vi.fn();
