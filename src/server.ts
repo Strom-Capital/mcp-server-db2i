@@ -23,6 +23,12 @@ import {
   listIndexesTool,
   getTableConstraintsTool,
 } from './tools/metadata.js';
+import {
+  getObjectDdlTool,
+  getRelatedObjectsTool,
+  validateQueryTool,
+} from './tools/sqlServices.js';
+import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { formatToolText } from './utils/formatResult.js';
 
@@ -135,6 +141,40 @@ const listIndexesOutputSchema = z.object({
     index_schema: z.string(),
     is_unique: z.string(),
     column_names: z.string(),
+  })).optional(),
+  count: z.number().int().optional(),
+});
+
+const validateQueryOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  valid: z.boolean().optional(),
+  statementType: z.string().nullable().optional(),
+  missingTables: z.array(z.string()).optional(),
+  missingColumns: z.array(z.string()).optional(),
+  missingRoutines: z.array(z.string()).optional(),
+  violations: z.array(z.string()).optional(),
+});
+
+const objectDdlOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  schema: z.string().optional(),
+  object: z.string().optional(),
+  type: z.string().optional(),
+  ddl: z.string().optional(),
+});
+
+const relatedObjectsOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    sql_object_type: z.string(),
+    schema_name: z.string().nullable(),
+    sql_name: z.string().nullable(),
+    library_name: z.string().nullable(),
+    system_name: z.string().nullable(),
+    object_text: z.string().nullable(),
   })).optional(),
   count: z.number().int().optional(),
 });
@@ -407,6 +447,84 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to get constraints',
+        sessionContext
+      )
+    );
+  }
+
+  if (enabledTools.has('validate_query')) {
+    server.registerTool(
+      'validate_query',
+      {
+        title: 'Validate SQL Query',
+        description: 'Check a SQL statement without running it. Parses it with QSYS2.PARSE_STATEMENT and checks that referenced tables, columns, and qualified routines exist in the catalog. Also reports read-only and schema-allowlist findings.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          sql: z.string().describe('SQL statement to validate. It is not executed.'),
+        }),
+        outputSchema: validateQueryOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => validateQueryTool({
+          sql: args.sql,
+          sessionId,
+          defaultSchema: getDefaultSchema(),
+        }),
+        'Validation failed',
+        sessionContext
+      )
+    );
+  }
+
+  if (enabledTools.has('get_object_ddl')) {
+    server.registerTool(
+      'get_object_ddl',
+      {
+        title: 'Get Object DDL',
+        description: 'Return the SQL DDL that recreates a database object, using QSYS2.GENERATE_SQL. Does not run the generated statements. Requires IBM i 7.3 or later.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) that contains the object. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          object: z.string().describe('Object name'),
+          type: z.enum(SQL_OBJECT_TYPES).describe('Object type: TABLE, VIEW, INDEX, ALIAS, TRIGGER, FUNCTION, PROCEDURE, or SEQUENCE'),
+        }),
+        outputSchema: objectDdlOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => getObjectDdlTool({
+          schema: args.schema,
+          object: args.object,
+          type: args.type,
+          sessionId,
+          defaultSchema: getDefaultSchema(),
+        }),
+        'Failed to generate DDL',
+        sessionContext
+      )
+    );
+  }
+
+  if (enabledTools.has('get_related_objects')) {
+    server.registerTool(
+      'get_related_objects',
+      {
+        title: 'Get Related Objects',
+        description: 'List views, indexes, triggers, and other objects that depend on a table, using SYSTOOLS.RELATED_OBJECTS. Requires IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) that contains the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          table: z.string().describe('Table name'),
+        }),
+        outputSchema: relatedObjectsOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => getRelatedObjectsTool({
+          schema: args.schema,
+          table: args.table,
+          sessionId,
+          defaultSchema: getDefaultSchema(),
+        }),
+        'Failed to list related objects',
         sessionContext
       )
     );

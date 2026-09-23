@@ -17,6 +17,7 @@ import {
   getEnabledTools,
   getResponseFormat,
   getAllowedSchemas,
+  isQueryParseCheckEnabled,
   getAuthAllowedDbHosts,
   hostnameOf,
   jdbcConnectionSecurity,
@@ -489,6 +490,14 @@ describe('Config Module', () => {
       expect(connConfig['access']).toBe('read only');
     });
 
+    it('should omit access when readOnly is false', () => {
+      const connConfig = buildConnectionConfig(
+        { ...baseConfig, jdbcOptions: { access: 'read only' } },
+        { readOnly: false }
+      );
+      expect(connConfig['access']).toBeUndefined();
+    });
+
     it('should keep an explicit access option', () => {
       const connConfig = buildConnectionConfig({
         ...baseConfig,
@@ -769,6 +778,27 @@ describe('Config Module', () => {
     it('should drop duplicate names', () => {
       process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB,mylib';
       expect(getAllowedSchemas()).toEqual(['MYLIB']);
+    });
+  });
+
+  describe('isQueryParseCheckEnabled', () => {
+    it('should be on by default', () => {
+      delete process.env.QUERY_PARSE_CHECK;
+      expect(isQueryParseCheckEnabled()).toBe(true);
+    });
+
+    it('should turn off for false and 0', () => {
+      process.env.QUERY_PARSE_CHECK = 'false';
+      expect(isQueryParseCheckEnabled()).toBe(false);
+      process.env.QUERY_PARSE_CHECK = '0';
+      expect(isQueryParseCheckEnabled()).toBe(false);
+    });
+
+    it('should stay on for other values', () => {
+      process.env.QUERY_PARSE_CHECK = 'true';
+      expect(isQueryParseCheckEnabled()).toBe(true);
+      process.env.QUERY_PARSE_CHECK = 'no';
+      expect(isQueryParseCheckEnabled()).toBe(true);
     });
   });
 });

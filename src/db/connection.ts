@@ -29,9 +29,16 @@ export interface QueryResult {
 
 // Global pool for stdio transport (backwards compatible)
 let globalPool: ReturnType<typeof pool> | null = null;
+let globalConfig: DB2iConfig | null = null;
 
 // Session pools for HTTP transport (keyed by session/token ID)
 const sessionPools = new Map<string, ReturnType<typeof pool>>();
+const sessionConfigs = new Map<string, DB2iConfig>();
+
+// QSYS2.GENERATE_SQL is rejected on a read-only connection, so DDL generation
+// uses a second pool that omits JDBC `access`. That pool runs only the CALL.
+let globalProcedurePool: ReturnType<typeof pool> | null = null;
+const sessionProcedurePools = new Map<string, ReturnType<typeof pool>>();
 
 /**
  * Initialize the global connection pool (for stdio transport)
@@ -39,6 +46,7 @@ const sessionPools = new Map<string, ReturnType<typeof pool>>();
  * Safe to call multiple times - will skip if pool already exists.
  */
 export function initializePool(config: DB2iConfig): void {
+  globalConfig = config;
   if (globalPool) {
     log.debug({ hostname: config.hostname }, 'Global pool already exists, skipping initialization');
     return;
@@ -57,6 +65,7 @@ export function initializePool(config: DB2iConfig): void {
  * @param config - DB2i configuration for this session
  */
 export function initializeSessionPool(sessionId: string, config: DB2iConfig): void {
+  sessionConfigs.set(sessionId, config);
   // Don't recreate if already exists
   if (sessionPools.has(sessionId)) {
     log.debug({ sessionId: sessionId.substring(0, 8) }, 'Session pool already exists');
@@ -83,6 +92,8 @@ export function initializeSessionPool(sessionId: string, config: DB2iConfig): vo
  * @returns Promise that resolves when the pool is closed
  */
 export async function closeSessionPool(sessionId: string): Promise<void> {
+  await closeNamedPool(sessionProcedurePools, sessionId, 'Session procedure pool');
+  sessionConfigs.delete(sessionId);
   const sessionPool = sessionPools.get(sessionId);
   if (sessionPool) {
     try {
@@ -130,6 +141,18 @@ export async function closeAllSessionPools(): Promise<void> {
  * @returns Promise that resolves when the pool is closed
  */
 export async function closeGlobalPool(): Promise<void> {
+  if (globalProcedurePool) {
+    try {
+      await globalProcedurePool.close();
+      log.info('Procedure connection pool closed');
+    } catch (err) {
+      log.warn({ err }, 'Error closing procedure connection pool');
+    } finally {
+      globalProcedurePool = null;
+    }
+  }
+  globalConfig = null;
+
   if (globalPool) {
     try {
       await globalPool.close();
@@ -175,6 +198,56 @@ function getPool(sessionId?: string): ReturnType<typeof pool> {
   return getGlobalPool();
 }
 
+async function closeNamedPool(
+  pools: Map<string, ReturnType<typeof pool>>,
+  key: string,
+  label: string
+): Promise<void> {
+  const current = pools.get(key);
+  if (!current) {
+    return;
+  }
+  try {
+    await current.close();
+    log.info({ sessionId: key.substring(0, 8) }, `${label} closed`);
+  } catch (err) {
+    log.warn({ err, sessionId: key.substring(0, 8) }, `Error closing ${label}`);
+  } finally {
+    pools.delete(key);
+  }
+}
+
+/**
+ * Pool for QSYS2.GENERATE_SQL. Created on first use from the same credentials
+ * as the query pool, without JDBC read-only access.
+ */
+function getProcedurePool(sessionId?: string): ReturnType<typeof pool> {
+  if (sessionId) {
+    const existing = sessionProcedurePools.get(sessionId);
+    if (existing) {
+      return existing;
+    }
+    const config = sessionConfigs.get(sessionId);
+    if (!config) {
+      throw new Error(`Session pool not found for session: ${sessionId.substring(0, 8)}...`);
+    }
+    const created = pool(buildConnectionConfig(config, { readOnly: false }));
+    sessionProcedurePools.set(sessionId, created);
+    log.info({ sessionId: sessionId.substring(0, 8) }, 'Session procedure pool created');
+    return created;
+  }
+
+  if (globalProcedurePool) {
+    return globalProcedurePool;
+  }
+  if (!globalConfig) {
+    throw new Error('Global connection pool not initialized. Call initializePool first.');
+  }
+  globalProcedurePool = pool(buildConnectionConfig(globalConfig, { readOnly: false }));
+  log.info('Procedure connection pool created');
+  return globalProcedurePool;
+}
+
 /**
  * Convert unknown params to Param type, filtering out undefined
  */
@@ -216,6 +289,37 @@ export async function executeQuery(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown database error';
     log.debug({ err: error, sql: sql.substring(0, 200) }, 'Database query failed');
+    throw new Error(`Database query failed: ${message}`);
+  }
+}
+
+/**
+ * Run a statement on the procedure pool and return its result set.
+ * Used for QSYS2.GENERATE_SQL, which a read-only connection rejects.
+ *
+ * @param sql - Statement to execute. Callers must not pass user SQL text.
+ * @param params - Statement parameters
+ * @param sessionId - Optional session ID for HTTP transport
+ */
+export async function executeProcedure(
+  sql: string,
+  params: unknown[] = [],
+  sessionId?: string
+): Promise<QueryResult> {
+  const db = getProcedurePool(sessionId);
+
+  try {
+    log.debug(
+      { sql: sql.substring(0, 200), paramCount: params.length, sessionId: sessionId?.substring(0, 8) },
+      'Executing procedure'
+    );
+    const results = await db.query(sql, toParams(params));
+    const rows = results as Record<string, unknown>[];
+    log.debug({ rowCount: rows.length }, 'Procedure completed');
+    return { rows };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown database error';
+    log.debug({ err: error, sql: sql.substring(0, 200) }, 'Procedure call failed');
     throw new Error(`Database query failed: ${message}`);
   }
 }

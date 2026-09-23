@@ -216,7 +216,16 @@ export function loadConfig(): DB2iConfig {
 /**
  * Build JDBC connection configuration for node-jt400
  */
-export function buildConnectionConfig(config: DB2iConfig): {
+export interface BuildConnectionOptions {
+  /**
+   * When false, omit JDBC `access` so QSYS2.GENERATE_SQL can return its
+   * result set. A read-only connection rejects that procedure. The default
+   * connection stays read only.
+   */
+  readOnly?: boolean;
+}
+
+export function buildConnectionConfig(config: DB2iConfig, options?: BuildConnectionOptions): {
   host: string;
   user: string;
   password: string;
@@ -243,9 +252,12 @@ export function buildConnectionConfig(config: DB2iConfig): {
     connectionConfig['date format'] = 'iso';
   }
 
+  const readOnly = options?.readOnly !== false;
+
   // Read-only at the driver, unless the operator set access explicitly.
   // An explicit value is merged below and overrides this default.
-  if (jdbcOption(config.jdbcOptions, 'access') === undefined) {
+  // The GENERATE_SQL connection passes readOnly: false and drops `access`.
+  if (readOnly && jdbcOption(config.jdbcOptions, 'access') === undefined) {
     connectionConfig['access'] = 'read only';
   }
 
@@ -261,6 +273,9 @@ export function buildConnectionConfig(config: DB2iConfig): {
 
   // Merge additional JDBC options
   for (const [key, value] of Object.entries(config.jdbcOptions)) {
+    if (!readOnly && key.toLowerCase() === 'access') {
+      continue;
+    }
     connectionConfig[key] = value;
   }
 
@@ -366,6 +381,9 @@ export const TOOL_NAMES = [
   'list_views',
   'list_indexes',
   'get_table_constraints',
+  'validate_query',
+  'get_object_ddl',
+  'get_related_objects',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -461,6 +479,17 @@ export function getAllowedSchemas(): string[] | undefined {
   ];
 
   return names.length > 0 ? names : undefined;
+}
+
+/**
+ * Whether execute_query asks IBM i to parse the statement before running it.
+ *
+ * Environment variable:
+ * - QUERY_PARSE_CHECK: `false` or `0` turns the check off. Anything else, including unset, leaves it on.
+ */
+export function isQueryParseCheckEnabled(): boolean {
+  const value = process.env.QUERY_PARSE_CHECK?.trim().toLowerCase();
+  return value !== 'false' && value !== '0';
 }
 
 // ============================================================================

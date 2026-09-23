@@ -1,5 +1,5 @@
 /**
- * Schema allowlist for execute_query.
+ * Schema allowlist for execute_query and the SQL service tools.
  *
  * When QUERY_ALLOWED_SCHEMAS is set, every table reference must resolve to
  * one of those libraries. Queries that cannot be parsed are rejected, so a
@@ -197,4 +197,15 @@ export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): Sch
   }
 
   return { ok: violations.length === 0, violations };
+}
+
+/**
+ * True when schema is in the allowlist. Comparison is case-insensitive.
+ */
+export function isSchemaAllowed(schema: string, allowed: readonly string[]): boolean {
+  const name = schema.trim().toUpperCase();
+  if (!name) {
+    return false;
+  }
+  return allowed.some((entry) => entry.toUpperCase() === name);
 }

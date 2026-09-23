@@ -57,6 +57,7 @@ graph LR
 - **Dual Transport** - Run stdio and HTTP simultaneously
 - **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens
+- **Statement checks and DDL** - Validate object names, return the SQL that recreates an object, and list what depends on a table
 
 ## Quick Start
 
@@ -118,6 +119,9 @@ See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, C
 | `list_views` | List views in a schema (with optional filter) |
 | `list_indexes` | List SQL indexes for a table |
 | `get_table_constraints` | Get primary keys, foreign keys, unique constraints |
+| `validate_query` | Check a statement without running it, including catalog names |
+| `get_object_ddl` | Return the SQL DDL that recreates an object |
+| `get_related_objects` | List objects that depend on a table |
 
 ### Filter Syntax
 
@@ -150,6 +154,8 @@ Once connected, you can ask the AI assistant:
 ## Compatibility
 
 - IBM i V7R3 and later (V7R5 recommended)
+- `validate_query` and the `execute_query` parse check need `QSYS2.PARSE_STATEMENT` (IBM i 7.3 with Db2 PTF group SF99703 level 3, or 7.4 and later)
+- `get_related_objects` needs IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release
 - Node.js 20.6 or higher
 - Java Runtime Environment (JRE) 11 or higher
 - MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)

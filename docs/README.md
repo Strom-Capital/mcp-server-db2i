@@ -59,6 +59,9 @@ graph LR
 | `list_views` | List views in a schema (with optional filter) |
 | `list_indexes` | List SQL indexes for a table |
 | `get_table_constraints` | Get primary keys, foreign keys, unique constraints |
+| `validate_query` | Check a statement without running it, including catalog names |
+| `get_object_ddl` | Return the SQL DDL that recreates an object |
+| `get_related_objects` | List objects that depend on a table |
 
 > **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included.
 

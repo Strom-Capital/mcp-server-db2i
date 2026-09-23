@@ -72,6 +72,7 @@ DB2I_PASSWORD=your-password
 |----------|---------|-------------|
 | `QUERY_DEFAULT_LIMIT` | `1000` | Default number of rows returned by queries |
 | `QUERY_MAX_LIMIT` | `10000` | Maximum rows allowed (caps user-provided limits) |
+| `QUERY_PARSE_CHECK` | on | `execute_query` parses the statement with `QSYS2.PARSE_STATEMENT` before running it. One extra round trip, often a few hundred milliseconds. Set to `false` or `0` to turn that off |
 
 ### Tool Selection
 
@@ -80,7 +81,7 @@ DB2I_PASSWORD=your-password
 | `MCP_TOOLS_ENABLED` | - | Comma-separated allowlist. If set, only these tools are registered |
 | `MCP_TOOLS_DISABLED` | - | Comma-separated denylist, applied after the allowlist |
 
-Valid names: `execute_query`, `list_schemas`, `list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
+Valid names: `execute_query`, `list_schemas`, `list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`, `validate_query`, `get_object_ddl`, `get_related_objects`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
 
 ```env
 # Metadata browsing only, no free-form SQL
@@ -164,8 +165,9 @@ MCP_TLS_KEY_PATH=/certs/server.key
 QUERY_DEFAULT_LIMIT=1000
 QUERY_MAX_LIMIT=10000
 
-# Libraries execute_query may reference (unset = no restriction)
+# Libraries execute_query and the SQL service tools may reference (unset = no restriction)
 # QUERY_ALLOWED_SCHEMAS=MYLIB,QSYS2
+# QUERY_PARSE_CHECK=true
 
 # Tool selection and response format
 # MCP_TOOLS_ENABLED=list_schemas,list_tables,describe_table
@@ -243,11 +245,16 @@ Without a default schema, metadata tools require a `schema` argument, and an unq
 
 ## Schema Allowlist
 
-`QUERY_ALLOWED_SCHEMAS` limits which libraries `execute_query` may reference. It is off when unset or empty. It is read from the server environment only, so a client cannot widen it by choosing a different schema at `/auth`.
+`QUERY_ALLOWED_SCHEMAS` limits which libraries `execute_query`, `validate_query`, `get_object_ddl`, and `get_related_objects` may reference. It is off when unset or empty. It is read from the server environment only, so a client cannot widen it by choosing a different schema at `/auth`. `get_related_objects` omits dependents whose schema is outside the list.
+
+`QUERY_PARSE_CHECK` controls the `QSYS2.PARSE_STATEMENT` check inside `execute_query`. It is on unless set to `false` or `0`. A statement that does not parse, or that is not a query, is rejected. If the function is not installed, the query is rejected until the check is turned off.
+
+The check is one extra round trip before the query. The added time is roughly fixed, often a few hundred milliseconds, and does not grow with the query. On a short query that can be most of the wait. Turn it off when that latency matters more than the extra syntax check. `validate_query` is separate: it also looks up names in the catalog, so it is slower than this check.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `QUERY_ALLOWED_SCHEMAS` | - | Comma-separated libraries `execute_query` may use. Case-insensitive |
+| `QUERY_ALLOWED_SCHEMAS` | - | Comma-separated libraries `execute_query` and the SQL service tools may use. Case-insensitive |
+| `QUERY_PARSE_CHECK` | on | `false` or `0` skips the `PARSE_STATEMENT` check in `execute_query` |
 
 ```env
 QUERY_ALLOWED_SCHEMAS=MYLIB,QSYS2
@@ -259,7 +266,7 @@ When the list is set:
 - Catalog libraries such as `QSYS2` and `SYSIBM` are not included automatically. Add them if clients should query the catalog.
 - A query the server cannot parse is rejected. That includes system naming (`LIB/FILE`) and `TABLE(...)` table functions.
 - Names defined in a `WITH` clause are not treated as tables.
-- Metadata tools are not affected. They run fixed catalog queries.
+- The schema and table browsing tools (`list_schemas`, `list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`) are not affected. They run fixed catalog queries.
 
 A view or alias inside an allowed library can still read other libraries. Give the IBM i user profile access only to the libraries in the list. See [Security](security.md#schema-allowlist).
 
