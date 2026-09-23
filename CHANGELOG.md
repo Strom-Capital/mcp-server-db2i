@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.2.0...v2.2.1) (2026-09-23)
+
+
+### Features
+
+* publish to the official MCP Registry ([#49](https://github.com/Strom-Capital/mcp-server-db2i/issues/49)) ([856db9d](https://github.com/Strom-Capital/mcp-server-db2i/commit/856db9ddec904fb0c89c86a7665691c928a5d316)), closes [#48](https://github.com/Strom-Capital/mcp-server-db2i/issues/48)
+
+
+### Miscellaneous
+
+* ship the registry listing as 2.2.1 ([#51](https://github.com/Strom-Capital/mcp-server-db2i/issues/51)) ([7386edb](https://github.com/Strom-Capital/mcp-server-db2i/commit/7386edbfd930afacf9488884dc73a195b0a9833a))
+
 ## [2.2.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.1.0...v2.2.0) (2026-09-23)
 
 
