@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing git tag to publish to npm (e.g. v1.3.2). Leave empty unless retrying a tagged release.'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -52,7 +59,7 @@ jobs:
 
   publish-npm:
     needs: [ci, release-please]
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' || inputs.tag != '' }}
     runs-on: ubuntu-latest
     # OIDC trusted publishing - no tokens needed
     permissions:
@@ -60,12 +67,17 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
@@ -83,6 +95,4 @@ jobs:
         run: npm test
 
       - name: Publish to npm (OIDC)
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
