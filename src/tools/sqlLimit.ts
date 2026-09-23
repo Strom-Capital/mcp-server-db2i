@@ -13,6 +13,19 @@ const TRAILING_LIMIT_RE =
 /**
  * Return SQL with a FETCH FIRST clause that does not exceed effectiveLimit.
  */
+/**
+ * Remove a trailing FETCH FIRST or LIMIT clause, if one is present.
+ * Used to normalize SQL before parsing; it does not add a replacement clause.
+ */
+export function stripTrailingRowLimit(sql: string): string {
+  const trimmed = sql.trim();
+  const match = TRAILING_LIMIT_RE.exec(trimmed);
+  if (match) {
+    return trimmed.slice(0, match.index).trimEnd();
+  }
+  return trimmed.endsWith(';') ? trimmed.slice(0, -1).trimEnd() : trimmed;
+}
+
 export function applySqlRowLimit(sql: string, effectiveLimit: number): string {
   const trimmed = sql.trim();
   const match = TRAILING_LIMIT_RE.exec(trimmed);

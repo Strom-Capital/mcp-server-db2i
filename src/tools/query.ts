@@ -5,7 +5,8 @@
 import { executeQuery } from '../db/connection.js';
 import { validateQuery } from '../db/queries.js';
 import { createChildLogger } from '../utils/logger.js';
-import { applyQueryLimit, getQueryLimitConfig } from '../config.js';
+import { applyQueryLimit, getAllowedSchemas, getQueryLimitConfig } from '../config.js';
+import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import { applySqlRowLimit } from './sqlLimit.js';
 
 const log = createChildLogger({ component: 'query-tool' });
@@ -19,6 +20,11 @@ export interface ExecuteQueryInput {
   limit?: number;
   /** Optional session ID for HTTP transport (uses session-specific pool) */
   sessionId?: string;
+  /**
+   * Schema unqualified names resolve to. Session schema when set, otherwise
+   * DB2I_SCHEMA. Used by the schema allowlist only.
+   */
+  defaultSchema?: string;
 }
 
 /**
@@ -34,7 +40,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   violations?: string[];
   limitApplied?: number;
 }> {
-  const { sql, params = [], sessionId } = input;
+  const { sql, params = [], sessionId, defaultSchema } = input;
   const queryConfig = getQueryLimitConfig();
   const effectiveLimit = applyQueryLimit(input.limit, queryConfig);
 
@@ -52,6 +58,19 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
       error: `Security validation failed: ${validationResult.violations.join('; ')}`,
       violations: validationResult.violations,
     };
+  }
+
+  const allowedSchemas = getAllowedSchemas();
+  if (allowedSchemas) {
+    const schemaResult = checkQuerySchemas(sql, { allowed: allowedSchemas, defaultSchema });
+    if (!schemaResult.ok) {
+      log.warn({ violations: schemaResult.violations }, 'Query rejected: schema allowlist');
+      return {
+        success: false,
+        error: `Schema allowlist rejected the query: ${schemaResult.violations.join('; ')}`,
+        violations: schemaResult.violations,
+      };
+    }
   }
 
   try {

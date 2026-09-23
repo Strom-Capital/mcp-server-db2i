@@ -164,6 +164,17 @@ MCP_TOOLS_DISABLED=execute_query
 
 The tool is then never registered, so validation bypasses cannot reach it. See [Tool Selection](configuration.md#tool-selection) for the full allowlist and denylist syntax.
 
+### Schema Allowlist
+
+`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the query reaches IBM i.
+
+- Unqualified names resolve to the session schema, or to `DB2I_SCHEMA` when the session has none. If that schema is missing or not in the list, the query is rejected.
+- The list comes from the server environment. A schema chosen at `/auth` changes where unqualified names resolve. It does not add libraries to the list.
+- Queries that cannot be parsed are rejected while the list is set. System naming (`LIB/FILE`) and `TABLE(...)` table functions fall into that group.
+- `QSYS2` and `SYSIBM` are allowed only when you add them.
+
+This does not replace IBM i object authority. A view or alias in an allowed library can still point at another library. Use a user profile that has access only to the libraries in the list.
+
 ## HTTP Transport Security
 
 When using HTTP transport, additional security measures apply:
@@ -246,6 +257,7 @@ LOG_LEVEL=info
 - [ ] Set appropriate rate limits
 - [ ] Configure query limits
 - [ ] Disable tools clients don't need (e.g. `MCP_TOOLS_DISABLED=execute_query`)
+- [ ] Set `QUERY_ALLOWED_SCHEMAS` when `execute_query` is enabled, and limit the IBM i user profile to those libraries
 - [ ] Use `info` or higher log level
 - [ ] Run as non-root user (Docker image does this by default)
 - [ ] Restrict network access to IBM i system

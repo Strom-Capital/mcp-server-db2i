@@ -26,7 +26,7 @@ DB2I_PASSWORD=your-password
 | `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
 | `DB2I_PORT` | No | `446` | JDBC port (446 is standard for IBM i) |
 | `DB2I_DATABASE` | No | `*LOCAL` | Database name |
-| `DB2I_SCHEMA` | No | - | Default schema/library for tools |
+| `DB2I_SCHEMA` | No | - | Default schema/library. Also the JDBC library list for `execute_query` when `libraries` is not set |
 | `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated) |
 
 *Either the environment variable or the corresponding `*_FILE` variable must be set. File-based secrets take priority when both are provided.
@@ -161,6 +161,9 @@ MCP_TLS_KEY_PATH=/certs/server.key
 QUERY_DEFAULT_LIMIT=1000
 QUERY_MAX_LIMIT=10000
 
+# Libraries execute_query may reference (unset = no restriction)
+# QUERY_ALLOWED_SCHEMAS=MYLIB,QSYS2
+
 # Tool selection and response format
 # MCP_TOOLS_ENABLED=list_schemas,list_tables,describe_table
 MCP_TOOLS_DISABLED=execute_query
@@ -214,18 +217,43 @@ The `naming` option affects how you reference tables:
 
 ## Default Schema
 
-The `DB2I_SCHEMA` variable sets a default schema for all tools. When set:
+The `DB2I_SCHEMA` variable sets a default schema for the metadata tools and for `execute_query`. When set:
 
-- You don't need to specify `schema` in each tool call
+- You don't need to specify `schema` in each metadata tool call
 - Tools will use this schema if no schema is provided
 - You can still override it per-call by providing a `schema` parameter
+- `execute_query` uses it as the JDBC `libraries` list, unless `DB2I_JDBC_OPTIONS` already sets `libraries`. With `naming=sql`, the first library is the default schema, so `FROM CUSTOMERS` resolves to `MYLIB.CUSTOMERS`. An explicit `libraries` option always wins.
+
+In HTTP `required` mode, the schema sent to `/auth` is used for that session and falls back to `DB2I_SCHEMA` when the client omits it.
 
 ```env
 # Set default schema
 DB2I_SCHEMA=MYLIB
 ```
 
-Without a default schema, you must specify the schema in each tool call or the tool will return an error.
+Without a default schema, metadata tools require a `schema` argument, and an unqualified table name in `execute_query` resolves to the schema named after the user profile.
+
+## Schema Allowlist
+
+`QUERY_ALLOWED_SCHEMAS` limits which libraries `execute_query` may reference. It is off when unset or empty. It is read from the server environment only, so a client cannot widen it by choosing a different schema at `/auth`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUERY_ALLOWED_SCHEMAS` | - | Comma-separated libraries `execute_query` may use. Case-insensitive |
+
+```env
+QUERY_ALLOWED_SCHEMAS=MYLIB,QSYS2
+```
+
+When the list is set:
+
+- Every table reference must be in the list. An unqualified name counts as the effective default schema (the session schema, or `DB2I_SCHEMA`).
+- Catalog libraries such as `QSYS2` and `SYSIBM` are not included automatically. Add them if clients should query the catalog.
+- A query the server cannot parse is rejected. That includes system naming (`LIB/FILE`) and `TABLE(...)` table functions.
+- Names defined in a `WITH` clause are not treated as tables.
+- Metadata tools are not affected. They run fixed catalog queries.
+
+A view or alias inside an allowed library can still read other libraries. Give the IBM i user profile access only to the libraries in the list. See [Security](security.md#schema-allowlist).
 
 ## File-Based Secrets
 

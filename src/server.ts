@@ -259,6 +259,7 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           params: args.params,
           limit: args.limit,
           sessionId,
+          defaultSchema: getDefaultSchema(),
         }),
         'Query failed',
         sessionContext
