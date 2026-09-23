@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.0.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.3.2...v2.0.0) (2026-09-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* migrate to MCP SDK v2 and default HTTP sessions to stateless ([#34](https://github.com/Strom-Capital/mcp-server-db2i/issues/34))
+
+### Features
+
+* migrate to MCP SDK v2 and default HTTP sessions to stateless ([#34](https://github.com/Strom-Capital/mcp-server-db2i/issues/34)) ([bf37f26](https://github.com/Strom-Capital/mcp-server-db2i/commit/bf37f268b8c33c965922eefac388b62e906223af)), closes [#27](https://github.com/Strom-Capital/mcp-server-db2i/issues/27)
+
+
+### CI/CD
+
+* publish npm via OIDC and allow republishing v1.3.2 ([e706589](https://github.com/Strom-Capital/mcp-server-db2i/commit/e706589e3b7932c9367906d7a1bb1a5b601e3e2d))
+* publish npm via OIDC trusted publishing and allow tag retries ([1eb2362](https://github.com/Strom-Capital/mcp-server-db2i/commit/1eb2362adddba54119f82c2c96595af969a33f1c))
+* run publish tests on Node 20, publish with Node 24 ([4c34d99](https://github.com/Strom-Capital/mcp-server-db2i/commit/4c34d99583f181e7e5b72d28116af3e34fe42cfd))
+* run publish-job tests on Node 20 and publish with Node 24 ([b576466](https://github.com/Strom-Capital/mcp-server-db2i/commit/b57646667f125902fe31039abc294705e1f9aaa8))
+* stop duplicate changelog rows and dedupe the release pipeline ([#32](https://github.com/Strom-Capital/mcp-server-db2i/issues/32)) ([5361afa](https://github.com/Strom-Capital/mcp-server-db2i/commit/5361afab8a589dd90ff39acf7a9f8b215dfb097c))
+
 ## [1.3.2](https://github.com/Strom-Capital/mcp-server-db2i/compare/v1.3.1...v1.3.2) (2026-09-23)
 
 
