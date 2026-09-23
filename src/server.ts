@@ -57,7 +57,100 @@ export interface ToolResult {
  */
 export type McpToolResponse = {
   content: Array<{ type: 'text'; text: string }>;
+  structuredContent?: Record<string, unknown>;
   isError?: true;
+};
+
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+const queryOutputSchema = {
+  success: z.boolean(),
+  error: z.string().optional(),
+  violations: z.array(z.string()).optional(),
+  data: z.array(z.unknown()).optional(),
+  rowCount: z.number().int().optional(),
+  limitApplied: z.number().int().optional(),
+};
+
+const listSchemasOutputSchema = {
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    schema_name: z.string(),
+    schema_text: z.string().nullable(),
+  })).optional(),
+  count: z.number().int().optional(),
+};
+
+const listTablesOutputSchema = {
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    table_name: z.string(),
+    table_type: z.string(),
+    table_text: z.string().nullable(),
+  })).optional(),
+  count: z.number().int().optional(),
+};
+
+const describeTableOutputSchema = {
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    column_name: z.string(),
+    ordinal_position: z.number(),
+    data_type: z.string(),
+    length: z.number().nullable(),
+    numeric_scale: z.number().nullable(),
+    is_nullable: z.string(),
+    column_default: z.string().nullable(),
+    column_text: z.string().nullable(),
+    system_column_name: z.string(),
+    ccsid: z.number().nullable(),
+  })).optional(),
+  count: z.number().int().optional(),
+};
+
+const listViewsOutputSchema = {
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    view_name: z.string(),
+    view_text: z.string().nullable(),
+  })).optional(),
+  count: z.number().int().optional(),
+};
+
+const listIndexesOutputSchema = {
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    index_name: z.string(),
+    index_schema: z.string(),
+    is_unique: z.string(),
+    column_names: z.string(),
+  })).optional(),
+  count: z.number().int().optional(),
+};
+
+const tableConstraintsOutputSchema = {
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    constraint_name: z.string(),
+    constraint_type: z.string(),
+    column_name: z.string(),
+    ordinal_position: z.number(),
+    referenced_table_schema: z.string().nullable(),
+    referenced_table_name: z.string().nullable(),
+    referenced_column_name: z.string().nullable(),
+  })).optional(),
+  count: z.number().int().optional(),
 };
 
 /**
@@ -76,12 +169,14 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
   return async (args: TArgs): Promise<McpToolResponse> => {
     // Check rate limit
     const rateLimiter = getRateLimiter();
-    const rateResult = rateLimiter.checkLimit();
+    const rateResult = rateLimiter.checkLimit(sessionContext?.sessionId ?? 'stdio');
 
     if (!rateResult.allowed) {
       const error = rateLimiter.formatError(rateResult);
+      const structured = { success: false, error: error.error };
       return {
         content: [{ type: 'text', text: JSON.stringify(error, null, 2) }],
+        structuredContent: structured,
         isError: true,
       };
     }
@@ -90,14 +185,23 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
     const result = await handler(args, sessionContext?.sessionId);
 
     if (!result.success) {
+      const structured = {
+        success: false,
+        error: result.error ?? errorMessage,
+        ...('violations' in result && result.violations
+          ? { violations: result.violations }
+          : {}),
+      };
       return {
         content: [{ type: 'text', text: result.error ?? errorMessage }],
+        structuredContent: structured,
         isError: true,
       };
     }
 
     return {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      structuredContent: result,
     };
   };
 }
@@ -138,12 +242,13 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     {
       title: 'Execute SQL Query',
       description: 'Execute a read-only SQL SELECT query against the IBM DB2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: {
         sql: z.string().describe('SQL SELECT query to execute'),
         params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
-        limit: z.number().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
+        limit: z.number().int().positive().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
       },
+      outputSchema: queryOutputSchema,
     },
     withToolHandler(
       (args, sessionId) => executeQueryTool({
@@ -163,10 +268,11 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     {
       title: 'List Schemas',
       description: 'List all schemas (libraries) in the IBM DB2i database. Optionally filter by name pattern using * as wildcard.',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: {
         filter: z.string().optional().describe('Filter pattern for schema names. Use * as wildcard. Example: "QSYS*" matches schemas starting with QSYS'),
       },
+      outputSchema: listSchemasOutputSchema,
     },
     withToolHandler(
       (args, sessionId) => listSchemasTool({ filter: args.filter, sessionId }),
@@ -181,11 +287,12 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     {
       title: 'List Tables',
       description: `List all tables in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: {
         schema: z.string().optional().describe(`Schema (library) name to list tables from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "CUST*" matches tables starting with CUST'),
       },
+      outputSchema: listTablesOutputSchema,
     },
     withToolHandler(
       (args, sessionId) => listTablesTool({ 
@@ -204,11 +311,12 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     {
       title: 'Describe Table',
       description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: {
         schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to describe'),
       },
+      outputSchema: describeTableOutputSchema,
     },
     withToolHandler(
       (args, sessionId) => describeTableTool({ 
@@ -227,11 +335,12 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     {
       title: 'List Views',
       description: `List all views in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: {
         schema: z.string().optional().describe(`Schema (library) name to list views from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         filter: z.string().optional().describe('Filter pattern for view names. Use * as wildcard.'),
       },
+      outputSchema: listViewsOutputSchema,
     },
     withToolHandler(
       (args, sessionId) => listViewsTool({ 
@@ -250,11 +359,12 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     {
       title: 'List Indexes',
       description: `List all indexes for a specific table including uniqueness and column information. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: {
         schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to list indexes for'),
       },
+      outputSchema: listIndexesOutputSchema,
     },
     withToolHandler(
       (args, sessionId) => listIndexesTool({ 
@@ -273,11 +383,12 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     {
       title: 'Get Table Constraints',
       description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: {
         schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
         table: z.string().describe('Table name to get constraints for'),
       },
+      outputSchema: tableConstraintsOutputSchema,
     },
     withToolHandler(
       (args, sessionId) => getTableConstraintsTool({ 
