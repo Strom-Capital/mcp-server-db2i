@@ -59,8 +59,6 @@ const profileSchema = z.strictObject({
   name: z.string().regex(SYSTEM_NAME, 'name may use letters, digits, _ and -, up to 64 characters'),
   host: z.string().min(1),
   driver: z.enum(DB_DRIVERS).optional(),
-  port: z.number().int().min(1).max(65535).optional(),
-  database: z.string().min(1).optional(),
   schema: z.string().optional(),
   allowedSchemas: z.array(z.string().min(1)).min(1).optional(),
   username: z.string().min(1).optional(),
@@ -91,12 +89,12 @@ export function getSystems(): SystemProfile[] {
     return [envSystem()];
   }
   if (cached?.file !== file) {
-    cached = { file, systems: loadSystems() };
+    cached = { file, systems: loadSystems(file) };
   }
   return cached.systems;
 }
 
-/** Forget the cached registry. For tests and the validate-tools command. */
+/** Forget the cached registry. For tests. */
 export function resetSystems(): void {
   cached = undefined;
 }
@@ -125,12 +123,7 @@ export function unknownSystemMessage(name: string): string {
   return `Unknown system "${name}". Available: ${systemNames().join(', ')}`;
 }
 
-export function loadSystems(): SystemProfile[] {
-  const file = process.env.DB2I_PROFILES?.trim();
-  if (!file) {
-    return [envSystem()];
-  }
-
+function loadSystems(file: string): SystemProfile[] {
   if (process.env.DB2I_HOSTNAME) {
     log.warn(
       'DB2I_PROFILES is set, so DB2I_HOSTNAME and the other connection variables are ignored'
@@ -196,22 +189,23 @@ function toSystem(def: ProfileDef, where: string): SystemProfile {
 
   const username = credential(def.username, def.usernameFile, 'username', where);
   const password = credential(def.password, def.passwordFile, 'password', where);
+  const schema = def.schema?.trim() ?? '';
 
   return {
     name: def.name,
     config: {
       hostname: def.host.trim(),
-      port: def.port ?? 446,
+      port: 446,
       username,
       password,
-      database: def.database ?? '*LOCAL',
-      schema: def.schema ?? '',
+      database: '*LOCAL',
+      schema,
       driver: def.driver ?? 'jt400',
       jdbcOptions: parseJdbcOptions(def.jdbcOptions),
       odbcOptions: parseJdbcOptions(def.odbcOptions),
     },
     allowedSchemas: def.allowedSchemas ? normalizeSchemaList(def.allowedSchemas) : getAllowedSchemas(),
-    defaultSchema: def.schema?.trim() || undefined,
+    defaultSchema: schema || undefined,
   };
 }
 

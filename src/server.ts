@@ -72,7 +72,7 @@ export interface SessionContext {
 }
 
 /** Systems a caller may name in a tool's `system` argument. */
-export function reachableSystems(sessionContext?: SessionContext): string[] {
+function reachableSystems(sessionContext?: SessionContext): string[] {
   return sessionContext?.binding ? [sessionContext.binding.system] : systemNames();
 }
 
@@ -110,6 +110,9 @@ export type McpToolResponse = {
   structuredContent?: Record<string, unknown>;
   isError?: true;
 };
+
+/** Appended to tool and `schema` argument descriptions. */
+const SCHEMA_DEFAULT_HINT = "Uses the system's default schema if not provided.";
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -363,18 +366,18 @@ interface ToolAudit<TArgs> {
  * @param errorMessage - Error message to use on failure
  * @param sessionContext - Optional session context for HTTP transport
  * @param audit - Tool name and how to read SQL or arguments for the audit log
- * @param fixedSystem - System the tool always runs on, ignoring any `system` argument
+ * @param systemOf - Reads the requested system from the arguments. Defaults to the `system` argument.
  */
 export function withToolHandler<TArgs, TResult extends ToolResult>(
   handler: (args: TArgs, target: DbTarget) => Promise<TResult>,
   errorMessage: string,
   sessionContext?: SessionContext,
   audit?: ToolAudit<TArgs>,
-  fixedSystem?: string,
+  systemOf: (args: TArgs) => string | undefined = systemArgOf,
 ): (args: TArgs) => Promise<McpToolResponse> {
   return async (args: TArgs): Promise<McpToolResponse> => {
     const facts = audit?.audit?.(args) ?? {};
-    const requested = fixedSystem ?? systemArgOf(args);
+    const requested = systemOf(args);
 
     let target: DbTarget | undefined;
     let targetError: string | undefined;
@@ -545,7 +548,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
           ...system,
           sql: z.string().describe('SQL SELECT query to execute'),
           params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
-          limit: z.number().int().positive().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
+          limit: z.number().int().positive().optional().describe('Maximum number of rows to return (default: QUERY_DEFAULT_LIMIT, max: QUERY_MAX_LIMIT)'),
         }),
         outputSchema: queryOutputSchema,
       },
@@ -591,11 +594,11 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'list_tables',
       {
         title: 'List Tables',
-        description: `List all tables in a schema (library). ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
+        description: `List all tables in a schema (library). ${SCHEMA_DEFAULT_HINT} Optionally filter by name pattern using * as wildcard.`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) name to list tables from. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) name to list tables from. ${SCHEMA_DEFAULT_HINT}`),
           filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "CUST*" matches tables starting with CUST'),
         }),
         outputSchema: listTablesOutputSchema,
@@ -618,13 +621,13 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'search_tables',
       {
         title: 'Search Tables',
-        description: 'Find tables by name or description text across libraries. Matches TABLE_NAME, SYSTEM_TABLE_NAME, and TABLE_TEXT. Use * as a wildcard. When QUERY_ALLOWED_SCHEMAS is set, only those libraries are searched. Otherwise system libraries (Q* and SYS*) are skipped unless include_system is true.',
+        description: 'Find tables by name or description text across libraries. Matches TABLE_NAME, SYSTEM_TABLE_NAME, and TABLE_TEXT. Use * as a wildcard. When a schema allowlist is configured, only those libraries are searched. Otherwise system libraries (Q* and SYS*) are skipped unless include_system is true.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
           filter: z.string().describe('Name or text to match. Use * as a wildcard. Example: "ORDER*" matches tables starting with ORDER'),
-          schema: z.string().optional().describe('Limit the search to one library. Must be in QUERY_ALLOWED_SCHEMAS when that list is set.'),
-          include_system: z.boolean().optional().describe('Include Q* and SYS* libraries. Ignored when a schema or QUERY_ALLOWED_SCHEMAS is set.'),
+          schema: z.string().optional().describe('Limit the search to one library. Must be in the schema allowlist when one is configured.'),
+          include_system: z.boolean().optional().describe('Include Q* and SYS* libraries. Ignored when a schema or a schema allowlist is set.'),
           limit: z.number().int().positive().optional().describe('Maximum rows to return. Capped by QUERY_MAX_LIMIT.'),
         }),
         outputSchema: searchTablesOutputSchema,
@@ -649,13 +652,13 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'search_columns',
       {
         title: 'Search Columns',
-        description: 'Find columns by name or description text across libraries. Matches COLUMN_NAME, SYSTEM_COLUMN_NAME, and COLUMN_TEXT. Use * as a wildcard. When QUERY_ALLOWED_SCHEMAS is set, only those libraries are searched. Otherwise system libraries (Q* and SYS*) are skipped unless include_system is true.',
+        description: 'Find columns by name or description text across libraries. Matches COLUMN_NAME, SYSTEM_COLUMN_NAME, and COLUMN_TEXT. Use * as a wildcard. When a schema allowlist is configured, only those libraries are searched. Otherwise system libraries (Q* and SYS*) are skipped unless include_system is true.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
           filter: z.string().describe('Name or text to match. Use * as a wildcard. Example: "ITEM*" matches columns starting with ITEM'),
-          schema: z.string().optional().describe('Limit the search to one library. Must be in QUERY_ALLOWED_SCHEMAS when that list is set.'),
-          include_system: z.boolean().optional().describe('Include Q* and SYS* libraries. Ignored when a schema or QUERY_ALLOWED_SCHEMAS is set.'),
+          schema: z.string().optional().describe('Limit the search to one library. Must be in the schema allowlist when one is configured.'),
+          include_system: z.boolean().optional().describe('Include Q* and SYS* libraries. Ignored when a schema or a schema allowlist is set.'),
           limit: z.number().int().positive().optional().describe('Maximum rows to return. Capped by QUERY_MAX_LIMIT.'),
         }),
         outputSchema: searchColumnsOutputSchema,
@@ -680,11 +683,11 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'describe_table',
       {
         title: 'Describe Table',
-        description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${SCHEMA_DEFAULT_HINT}`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${SCHEMA_DEFAULT_HINT}`),
           table: z.string().describe('Table name to describe'),
         }),
         outputSchema: describeTableOutputSchema,
@@ -707,11 +710,11 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'list_views',
       {
         title: 'List Views',
-        description: `List all views in a schema (library). ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
+        description: `List all views in a schema (library). ${SCHEMA_DEFAULT_HINT} Optionally filter by name pattern using * as wildcard.`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) name to list views from. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) name to list views from. ${SCHEMA_DEFAULT_HINT}`),
           filter: z.string().optional().describe('Filter pattern for view names. Use * as wildcard.'),
         }),
         outputSchema: listViewsOutputSchema,
@@ -734,11 +737,11 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'list_indexes',
       {
         title: 'List Indexes',
-        description: `List all indexes for a specific table including uniqueness and column information. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        description: `List all indexes for a specific table including uniqueness and column information. ${SCHEMA_DEFAULT_HINT}`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${SCHEMA_DEFAULT_HINT}`),
           table: z.string().describe('Table name to list indexes for'),
         }),
         outputSchema: listIndexesOutputSchema,
@@ -761,11 +764,11 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'get_table_constraints',
       {
         title: 'Get Table Constraints',
-        description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${SCHEMA_DEFAULT_HINT}`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${SCHEMA_DEFAULT_HINT}`),
           table: z.string().describe('Table name to get constraints for'),
         }),
         outputSchema: tableConstraintsOutputSchema,
@@ -818,7 +821,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) that contains the object. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) that contains the object. ${SCHEMA_DEFAULT_HINT}`),
           object: z.string().describe('Object name'),
           type: z.enum(SQL_OBJECT_TYPES).describe('Object type: TABLE, VIEW, INDEX, ALIAS, TRIGGER, FUNCTION, PROCEDURE, or SEQUENCE'),
         }),
@@ -848,7 +851,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) that contains the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) that contains the table. ${SCHEMA_DEFAULT_HINT}`),
           table: z.string().describe('Table name'),
         }),
         outputSchema: relatedObjectsOutputSchema,
@@ -876,7 +879,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) to inspect. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) to inspect. ${SCHEMA_DEFAULT_HINT}`),
           filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "ORDER*" matches tables starting with ORDER'),
           limit: z.number().int().positive().optional().describe('Maximum rows to return. Capped by QUERY_MAX_LIMIT.'),
         }),
@@ -906,7 +909,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
-          schema: z.string().optional().describe(`Schema (library) that contains the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          schema: z.string().optional().describe(`Schema (library) that contains the table. ${SCHEMA_DEFAULT_HINT}`),
           table: z.string().describe('Table name'),
           compute: z.boolean().optional().describe('Scan the table for exact counts, MIN, and MAX. Slower on large tables. Default false.'),
           columns: z.array(z.string()).optional().describe(`Columns to profile. Defaults to every column (the first ${MAX_COMPUTED_COLUMNS} when compute is true).`),
@@ -1127,8 +1130,19 @@ function customToolCallback(
         return { sql: tool.sql, params: bound.ok ? bound.params : [] };
       },
     },
-    tool.system,
+    (args) => customToolSystem(tool, args),
   );
+}
+
+/**
+ * The system a custom tool runs on: its pinned system, or the caller's
+ * `system` argument unless that name is one of the tool's SQL parameters.
+ */
+function customToolSystem(tool: StoredTool, args: unknown): string | undefined {
+  if (tool.system) {
+    return tool.system;
+  }
+  return 'system' in tool.parameters ? undefined : systemArgOf(args);
 }
 
 /** Tool arguments without the `system` argument, which is not a SQL parameter. */

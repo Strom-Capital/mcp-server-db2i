@@ -48,6 +48,15 @@ describe('Rate Limiter', () => {
       expect(config.maxRequests).toBe(50);
     });
 
+    it('should reject values that are not whole numbers', () => {
+      process.env.RATE_LIMIT_MAX_REQUESTS = 'abc';
+      expect(() => loadRateLimitConfig()).toThrow('RATE_LIMIT_MAX_REQUESTS must be a whole number');
+      delete process.env.RATE_LIMIT_MAX_REQUESTS;
+
+      process.env.RATE_LIMIT_WINDOW_MS = '0';
+      expect(() => loadRateLimitConfig()).toThrow('RATE_LIMIT_WINDOW_MS must be at least 1');
+    });
+
     it('should disable rate limiting when RATE_LIMIT_ENABLED is false', () => {
       process.env.RATE_LIMIT_ENABLED = 'false';
 

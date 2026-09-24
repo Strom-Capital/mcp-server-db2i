@@ -71,7 +71,7 @@ describe('catalog search', () => {
 
       expect(result).toEqual({
         success: false,
-        error: 'Schema OUTSIDELIB is not in QUERY_ALLOWED_SCHEMAS (MYLIB).',
+        error: 'Schema OUTSIDELIB is not in the allowed schemas (MYLIB).',
       });
       expect(query).not.toHaveBeenCalled();
     });
@@ -136,6 +136,7 @@ describe('catalog search', () => {
     it('adds the YAML column description', async () => {
       setCustomTools({
         tools: [],
+        masking: new Map(),
         annotations: [{
           table: 'MYLIB.ORDERS',
           description: 'Sales order lines',
@@ -179,6 +180,7 @@ describe('catalog search', () => {
       });
       setCustomTools({
         tools: [],
+        masking: new Map(),
         annotations: [{
           table: 'MYLIB.ORDERS',
           description: 'Sales order lines',

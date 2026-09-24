@@ -47,7 +47,7 @@ COPY src ./src
 RUN npm run build
 
 # Prune dev dependencies for smaller production image
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # Shared runtime layer: application files, user and env placeholders.
 # The driver-specific stages below add their native runtime and set USER.
@@ -70,10 +70,8 @@ RUN useradd -m -s /bin/bash mcpuser
 # Environment variables (to be provided at runtime)
 # Database connection
 ENV DB2I_HOSTNAME=""
-ENV DB2I_PORT="446"
 ENV DB2I_USERNAME=""
 ENV DB2I_PASSWORD=""
-ENV DB2I_DATABASE="*LOCAL"
 ENV DB2I_SCHEMA=""
 # jt400 (default) | odbc
 ENV DB2I_DRIVER=""

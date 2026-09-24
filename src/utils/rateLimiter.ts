@@ -5,7 +5,7 @@
  * abuse and protect the IBM i database from excessive queries.
  */
 
-import { DEFAULT_RATE_LIMIT, type RateLimitConfig } from '../config.js';
+import { DEFAULT_RATE_LIMIT, readIntEnv, type RateLimitConfig } from '../config.js';
 import { createChildLogger } from './logger.js';
 
 const log = createChildLogger({ component: 'rate-limiter' });
@@ -53,19 +53,25 @@ interface WindowData {
  * Load rate limit configuration from environment variables
  */
 export function loadRateLimitConfig(): RateLimitConfig {
-  const windowMs = process.env.RATE_LIMIT_WINDOW_MS
-    ? parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10)
-    : DEFAULT_RATE_LIMIT.windowMs;
-
-  const maxRequests = process.env.RATE_LIMIT_MAX_REQUESTS
-    ? parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10)
-    : DEFAULT_RATE_LIMIT.maxRequests;
+  const windowMs = readIntEnv('RATE_LIMIT_WINDOW_MS', DEFAULT_RATE_LIMIT.windowMs);
+  if (windowMs < 1) {
+    throw new Error('RATE_LIMIT_WINDOW_MS must be at least 1');
+  }
+  const maxRequests = Math.max(0, readIntEnv('RATE_LIMIT_MAX_REQUESTS', DEFAULT_RATE_LIMIT.maxRequests));
 
   // Disabled if explicitly set to 'false' or '0'
   const enabledEnv = process.env.RATE_LIMIT_ENABLED?.toLowerCase();
   const enabled = enabledEnv !== 'false' && enabledEnv !== '0';
 
   return { windowMs, maxRequests, enabled };
+}
+
+/**
+ * A key safe to log. In `required` auth mode the key is the bearer token,
+ * so only its first 8 characters are written, as elsewhere in the logs.
+ */
+function loggableKey(key: string): string {
+  return key.length > 16 ? `${key.slice(0, 8)}…` : key;
 }
 
 /**
@@ -135,7 +141,7 @@ export class RateLimiter {
     // Check if limit exceeded
     if (window.count >= this.config.maxRequests) {
       log.warn(
-        { key, count: window.count, limit: this.config.maxRequests, retryAfterSeconds },
+        { key: loggableKey(key), count: window.count, limit: this.config.maxRequests, retryAfterSeconds },
         'Rate limit exceeded'
       );
 
@@ -155,7 +161,7 @@ export class RateLimiter {
     const remaining = this.config.maxRequests - window.count;
 
     log.debug(
-      { key, count: window.count, remaining, limit: this.config.maxRequests },
+      { key: loggableKey(key), count: window.count, remaining, limit: this.config.maxRequests },
       'Rate limit check passed'
     );
 
@@ -232,7 +238,7 @@ export class RateLimiter {
    */
   reset(key: string = 'default'): void {
     this.windows.delete(key);
-    log.debug({ key }, 'Rate limit reset');
+    log.debug({ key: loggableKey(key) }, 'Rate limit reset');
   }
 
   /**

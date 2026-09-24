@@ -20,8 +20,6 @@ services:
     environment:
       # Database connection
       - DB2I_HOSTNAME=${DB2I_HOSTNAME}
-      - DB2I_PORT=${DB2I_PORT:-446}
-      - DB2I_DATABASE=${DB2I_DATABASE:-*LOCAL}
       - DB2I_SCHEMA=${DB2I_SCHEMA:-}
       - DB2I_JDBC_OPTIONS=${DB2I_JDBC_OPTIONS:-}
       # Option 1: Plain environment variables (from .env file)

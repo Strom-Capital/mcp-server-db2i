@@ -3,22 +3,25 @@
  */
 
 import { executeQuery } from '../db/connection.js';
-import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
+import {
+  isParseStatementMissing,
+  PARSE_STATEMENT_UNAVAILABLE,
+  parseStatement,
+  type ParsedName,
+} from '../db/sqlServices.js';
 import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
 import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import { applySqlRowLimit } from '../tools/sqlLimit.js';
 import { createChildLogger } from '../utils/logger.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import type { StoredTool } from './loader.js';
-import { cacheParse, cachedParse } from './registry.js';
+import { cacheParse, cachedParse, type ParseOutcome } from './registry.js';
 import { maskRows } from './masking.js';
 import { formatSchemaIssues, inputSchemaFor, type ParameterDef } from './schema.js';
 
 const log = createChildLogger({ component: 'custom-tools' });
 
-export type ParseOutcome =
-  | { ok: true }
-  | { ok: false; error: string; violations?: string[] };
+export type { ParseOutcome };
 
 /**
  * Decide whether PARSE_STATEMENT rows describe a query.
@@ -167,7 +170,7 @@ async function ensureParsed(tool: StoredTool, target?: DbTarget): Promise<ParseO
     return { ok: true };
   }
 
-  const cached = cachedParse(tool.name);
+  const cached = cachedParse(tool.name, target?.system);
   if (cached) {
     return cached;
   }
@@ -175,15 +178,15 @@ async function ensureParsed(tool: StoredTool, target?: DbTarget): Promise<ParseO
   try {
     const parsed = await parseStatement(tool.sql, target);
     const outcome = classifyParsedStatement(parsed);
-    cacheParse(tool.name, outcome);
+    cacheParse(tool.name, target?.system, outcome);
     return outcome;
   } catch (error) {
     if (isParseStatementMissing(error)) {
       const outcome: ParseOutcome = {
         ok: false,
-        error: 'QSYS2.PARSE_STATEMENT is not available on this system. Set QUERY_PARSE_CHECK=false to run queries without this check.',
+        error: `${PARSE_STATEMENT_UNAVAILABLE} Set QUERY_PARSE_CHECK=false to run queries without this check.`,
       };
-      cacheParse(tool.name, outcome);
+      cacheParse(tool.name, target?.system, outcome);
       return outcome;
     }
     const message = error instanceof Error ? error.message : 'Unknown error occurred';

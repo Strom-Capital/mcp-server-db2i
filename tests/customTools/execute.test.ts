@@ -7,6 +7,7 @@ vi.mock('../../src/db/connection.js', () => ({
 vi.mock('../../src/db/sqlServices.js', () => ({
   parseStatement: vi.fn(async () => [{ statementType: 'QUERY' }]),
   isParseStatementMissing: vi.fn(() => false),
+  PARSE_STATEMENT_UNAVAILABLE: 'QSYS2.PARSE_STATEMENT is not available on this system.',
 }));
 
 import { executeQuery } from '../../src/db/connection.js';
@@ -141,5 +142,23 @@ describe('executeCustomTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/PARSE_STATEMENT is not available/);
+  });
+
+  it('checks PARSE_STATEMENT separately on each system', async () => {
+    process.env.QUERY_PARSE_CHECK = 'true';
+    const target = (system: string) => ({
+      poolKey: 'stdio',
+      system,
+      config: { hostname: `${system}.example.com`, port: 446, username: 'u', password: 'p', database: '*LOCAL', schema: '', driver: 'jt400' as const, jdbcOptions: {}, odbcOptions: {} },
+    });
+    vi.mocked(parseStatement).mockRejectedValueOnce(new Error('PARSE_STATEMENT not found SQL0204'));
+    vi.mocked(isParseStatementMissing).mockReturnValueOnce(true);
+
+    const old = await executeCustomTool(tool, { customer: '1001' }, { target: target('old') });
+    const current = await executeCustomTool(tool, { customer: '1001' }, { target: target('current') });
+
+    expect(old.success).toBe(false);
+    expect(current.success).toBe(true);
+    expect(parseStatement).toHaveBeenCalledTimes(2);
   });
 });

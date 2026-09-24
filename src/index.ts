@@ -29,9 +29,9 @@ import {
   getResponseFormat,
   connectionSecurity,
   assertCustomToolsWatch,
-  assertExtendedMetadataAllowsMasking,
   isCustomToolsWatchEnabled,
   isQueryParseCheckEnabled,
+  getQueryLimitConfig,
 } from './config.js';
 import { initializePool, testConnection, closeGlobalPool } from './db/connection.js';
 import { defaultSystem, getSystems, isProfilesFileConfigured, type SystemProfile } from './systems.js';
@@ -100,6 +100,8 @@ async function main(): Promise<void> {
 
     // Initialize rate limiter (logs its own config)
     getRateLimiter();
+    // Fail on a malformed QUERY_DEFAULT_LIMIT / QUERY_MAX_LIMIT now, not on the first query
+    getQueryLimitConfig();
 
     // Reads and checks DB2I_PROFILES, so a bad file stops startup
     const systems = getSystems();
@@ -117,18 +119,6 @@ async function main(): Promise<void> {
     // Validates tool files and MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
     const customTools = loadCustomToolsFromEnv();
     assertCustomToolsWatch();
-    if (profiles) {
-      for (const system of systems) {
-        assertExtendedMetadataAllowsMasking(
-          customTools.masking.size > 0,
-          system.config.driver,
-          system.config.jdbcOptions,
-          `Profile ${system.name} jdbcOptions`
-        );
-      }
-    } else {
-      assertExtendedMetadataAllowsMasking(customTools.masking.size > 0);
-    }
     if (customTools.masking.size > 0 && !isQueryParseCheckEnabled()) {
       logger.warn(
         'Masking rules are loaded and QUERY_PARSE_CHECK is off. execute_query will refuse to run until the check is on.'
@@ -166,7 +156,6 @@ async function main(): Promise<void> {
 
       // Register the stdio pools. Other systems connect on their first query.
       initializePool(config, system.name);
-      logger.debug('Global database connection pool initialized');
 
       // Test the default system's connection
       const connected = await testConnection();

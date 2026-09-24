@@ -37,8 +37,6 @@ MCP_TRANSPORT=stdio
 | `MCP_MAX_SESSIONS` | `100` | Maximum concurrent sessions |
 | `MCP_CORS_ORIGINS` | - | CORS allowed origins (comma-separated, `*` for all) |
 | `DB2I_HOSTNAME` | - | IBM i hostname (fallback for auth requests) |
-| `DB2I_PORT` | `446` | IBM i port (fallback for auth requests) |
-| `DB2I_DATABASE` | `*LOCAL` | Database name (fallback for auth requests) |
 | `DB2I_SCHEMA` | - | Default schema (fallback for auth requests) |
 
 ## Authentication Modes
@@ -168,10 +166,10 @@ curl -X POST http://localhost:3000/mcp \
 | `username` | Yes | IBM i username |
 | `password` | Yes | IBM i password |
 | `host` | No | IBM i hostname (falls back to `DB2I_HOSTNAME`) |
-| `port` | No | Connection port (falls back to `DB2I_PORT`) |
-| `database` | No | Database name (falls back to `DB2I_DATABASE`) |
+| `port` | No | Accepted for compatibility. Not used by either driver |
+| `database` | No | Accepted for compatibility. Not used by either driver |
 | `schema` | No | Default schema (falls back to `DB2I_SCHEMA`) |
-| `duration` | No | Token lifetime in seconds (max 86400) |
+| `duration` | No | Token lifetime in seconds. Capped at `MCP_TOKEN_EXPIRY` |
 | `system` | No | Profile from `DB2I_PROFILES` to log in to (default: the first). Not accepted with `host`, `port`, or `database` |
 
 ## Multiple Systems

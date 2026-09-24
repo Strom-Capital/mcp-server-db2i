@@ -496,6 +496,12 @@ describe('Config Module', () => {
       expect(connConfig['date format']).toBe('iso');
     });
 
+    it('should not add a default naming when the option uses other casing', () => {
+      const connConfig = buildConnectionConfig({ ...baseConfig, jdbcOptions: { Naming: 'sql' } });
+      expect(connConfig['naming']).toBeUndefined();
+      expect(connConfig['Naming']).toBe('sql');
+    });
+
     it('should default the driver access mode to read only', () => {
       const connConfig = buildConnectionConfig(baseConfig);
       expect(connConfig['access']).toBe('read only');
@@ -857,6 +863,14 @@ describe('Config Module', () => {
 
       delete process.env.QUERY_DEFAULT_LIMIT;
       delete process.env.QUERY_MAX_LIMIT;
+    });
+
+    it('should reject a limit that is not a whole number', () => {
+      process.env.QUERY_DEFAULT_LIMIT = 'abc';
+
+      expect(() => getQueryLimitConfig()).toThrow('QUERY_DEFAULT_LIMIT must be a whole number, got "abc"');
+
+      delete process.env.QUERY_DEFAULT_LIMIT;
     });
   });
 

@@ -3,7 +3,7 @@
  */
 
 import { executeQuery } from '../db/connection.js';
-import { validateQuery } from '../db/queries.js';
+import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
 import { createChildLogger } from '../utils/logger.js';
 import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
@@ -28,12 +28,9 @@ export interface ExecuteQueryInput {
   sql: string;
   params?: unknown[];
   limit?: number;
-  /** Optional session ID for HTTP transport (uses session-specific pool) */
+  /** Caller and IBM i system. Omit for the stdio default system. */
   target?: DbTarget;
-  /**
-   * Schema unqualified names resolve to. Session schema when set, otherwise
-   * DB2I_SCHEMA. Used by the schema allowlist only.
-   */
+  /** Schema unqualified names resolve to. Used by the schema allowlist only. */
   defaultSchema?: string;
 }
 

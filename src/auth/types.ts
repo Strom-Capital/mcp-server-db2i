@@ -59,16 +59,6 @@ export interface AuthResponse {
 }
 
 /**
- * Authentication error response
- */
-export interface AuthErrorResponse {
-  /** Error code */
-  error: string;
-  /** Human-readable error description */
-  error_description?: string;
-}
-
-/**
  * Internal token session storage
  * Stores the token, associated DB config, and lifecycle metadata
  */
@@ -85,8 +75,6 @@ export interface TokenSession {
   expiresAt: Date;
   /** When the token was last used */
   lastUsedAt: Date;
-  /** MCP session ID (for stateful mode) */
-  mcpSessionId?: string;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   hostnameOf,
   isLoopbackHost,
   loadPartialConfig,
+  normalizeDbHost,
   type DB2iConfig,
 } from '../config.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -30,12 +31,14 @@ import {
   authMiddleware,
   authRateLimitMiddleware,
   clearAuthRateLimit,
+  extractBearerToken,
   type AuthenticatedRequest,
   type AuthRequest,
   type AuthResponse,
+  type AuthValidationResult,
 } from '../auth/index.js';
 import { getSessionManager } from './sessionManager.js';
-import { isSessionOwnedByCaller, resolveCallerSessionKey } from './sessionAuth.js';
+import { GLOBAL_SESSION_KEY, isSessionOwnedByCaller, resolveCallerSessionKey } from './sessionAuth.js';
 import { createServer as createMcpServer, SERVER_NAME, SERVER_VERSION, type SessionContext } from '../server.js';
 import { getOpenApiSpec } from '../openapi.js';
 import { initializeSessionPool, testConnection, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
@@ -64,7 +67,7 @@ export function notifyCustomToolsChanged(): void {
 /**
  * Validate auth request body
  */
-function validateAuthRequest(body: unknown): { valid: boolean; request?: AuthRequest; error?: string } {
+function validateAuthRequest(body: unknown): AuthValidationResult {
   if (!body || typeof body !== 'object') {
     return { valid: false, error: 'Request body must be a JSON object' };
   }
@@ -144,17 +147,6 @@ function sessionNotFoundBody(): { jsonrpc: '2.0'; error: { code: number; message
   };
 }
 
-function bearerToken(authorization: string | null | undefined): string | undefined {
-  if (!authorization) {
-    return undefined;
-  }
-  const [scheme, token] = authorization.split(' ');
-  if (!token || scheme?.toLowerCase() !== 'bearer') {
-    return undefined;
-  }
-  return token;
-}
-
 /**
  * Build a per-request MCP server bound to the caller's database pool.
  * Pools stay keyed by auth token (or the shared "global" key), not by MCP session id.
@@ -166,7 +158,7 @@ function createHttpMcpServer(request?: globalThis.Request): ReturnType<typeof cr
   if (httpConfig.authMode === 'none' || httpConfig.authMode === 'token') {
     context = { sessionId: resolveCallerSessionKey(httpConfig.authMode) };
   } else {
-    const token = bearerToken(request?.headers.get('authorization'));
+    const token = extractBearerToken(request?.headers.get('authorization') ?? undefined);
     const validation = token ? getTokenManager().validateToken(token) : undefined;
     if (!token || !validation?.valid || !validation.session) {
       throw new Error('Token session not found');
@@ -190,10 +182,6 @@ function authAllowedDbHosts(httpConfig: ReturnType<typeof getHttpConfig>): strin
     return [...new Set(getSystems().map((system) => normalizeDbHost(system.config.hostname)))];
   }
   return httpConfig.authAllowedDbHosts;
-}
-
-function normalizeDbHost(host: string): string {
-  return host.trim().replace(/\.$/, '').toLowerCase();
 }
 
 /**
@@ -364,25 +352,19 @@ async function handleStatefulLegacyRequest(req: Request, res: Response): Promise
 
     let mcpServer: ReturnType<typeof createMcpServer> | undefined;
     let transport: Awaited<ReturnType<typeof sessionManager.createSession>>['transport'];
-    let newSessionId: string;
 
     try {
       mcpServer = createMcpServer({ sessionId: sessionKey, binding });
       const result = await sessionManager.createSession(mcpServer, sessionKey);
       transport = result.transport;
-      newSessionId = result.sessionId;
     } catch (err) {
       if (mcpServer) {
         await mcpServer.close().catch(() => {});
       }
-      if (sessionKey !== 'global') {
+      if (sessionKey !== GLOBAL_SESSION_KEY) {
         await closeSessionPool(sessionKey);
       }
       throw err;
-    }
-
-    if (httpConfig.authMode === 'required') {
-      getTokenManager().setMcpSessionId(sessionKey, newSessionId);
     }
 
     await transport.handleRequest(req, res, req.body);
@@ -731,6 +713,7 @@ export async function startHttpServer(): Promise<http.Server | https.Server> {
   if (httpConfig.authMode === 'required') {
     const tokenManager = getTokenManager();
     tokenManager.setCleanupCallback(async (token: string) => {
+      await getSessionManager().closeSessionsByToken(token);
       await closeSessionPool(token);
     });
   }
@@ -744,7 +727,7 @@ export async function startHttpServer(): Promise<http.Server | https.Server> {
     log.info('TLS enabled');
   } else {
     server = http.createServer(app);
-    if (httpConfig.host !== '127.0.0.1' && httpConfig.host !== 'localhost') {
+    if (!isLoopbackHost(httpConfig.host)) {
       log.warn(
         'TLS is disabled. For production use, enable TLS or run behind a reverse proxy with TLS.'
       );

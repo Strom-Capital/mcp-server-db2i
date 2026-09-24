@@ -8,13 +8,13 @@
  * pool creation, and shutdown.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import type { DB2iConfig, DbDriverName } from '../../src/config.js';
 import type { DbTarget } from '../../src/systems.js';
 
 interface FakePool {
-  query: ReturnType<typeof vi.fn>;
-  close: ReturnType<typeof vi.fn>;
+  query: Mock<(...args: unknown[]) => Promise<unknown>>;
+  close: Mock<() => Promise<undefined>>;
 }
 
 // One shared registry for both fakes: every pool created, with the settings it

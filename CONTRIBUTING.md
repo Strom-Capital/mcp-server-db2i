@@ -70,26 +70,9 @@ docs: update JDBC options table
 
 **Always squash-merge.** GitHub merge commits copy the PR title into the merge-commit body. Release Please then records both the feature commit and the merge commit, which produces duplicate changelog rows (see v1.3.2). The repository allows squash-merge only.
 
-## Project Structure
+## Project Structure and New Tools
 
-```
-src/
-├── index.ts          # MCP server setup and tool registration
-├── config.ts         # Configuration loading
-├── db/
-│   ├── connection.ts # Database connection management
-│   └── queries.ts    # SQL query functions
-└── tools/
-    ├── query.ts      # Query execution tool
-    └── metadata.ts   # Schema/table inspection tools
-```
-
-## Adding New Tools
-
-1. Add the query function in `src/db/queries.ts`
-2. Add the tool wrapper in `src/tools/` (query or metadata)
-3. Register the tool in `src/index.ts`
-4. Update `README.md` with the new tool
+See [docs/development.md](docs/development.md#project-structure) for the source layout, and [Adding a New Tool](docs/development.md#adding-a-new-tool) for the steps. Update `README.md` when you add a tool.
 
 ## Code Style
 

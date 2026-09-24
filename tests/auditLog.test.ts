@@ -187,7 +187,7 @@ tools:
     setCustomTools(loadCustomTools([dir]));
     const server = createServer();
     const tool = liveCustomTool(server, 'search_sales_orders');
-    await tool?.handler({ customer: '1001' }, {} as never);
+    await tool?.handler({ customer: '1001' } as never, {} as never);
 
     const [line] = readLines(file);
     expect(line?.tool).toBe('search_sales_orders');

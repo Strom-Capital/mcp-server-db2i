@@ -234,7 +234,7 @@ describe('MCP resources and prompts', () => {
     it('rejects a library outside QUERY_ALLOWED_SCHEMAS without querying', async () => {
       process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
       await expect(client.readResource({ uri: 'db2i://OTHERLIB/ORDERHDR' })).rejects.toThrow(
-        'Schema OTHERLIB is not in QUERY_ALLOWED_SCHEMAS (MYLIB).',
+        'Schema OTHERLIB is not in the allowed schemas (MYLIB).',
       );
       expect(mockQuery).not.toHaveBeenCalled();
     });
@@ -320,7 +320,7 @@ describe('MCP resources and prompts', () => {
 
     it('rejects a library outside QUERY_ALLOWED_SCHEMAS', async () => {
       process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
-      await expect(client.readResource({ uri: 'db2i://OTHERLIB/ORDERHDR/ddl' })).rejects.toThrow('QUERY_ALLOWED_SCHEMAS');
+      await expect(client.readResource({ uri: 'db2i://OTHERLIB/ORDERHDR/ddl' })).rejects.toThrow('is not in the allowed schemas');
       expect(mockQuery).not.toHaveBeenCalled();
     });
   });
@@ -444,7 +444,7 @@ describe('MCP resources and prompts', () => {
       process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
       await expect(
         client.getPrompt({ name: 'explain_table', arguments: { schema: 'OTHERLIB', table: 'ORDERHDR' } }),
-      ).rejects.toThrow('QUERY_ALLOWED_SCHEMAS');
+      ).rejects.toThrow('is not in the allowed schemas');
     });
 
     it('write_query embeds real columns and YAML relations', async () => {

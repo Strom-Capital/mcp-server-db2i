@@ -2,7 +2,7 @@
  * MCP resources for table columns, table DDL, and YAML business context.
  *
  * Each resource is registered only when the tool it draws on is enabled, and
- * every read that names a library is held to QUERY_ALLOWED_SCHEMAS. Reads that
+ * every read that names a library is held to the system's schema allowlist. Reads that
  * reach IBM i count against the rate limit and go to the audit log like tool calls.
  */
 
@@ -28,9 +28,9 @@ import { isSchemaAllowed } from './utils/security/schemaAllowlist.js';
 /** The protocol caps a completion response at 100 values. */
 const MAX_COMPLETIONS = 100;
 
-export const TABLE_URI_TEMPLATE = 'db2i://{schema}/{table}';
-export const TABLE_DDL_URI_TEMPLATE = 'db2i://{schema}/{table}/ddl';
-export const BUSINESS_CONTEXT_URI = 'db2i://business-context';
+const TABLE_URI_TEMPLATE = 'db2i://{schema}/{table}';
+const TABLE_DDL_URI_TEMPLATE = 'db2i://{schema}/{table}/ddl';
+const BUSINESS_CONTEXT_URI = 'db2i://business-context';
 
 export interface Caller {
   sessionId?: string;
@@ -142,8 +142,8 @@ function startingWith(names: readonly string[] | undefined, value: string): stri
 }
 
 /**
- * Library names starting with value. Limited to QUERY_ALLOWED_SCHEMAS when that
- * list is set, which also avoids a catalog query.
+ * Library names starting with value. Limited to the schema allowlist when one
+ * is set, which also avoids a catalog query.
  */
 export async function completeSchemas(value: string, caller: Caller): Promise<string[]> {
   const allowed = caller.target().allowedSchemas;
@@ -174,7 +174,7 @@ export async function completeTables(schema: string | undefined, value: string, 
   return startingWith(names, value);
 }
 
-export function tableUri(schema: string, table: string): string {
+function tableUri(schema: string, table: string): string {
   return `db2i://${encodeURIComponent(schema)}/${encodeURIComponent(table)}`;
 }
 

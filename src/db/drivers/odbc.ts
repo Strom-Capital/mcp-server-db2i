@@ -44,7 +44,7 @@ function loadOdbc(): Promise<OdbcModule> {
  * Db2 for i accepts `YYYY-MM-DD HH:MM:SS.ffffff` for a timestamp parameter.
  * The value is rendered in UTC, the same instant a Date represents.
  */
-export function toDb2Timestamp(date: Date): string {
+function toDb2Timestamp(date: Date): string {
   return `${date.toISOString().slice(0, 23).replace('T', ' ')}000`;
 }
 
@@ -60,7 +60,7 @@ function bindParams(params: readonly QueryParam[]): Array<string | number> {
  * node-odbc errors carry the driver's diagnostics in `odbcErrors`. Surface the
  * first one so the message says what Db2 said (SQLSTATE and text).
  */
-export function describeOdbcError(error: unknown): string {
+function describeOdbcError(error: unknown): string {
   if (error && typeof error === 'object' && 'odbcErrors' in error) {
     const diagnostics = (error as { odbcErrors?: unknown }).odbcErrors;
     if (Array.isArray(diagnostics) && diagnostics.length > 0) {

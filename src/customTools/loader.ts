@@ -10,8 +10,8 @@ import path from 'node:path';
 
 import { parseDocument } from 'yaml';
 
-import { TOOL_NAMES } from '../config.js';
-import { getSystems } from '../systems.js';
+import { assertExtendedMetadataAllowsMasking, TOOL_NAMES } from '../config.js';
+import { getSystems, isProfilesFileConfigured } from '../systems.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { PlaceholderError, rewriteNamedPlaceholders } from './params.js';
@@ -125,13 +125,40 @@ const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map(
  * An unset or blank value loads nothing.
  */
 export function loadCustomToolsFromEnv(): LoadedCustomTools {
-  const raw = process.env.MCP_CUSTOM_TOOLS;
-  if (raw === undefined || raw.trim() === '') {
+  const paths = customToolInputs();
+  if (paths.length === 0) {
     return EMPTY;
   }
+  const loaded = loadCustomTools(paths, systemLoadOptions());
+  assertMaskingSupported(loaded);
+  return loaded;
+}
 
-  const paths = raw.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-  return loadCustomTools(paths, systemLoadOptions());
+/** The files and directories listed in MCP_CUSTOM_TOOLS. */
+export function customToolInputs(): string[] {
+  const raw = process.env.MCP_CUSTOM_TOOLS ?? '';
+  return raw.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+}
+
+/**
+ * Refuse masking rules on a system whose driver options rename result columns.
+ */
+function assertMaskingSupported(loaded: LoadedCustomTools): void {
+  if (loaded.masking.size === 0) {
+    return;
+  }
+  if (!isProfilesFileConfigured()) {
+    assertExtendedMetadataAllowsMasking(true);
+    return;
+  }
+  for (const system of getSystems()) {
+    assertExtendedMetadataAllowsMasking(
+      true,
+      system.config.driver,
+      system.config.jdbcOptions,
+      `Profile ${system.name} jdbcOptions`
+    );
+  }
 }
 
 /**

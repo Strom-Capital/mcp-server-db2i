@@ -339,7 +339,7 @@ export function loadConfig(): DB2iConfig {
 
   return {
     hostname,
-    port: parseInt(process.env.DB2I_PORT || '446', 10),
+    port: readIntEnv('DB2I_PORT', 446),
     username,
     password,
     database: process.env.DB2I_DATABASE || '*LOCAL',
@@ -380,12 +380,12 @@ export function buildConnectionConfig(config: DB2iConfig, options?: BuildConnect
   };
 
   // Add default naming convention (system naming uses / for library separator)
-  if (!config.jdbcOptions['naming']) {
+  if (jdbcOption(config.jdbcOptions, 'naming') === undefined) {
     connectionConfig['naming'] = 'system';
   }
 
   // Add date format if not specified
-  if (!config.jdbcOptions['date format']) {
+  if (jdbcOption(config.jdbcOptions, 'date format') === undefined) {
     connectionConfig['date format'] = 'iso';
   }
 
@@ -543,23 +543,29 @@ export interface QueryLimitConfig {
 }
 
 /**
- * Default query limit configuration values
- *
- * Environment variables:
- * - QUERY_DEFAULT_LIMIT: Default rows to return (default: 1000)
- * - QUERY_MAX_LIMIT: Maximum rows allowed, caps user-provided limits (default: 10000)
+ * Read an integer environment variable. Unset or blank gives the fallback;
+ * anything that is not a whole number is a configuration error.
  */
-export const DEFAULT_QUERY_LIMIT: QueryLimitConfig = {
-  defaultLimit: 1000,
-  maxLimit: 10000,
-};
+export function readIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+  if (!/^-?\d+$/.test(raw)) {
+    throw new Error(`${name} must be a whole number, got "${raw}"`);
+  }
+  return Number.parseInt(raw, 10);
+}
 
 /**
  * Get query limit configuration from environment variables
+ *
+ * - QUERY_DEFAULT_LIMIT: Default rows to return (default: 1000)
+ * - QUERY_MAX_LIMIT: Maximum rows allowed, caps user-provided limits (default: 10000)
  */
 export function getQueryLimitConfig(): QueryLimitConfig {
-  const defaultLimit = parseInt(process.env.QUERY_DEFAULT_LIMIT || '1000', 10);
-  const maxLimit = parseInt(process.env.QUERY_MAX_LIMIT || '10000', 10);
+  const defaultLimit = readIntEnv('QUERY_DEFAULT_LIMIT', 1000);
+  const maxLimit = readIntEnv('QUERY_MAX_LIMIT', 10000);
 
   return {
     defaultLimit: Math.max(1, defaultLimit),
@@ -607,8 +613,6 @@ export const TOOL_NAMES = [
   'profile_table',
   'get_business_context',
 ] as const;
-
-export type ToolName = (typeof TOOL_NAMES)[number];
 
 /**
  * A YAML-defined tool that tool selection can name directly or by toolset.
@@ -903,30 +907,10 @@ export interface HttpConfig {
 }
 
 /**
- * Default HTTP configuration values
- */
-export const DEFAULT_HTTP_CONFIG: HttpConfig = {
-  transport: 'stdio',
-  port: 3000,
-  host: '127.0.0.1',
-  sessionMode: 'stateless',
-  authMode: 'required',
-  tls: {
-    enabled: false,
-  },
-  tokenExpiry: 3600,
-  maxSessions: 100,
-  corsOrigins: [],
-  allowedHosts: ['localhost', '127.0.0.1', '::1'],
-  allowUnauthenticatedHttp: false,
-  authAllowedDbHosts: null,
-};
-
-/**
  * Parse CORS origins from environment variable
  * Returns array of allowed origins, or ['*'] for all
  */
-export function getCorsOrigins(): string[] {
+function getCorsOrigins(): string[] {
   const origins = process.env.MCP_CORS_ORIGINS;
   if (!origins || origins.trim() === '') {
     return [];
@@ -1018,15 +1002,20 @@ export function getAuthAllowedDbHosts(): string[] | null {
       ...new Set(
         explicit
           .split(',')
-          .map((host) => host.trim().replace(/\.$/, '').toLowerCase())
+          .map(normalizeDbHost)
           .filter((host) => host.length > 0)
       ),
     ];
     return hosts.length > 0 ? hosts : null;
   }
 
-  const dbHost = process.env.DB2I_HOSTNAME?.trim().replace(/\.$/, '').toLowerCase();
+  const dbHost = normalizeDbHost(process.env.DB2I_HOSTNAME ?? '');
   return dbHost ? [dbHost] : null;
+}
+
+/** Lowercase a host name and drop a trailing dot, for comparing hosts. */
+export function normalizeDbHost(host: string): string {
+  return host.trim().replace(/\.$/, '').toLowerCase();
 }
 
 function allowUnauthenticatedHttp(): boolean {
@@ -1067,7 +1056,7 @@ export function getSessionMode(): SessionMode {
  * - MCP_AUTH_MODE: 'required' | 'token' | 'none' (default: 'required')
  * - MCP_AUTH_TOKEN: Static token for 'token' mode (required if mode='token')
  */
-export function getAuthMode(): AuthMode {
+function getAuthMode(): AuthMode {
   const mode = process.env.MCP_AUTH_MODE?.toLowerCase();
   if (mode === 'none' || mode === 'token') {
     return mode;
@@ -1078,14 +1067,14 @@ export function getAuthMode(): AuthMode {
 /**
  * Get the static auth token for 'token' mode
  */
-export function getStaticToken(): string | undefined {
+function getStaticToken(): string | undefined {
   return process.env.MCP_AUTH_TOKEN;
 }
 
 /**
  * Get TLS configuration from environment variables
  */
-export function getTlsConfig(): TlsConfig {
+function getTlsConfig(): TlsConfig {
   const enabled = process.env.MCP_TLS_ENABLED?.toLowerCase();
   const isEnabled = enabled === 'true' || enabled === '1';
 
@@ -1135,14 +1124,14 @@ export function getHttpConfig(): HttpConfig {
 
   return {
     transport: getTransportMode(),
-    port: parseInt(process.env.MCP_HTTP_PORT || '3000', 10),
+    port: readIntEnv('MCP_HTTP_PORT', 3000),
     host,
     sessionMode: getSessionMode(),
     authMode,
     staticToken,
     tls: getTlsConfig(),
-    tokenExpiry: parseInt(process.env.MCP_TOKEN_EXPIRY || '3600', 10),
-    maxSessions: parseInt(process.env.MCP_MAX_SESSIONS || '100', 10),
+    tokenExpiry: readIntEnv('MCP_TOKEN_EXPIRY', 3600),
+    maxSessions: readIntEnv('MCP_MAX_SESSIONS', 100),
     corsOrigins: getCorsOrigins(),
     allowedHosts: getAllowedHosts(host),
     allowUnauthenticatedHttp: allowUnauthenticatedHttp(),
@@ -1182,7 +1171,7 @@ export function loadPartialConfig(overrides: {
   schema?: string;
 }): DB2iConfig {
   const hostname = overrides.hostname ?? process.env.DB2I_HOSTNAME;
-  const port = overrides.port ?? parseInt(process.env.DB2I_PORT || '446', 10);
+  const port = overrides.port ?? readIntEnv('DB2I_PORT', 446);
   const username = overrides.username ?? getSecret('DB2I_USERNAME', 'DB2I_USERNAME_FILE');
   const password = overrides.password ?? getSecret('DB2I_PASSWORD', 'DB2I_PASSWORD_FILE');
   const database = overrides.database ?? process.env.DB2I_DATABASE ?? '*LOCAL';

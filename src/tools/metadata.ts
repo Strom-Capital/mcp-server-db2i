@@ -57,13 +57,13 @@ function resolveSchema(inputSchema: string | undefined, target: DbTarget | undef
   }
   const defaultSchema = target ? target.defaultSchema : getDefaultSchema(loadConfig());
   if (!defaultSchema) {
-    throw new Error('Schema is required. Either provide it as a parameter or set DB2I_SCHEMA environment variable.');
+    throw new Error('Schema is required. Provide it as a parameter, or set a default schema (DB2I_SCHEMA, or schema in the profile).');
   }
   return defaultSchema;
 }
 
 /**
- * Resolved schema, rejected before any query when it is outside QUERY_ALLOWED_SCHEMAS.
+ * Resolved schema, rejected before any query when it is outside the schema allowlist.
  */
 function allowedSchema(inputSchema: string | undefined, target: DbTarget | undefined): string {
   const schema = resolveSchema(inputSchema, target);

@@ -49,57 +49,61 @@ LOG_PRETTY=true
 npm run dev
 ```
 
-This uses `tsx` to run TypeScript directly with hot-reload support.
+This uses `tsx` to run TypeScript directly. It does not restart on changes.
 
 ## Available Scripts
 
 | Script | Description |
 |--------|-------------|
-| `npm run dev` | Run in development mode with hot-reload |
+| `npm run dev` | Run the TypeScript source with `tsx` |
 | `npm run build` | Compile TypeScript to JavaScript |
 | `npm start` | Run production build |
 | `npm test` | Run tests |
 | `npm run test:watch` | Run tests in watch mode |
 | `npm run lint` | Run ESLint |
 | `npm run lint:fix` | Run ESLint with auto-fix |
-| `npm run typecheck` | Run TypeScript type checking |
+| `npm run typecheck` | Type-check `src` and `tests` |
 
 ## Project Structure
 
 ```
 mcp-server-db2i/
 ├── src/
-│   ├── index.ts           # Entry point
-│   ├── server.ts          # MCP server factory
+│   ├── index.ts           # Entry point: startup checks, transports, shutdown
+│   ├── cli.ts             # Command-line flags and validate-tools
+│   ├── server.ts          # MCP server factory and tool registration
+│   ├── systems.ts         # DB2I_PROFILES and the per-call target system
 │   ├── resources.ts       # MCP resources and name completion
 │   ├── prompts.ts         # MCP prompts
 │   ├── config.ts          # Configuration loading
 │   ├── openapi.ts         # OpenAPI specification
-│   ├── auth/              # Authentication (HTTP)
-│   │   ├── index.ts
-│   │   ├── types.ts
-│   │   ├── tokenManager.ts
-│   │   └── authMiddleware.ts
+│   ├── auth/              # Authentication (HTTP): tokens and middleware
 │   ├── db/                # Database layer
-│   │   ├── connection.ts  # Connection pool management
-│   │   ├── queries.ts     # Query functions
-│   │   ├── sqlServices.ts # PARSE_STATEMENT, GENERATE_SQL, RELATED_OBJECTS
-│   │   └── drivers/       # Driver implementations
-│   ├── customTools/       # YAML business SQL tools and annotations
+│   │   ├── connection.ts  # Connection pools per caller and system
+│   │   ├── driver.ts      # Driver interface
+│   │   ├── drivers/       # jt400 and odbc implementations
+│   │   ├── queries.ts     # Catalog queries
+│   │   ├── profile.ts     # profile_table statistics
+│   │   └── sqlServices.ts # PARSE_STATEMENT, GENERATE_SQL, RELATED_OBJECTS
+│   ├── customTools/       # YAML business SQL tools, annotations, masking, file watch
 │   ├── tools/             # MCP tools
-│   │   ├── query.ts       # execute_query tool
-│   │   ├── metadata.ts    # Schema/table tools
-│   │   └── sqlServices.ts # validate_query, DDL, related objects
-│   ├── transports/        # Transport implementations
-│   │   ├── http.ts        # HTTP/Express server
-│   │   ├── sessionManager.ts
-│   │   └── index.ts
-│   └── utils/             # Utilities
+│   │   ├── query.ts       # execute_query
+│   │   ├── sqlLimit.ts    # FETCH FIRST row cap
+│   │   ├── metadata.ts    # Schema, table, and catalog search tools
+│   │   ├── profile.ts     # profile_table
+│   │   └── sqlServices.ts # validate_query, DDL, related objects, journals
+│   ├── transports/        # HTTP transport
+│   │   ├── http.ts        # Express server and /auth
+│   │   ├── sessionAuth.ts # Session key per auth mode
+│   │   └── sessionManager.ts
+│   └── utils/
 │       ├── logger.ts      # Structured logging
+│       ├── auditLog.ts    # One JSON line per tool call
+│       ├── formatResult.ts # json, pretty, and markdown tool text
 │       ├── rateLimiter.ts # Rate limiting
-│       └── security/      # SQL validation
-├── tests/                 # Test files
-├── examples/erp-tools/    # Example business SQL tools
+│       └── security/      # SQL validation and schema allowlist
+├── tests/                 # Unit and integration tests (no IBM i needed)
+├── examples/              # Business SQL tools and a profiles file
 ├── docs/                  # Documentation
 ├── Dockerfile
 ├── docker-compose.yml
@@ -130,7 +134,7 @@ npm run test -- --coverage
 
 ### Integration Tests
 
-Integration tests require a real IBM i connection. Set environment variables and run:
+The tests in `tests/integration/` run the MCP server end to end over an in-memory transport, with the database driver mocked. They need no IBM i connection and run as part of `npm test`. To run only them:
 
 ```bash
 npm run test -- tests/integration/
@@ -181,6 +185,7 @@ npm run lint:fix
 
 ```typescript
 // src/tools/myTool.ts
+import type { DbTarget } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger({ component: 'my-tool' });
@@ -188,7 +193,7 @@ const log = createChildLogger({ component: 'my-tool' });
 export interface MyToolInput {
   param1: string;
   param2?: number;
-  sessionId?: string;  // For HTTP transport
+  target?: DbTarget;  // Caller and IBM i system; omit for the stdio default
 }
 
 export async function myTool(input: MyToolInput): Promise<{
@@ -210,33 +215,36 @@ export async function myTool(input: MyToolInput): Promise<{
 }
 ```
 
-2. **Register the tool** in `src/server.ts`:
+2. **Add the name** to `TOOL_NAMES` in `src/config.ts`, so `MCP_TOOLS_ENABLED` and `MCP_TOOLS_DISABLED` accept it.
+
+3. **Register the tool** in `createServer()` in `src/server.ts`. `withToolHandler` resolves the target system, applies the rate limit, writes the audit line, and formats the result:
 
 ```typescript
-import { z } from 'zod';
-import { myTool } from './tools/myTool.js';
-
-// In createServer():
-server.registerTool(
-  'my_tool',
-  {
-    title: 'My Tool',
-    description: 'Description of what this tool does',
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      param1: z.string().describe('First parameter'),
-      param2: z.number().optional().describe('Optional second parameter'),
+if (enabledTools.has('my_tool')) {
+  server.registerTool(
+    'my_tool',
+    {
+      title: 'My Tool',
+      description: 'Description of what this tool does',
+      annotations: READ_ONLY_ANNOTATIONS,
+      inputSchema: z.object({
+        ...system,
+        param1: z.string().describe('First parameter'),
+        param2: z.number().optional().describe('Optional second parameter'),
+      }),
+      outputSchema: myToolOutputSchema,
     },
-  },
-  withToolHandler(
-    (args, sessionId) => myTool({ ...args, sessionId }),
-    'My tool failed',
-    sessionContext
-  )
-);
+    withToolHandler(
+      (args, target) => myTool({ ...args, target }),
+      'My tool failed',
+      sessionContext,
+      argsAudit('my_tool'),
+    )
+  );
+}
 ```
 
-3. **Add tests** in `tests/`:
+4. **Add tests** in `tests/`:
 
 ```typescript
 // tests/myTool.test.ts
@@ -410,7 +418,7 @@ Releases are automated via GitHub Actions using [Release Please](https://github.
 1. Squash-merged conventional commits on `main` are analyzed
 2. A release PR is automatically created/updated with the version bump and `CHANGELOG.md`
 3. Merging the release PR tags `vX.Y.Z`, creates the GitHub release, and publishes `mcp-server-db2i` to npm via OIDC trusted publishing
-4. CI and npm publish both run on Node 22. Publish installs the latest npm so trusted publishing works. The registry publish retries for up to 90 seconds, because a just-published npm version can still 404.
+4. CI and npm publish both run on Node 22. Publish installs the latest npm so trusted publishing works. The registry publish retries up to 20 times, 30 seconds apart (about 10 minutes), because a just-published npm version can still 404.
 
 To retry publishing an already-tagged release (for example after an npm outage), run the **Release** workflow with `workflow_dispatch` and set `tag` to `vX.Y.Z`. That path skips Release Please and republishes the existing tag.
 

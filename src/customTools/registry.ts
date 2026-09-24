@@ -8,18 +8,23 @@ const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map(
 
 let current: LoadedCustomTools = EMPTY;
 
-type ParseOutcome =
+export type ParseOutcome =
   | { ok: true }
   | { ok: false; error: string; violations?: string[] };
 
+/** PARSE_STATEMENT outcomes by system and tool. A tool without `system:` can run on several. */
 const parseCache = new Map<string, ParseOutcome>();
 
-export function cachedParse(toolName: string): ParseOutcome | undefined {
-  return parseCache.get(toolName);
+function parseKey(toolName: string, system: string | undefined): string {
+  return `${system ?? ''}|${toolName}`;
 }
 
-export function cacheParse(toolName: string, outcome: ParseOutcome): void {
-  parseCache.set(toolName, outcome);
+export function cachedParse(toolName: string, system: string | undefined): ParseOutcome | undefined {
+  return parseCache.get(parseKey(toolName, system));
+}
+
+export function cacheParse(toolName: string, system: string | undefined, outcome: ParseOutcome): void {
+  parseCache.set(parseKey(toolName, system), outcome);
 }
 
 export function setCustomTools(loaded: LoadedCustomTools): void {

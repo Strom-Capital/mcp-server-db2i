@@ -11,7 +11,7 @@ const TABLE_REF = /^[A-Za-z_@#$][A-Za-z0-9_@#$]{0,127}\.[A-Za-z_@#$][A-Za-z0-9_@
 const DATE_TEXT = /^\d{4}-\d{2}-\d{2}$/;
 const SYSTEM_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
-export const parameterSchema = z.strictObject({
+const parameterSchema = z.strictObject({
   type: z.enum(['string', 'integer', 'number', 'boolean', 'date', 'enum']),
   required: z.boolean().optional(),
   maxLength: z.number().int().positive().optional(),
@@ -104,7 +104,7 @@ export const parameterSchema = z.strictObject({
 
 export type ParameterDef = z.infer<typeof parameterSchema>;
 
-export const relationSchema = z.strictObject({
+const relationSchema = z.strictObject({
   table: z.string().regex(TABLE_REF, 'Relation table must be SCHEMA.TABLE'),
   join: z.record(z.string().regex(SQL_NAME, 'Join column must be an unquoted SQL name'), z.string().regex(SQL_NAME, 'Join column must be an unquoted SQL name')),
   cardinality: z.enum(['one-to-one', 'one-to-many', 'many-to-one', 'many-to-many']).optional(),
@@ -121,7 +121,7 @@ export const relationSchema = z.strictObject({
 
 export type RelationDef = z.infer<typeof relationSchema>;
 
-export const annotationSchema = z.strictObject({
+const annotationSchema = z.strictObject({
   entity: z.string().regex(TOOL_NAME, 'Entity name must be snake_case').optional(),
   description: z.string().min(1).optional(),
   columns: z.record(
@@ -133,7 +133,7 @@ export const annotationSchema = z.strictObject({
 
 export type AnnotationDef = z.infer<typeof annotationSchema>;
 
-export const toolSchema = z.strictObject({
+const toolSchema = z.strictObject({
   name: z.string().regex(TOOL_NAME, 'Tool name must be snake_case'),
   title: z.string().min(1),
   toolset: z.string().regex(TOOL_NAME, 'Toolset must be snake_case').optional(),
@@ -149,19 +149,17 @@ export const toolSchema = z.strictObject({
 
 export type ToolDef = z.infer<typeof toolSchema>;
 
-export const MASK_RULES = ['redact', 'last4'] as const;
+const MASK_RULES = ['redact', 'last4'] as const;
 
 export type MaskRule = (typeof MASK_RULES)[number];
 
-export const maskingSchema = z.record(
+const maskingSchema = z.record(
   z.string().regex(TABLE_REF, 'Masking key must be SCHEMA.TABLE'),
   z.record(
     z.string().regex(SQL_NAME, 'Column name must be an unquoted SQL name'),
     z.enum(MASK_RULES),
   ),
 );
-
-export type MaskingDef = z.infer<typeof maskingSchema>;
 
 export const customToolsFileSchema = z.strictObject({
   version: z.literal(1),
@@ -183,13 +181,11 @@ export const customToolsFileSchema = z.strictObject({
   }
 });
 
-export type CustomToolsFile = z.infer<typeof customToolsFileSchema>;
-
 /**
  * A default makes the argument optional. Otherwise it is required unless required is false.
  * An omitted optional argument is bound as NULL.
  */
-export function parameterIsOptional(param: ParameterDef): boolean {
+function parameterIsOptional(param: ParameterDef): boolean {
   if (param.default !== undefined) {
     return true;
   }

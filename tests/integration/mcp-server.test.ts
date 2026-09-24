@@ -201,7 +201,7 @@ describe('MCP Server Integration', () => {
 
       expect(result.isError).toBe(true);
       const errorText = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(errorText).toBe('Schema OTHERLIB is not in QUERY_ALLOWED_SCHEMAS (TESTLIB).');
+      expect(errorText).toBe('Schema OTHERLIB is not in the allowed schemas (TESTLIB).');
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
@@ -281,6 +281,21 @@ describe('MCP Server Integration', () => {
       const errorText = (result.content[0] as { type: 'text'; text: string }).text;
       expect(errorText).toContain('QUERY_PARSE_CHECK=false');
       expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Row limit', () => {
+    it('uses QUERY_DEFAULT_LIMIT when the call passes no limit', async () => {
+      process.env.QUERY_DEFAULT_LIMIT = '5';
+      mockQuery.mockResolvedValueOnce([{ ID: 1 }]);
+
+      await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM MYLIB.ORDERS' },
+      });
+
+      const [sql] = mockQuery.mock.calls[0] as [string];
+      expect(sql).toContain('FETCH FIRST 5 ROWS ONLY');
     });
   });
 
