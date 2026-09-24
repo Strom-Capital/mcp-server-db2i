@@ -135,6 +135,9 @@ The server reads these files before it accepts connections. A statement that is 
 | `NODE_ENV` | - | Set to `production` for JSON logs, otherwise pretty-printed |
 | `LOG_PRETTY` | `auto` | Override log format: `true` = pretty, `false` = JSON |
 | `LOG_COLORS` | `auto` | Override colors: `true`/`false` (auto-detects TTY by default) |
+| `MCP_AUDIT_LOG` | off | `stderr` writes one JSON line per tool call to standard error, separate from the pino log. Any other value is a file path to append. The server refuses to start when that path is not writable |
+| `MCP_AUDIT_SQL` | `hash` | `hash` records `sha256:` of the statement. `full` records the SQL text. Anything else stops startup |
+| `MCP_AUDIT_PARAMS` | off | `true` includes bound parameter values. Otherwise the line records only how many values were bound |
 
 ## Example Configuration
 

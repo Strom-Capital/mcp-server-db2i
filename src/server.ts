@@ -31,13 +31,14 @@ import {
   validateQueryTool,
 } from './tools/sqlServices.js';
 import { getBusinessContextTool } from './customTools/context.js';
-import { executeCustomTool } from './customTools/execute.js';
+import { bindCustomToolArgs, executeCustomTool } from './customTools/execute.js';
 import { getCustomTools, type StoredTool } from './customTools/registry.js';
 import type { LoadedCustomTools } from './customTools/loader.js';
 import { getSessionManager } from './transports/sessionManager.js';
 import { inputSchemaFor } from './customTools/schema.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
+import { writeAudit, type AuditCall } from './utils/auditLog.js';
 import { formatToolText } from './utils/formatResult.js';
 
 // Read version from package.json to keep it in sync with npm releases
@@ -261,6 +262,12 @@ const tableConstraintsOutputSchema = z.object({
   count: z.number().int().optional(),
 });
 
+interface ToolAudit<TArgs> {
+  tool: string;
+  /** SQL and arguments to record. Metadata tools pass sql: null and their arguments. */
+  audit?: (args: TArgs) => Pick<AuditCall, 'sql' | 'params' | 'args'>;
+}
+
 /**
  * Creates a tool handler wrapper that applies rate limiting and standardizes responses.
  * Eliminates boilerplate code across all tool registrations.
@@ -268,19 +275,25 @@ const tableConstraintsOutputSchema = z.object({
  * @param handler - The tool handler function
  * @param errorMessage - Error message to use on failure
  * @param sessionContext - Optional session context for HTTP transport
+ * @param audit - Tool name and how to read SQL or arguments for the audit log
  */
 export function withToolHandler<TArgs, TResult extends ToolResult>(
   handler: (args: TArgs, sessionId?: string) => Promise<TResult>,
   errorMessage: string,
-  sessionContext?: SessionContext
+  sessionContext?: SessionContext,
+  audit?: ToolAudit<TArgs>,
 ): (args: TArgs) => Promise<McpToolResponse> {
   return async (args: TArgs): Promise<McpToolResponse> => {
+    const facts = audit?.audit?.(args) ?? {};
+    const identity = sessionContext?.config.username || 'stdio';
+
     // Check rate limit
     const rateLimiter = getRateLimiter();
     const rateResult = rateLimiter.checkLimit(sessionContext?.sessionId ?? 'stdio');
 
     if (!rateResult.allowed) {
       const error = rateLimiter.formatError(rateResult);
+      recordAudit(audit?.tool, identity, facts, { outcome: 'rate_limited', error: error.error });
       const structured = { success: false, error: error.error };
       return {
         content: [{ type: 'text', text: formatToolText(error, getResponseFormat()) }],
@@ -289,28 +302,94 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       };
     }
 
-    // Execute the tool with optional sessionId
-    const result = await handler(args, sessionContext?.sessionId);
+    const started = Date.now();
+    let result: TResult;
+    try {
+      result = await handler(args, sessionContext?.sessionId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : errorMessage;
+      recordAudit(audit?.tool, identity, facts, {
+        outcome: 'error',
+        error: message,
+        durationMs: Date.now() - started,
+      });
+      throw error;
+    }
 
+    const durationMs = Date.now() - started;
     if (!result.success) {
+      const message = result.error ?? errorMessage;
+      recordAudit(audit?.tool, identity, facts, {
+        outcome: 'error',
+        error: message,
+        durationMs,
+        rowCount: rowCountOf(result),
+      });
       const structured = {
         success: false,
-        error: result.error ?? errorMessage,
+        error: message,
         ...('violations' in result && result.violations
           ? { violations: result.violations }
           : {}),
       };
       return {
-        content: [{ type: 'text', text: result.error ?? errorMessage }],
+        content: [{ type: 'text', text: message }],
         structuredContent: structured,
         isError: true,
       };
     }
 
+    recordAudit(audit?.tool, identity, facts, {
+      outcome: 'success',
+      durationMs,
+      rowCount: rowCountOf(result),
+    });
     return {
       content: [{ type: 'text', text: formatToolText(result, getResponseFormat()) }],
       structuredContent: result,
     };
+  };
+}
+
+function recordAudit(
+  tool: string | undefined,
+  identity: string,
+  facts: Pick<AuditCall, 'sql' | 'params' | 'args'>,
+  outcome: Pick<AuditCall, 'outcome' | 'error' | 'durationMs' | 'rowCount'>,
+): void {
+  if (!tool) {
+    return;
+  }
+  writeAudit({ tool, identity, ...facts, ...outcome });
+}
+
+function rowCountOf(result: ToolResult): number | undefined {
+  if (typeof result.rowCount === 'number') {
+    return result.rowCount;
+  }
+  if (typeof result.count === 'number') {
+    return result.count;
+  }
+  if (Array.isArray(result.data)) {
+    return result.data.length;
+  }
+  return undefined;
+}
+
+function sqlAudit<T extends { sql?: string; params?: unknown[] }>(tool: string): ToolAudit<T> {
+  return {
+    tool,
+    audit: (args) => ({ sql: args.sql ?? null, params: args.params ?? [] }),
+  };
+}
+
+function argsAudit<T extends Record<string, unknown>>(tool: string): ToolAudit<T> {
+  return {
+    tool,
+    audit: (args) => ({
+      sql: null,
+      args: Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined)),
+    }),
   };
 }
 
@@ -370,7 +449,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           defaultSchema: getDefaultSchema(),
         }),
         'Query failed',
-        sessionContext
+        sessionContext,
+        sqlAudit('execute_query'),
       )
     );
   }
@@ -390,7 +470,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       withToolHandler(
         (args, sessionId) => listSchemasTool({ filter: args.filter, sessionId }),
         'Failed to list schemas',
-        sessionContext
+        sessionContext,
+        argsAudit('list_schemas'),
       )
     );
   }
@@ -415,7 +496,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to list tables',
-        sessionContext
+        sessionContext,
+        argsAudit('list_tables'),
       )
     );
   }
@@ -444,7 +526,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to search tables',
-        sessionContext
+        sessionContext,
+        argsAudit('search_tables'),
       )
     );
   }
@@ -473,7 +556,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to search columns',
-        sessionContext
+        sessionContext,
+        argsAudit('search_columns'),
       )
     );
   }
@@ -498,7 +582,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to describe table',
-        sessionContext
+        sessionContext,
+        argsAudit('describe_table'),
       )
     );
   }
@@ -523,7 +608,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to list views',
-        sessionContext
+        sessionContext,
+        argsAudit('list_views'),
       )
     );
   }
@@ -548,7 +634,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to list indexes',
-        sessionContext
+        sessionContext,
+        argsAudit('list_indexes'),
       )
     );
   }
@@ -573,7 +660,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to get constraints',
-        sessionContext
+        sessionContext,
+        argsAudit('get_table_constraints'),
       )
     );
   }
@@ -597,7 +685,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           defaultSchema: getDefaultSchema(),
         }),
         'Validation failed',
-        sessionContext
+        sessionContext,
+        sqlAudit('validate_query'),
       )
     );
   }
@@ -625,7 +714,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           defaultSchema: getDefaultSchema(),
         }),
         'Failed to generate DDL',
-        sessionContext
+        sessionContext,
+        argsAudit('get_object_ddl'),
       )
     );
   }
@@ -651,7 +741,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           defaultSchema: getDefaultSchema(),
         }),
         'Failed to list related objects',
-        sessionContext
+        sessionContext,
+        argsAudit('get_related_objects'),
       )
     );
   }
@@ -675,7 +766,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           table: args.table,
         })),
         'Failed to read business context',
-        sessionContext
+        sessionContext,
+        argsAudit('get_business_context'),
       )
     );
   }
@@ -815,6 +907,13 @@ function customToolCallback(
     }),
     'Query failed',
     sessionContext,
+    {
+      tool: tool.name,
+      audit: (args) => {
+        const bound = bindCustomToolArgs(tool, args as Record<string, unknown>);
+        return { sql: tool.sql, params: bound.ok ? bound.params : [] };
+      },
+    },
   );
 }
 

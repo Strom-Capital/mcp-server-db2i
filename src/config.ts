@@ -573,6 +573,46 @@ export function assertCustomToolsWatch(): void {
   }
 }
 
+export type AuditSqlMode = 'hash' | 'full';
+
+export interface AuditConfig {
+  /** `stderr` writes the line directly. A path is opened for append at startup. */
+  target: 'stderr' | { path: string };
+  sql: AuditSqlMode;
+  /** When true, bound parameter values are written. Otherwise only the count is. */
+  params: boolean;
+}
+
+/**
+ * Query audit log. Unset MCP_AUDIT_LOG means no audit log.
+ *
+ * - MCP_AUDIT_LOG: `stderr`, or a file path to append.
+ * - MCP_AUDIT_SQL: `hash` (default) or `full`. Anything else stops startup.
+ * - MCP_AUDIT_PARAMS: `true` includes bound values. Anything else records only the count.
+ */
+export function getAuditConfig(): AuditConfig | undefined {
+  const sql = auditSqlMode();
+
+  const target = process.env.MCP_AUDIT_LOG?.trim();
+  if (!target) {
+    return undefined;
+  }
+
+  return {
+    target: target === 'stderr' ? 'stderr' : { path: target },
+    sql,
+    params: process.env.MCP_AUDIT_PARAMS?.trim().toLowerCase() === 'true',
+  };
+}
+
+function auditSqlMode(): AuditSqlMode {
+  const sqlRaw = process.env.MCP_AUDIT_SQL?.trim().toLowerCase() || 'hash';
+  if (sqlRaw === 'hash' || sqlRaw === 'full') {
+    return sqlRaw;
+  }
+  throw new Error(`MCP_AUDIT_SQL must be "hash" or "full", got "${process.env.MCP_AUDIT_SQL}".`);
+}
+
 // ============================================================================
 // HTTP Transport Configuration
 // ============================================================================

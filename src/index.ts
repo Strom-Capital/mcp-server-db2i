@@ -38,6 +38,7 @@ import { createServer, pinStdioServer, SERVER_NAME, SERVER_VERSION } from './ser
 import { startCustomToolsWatch, stopCustomToolsWatch } from './customTools/watch.js';
 import { parseCliArgs, runValidateTools } from './cli.js';
 import { loadCustomToolsFromEnv } from './customTools/loader.js';
+import { closeAuditLog, initAuditLog } from './utils/auditLog.js';
 import { setCustomTools } from './customTools/registry.js';
 import { startHttpServer, shutdownHttpServer } from './transports/http.js';
 
@@ -54,6 +55,7 @@ async function main(): Promise<void> {
   async function shutdown(signal: string): Promise<void> {
     logger.info(`Received ${signal}, shutting down...`);
     stopCustomToolsWatch();
+    closeAuditLog();
 
     const shutdownPromises: Promise<void>[] = [];
 
@@ -112,6 +114,7 @@ async function main(): Promise<void> {
     // Validates tool files and MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
     const customTools = loadCustomToolsFromEnv();
     assertCustomToolsWatch();
+    initAuditLog();
     setCustomTools(customTools);
     const enabledTools = getEnabledTools(customTools.tools);
     if (enabledTools.length === 0) {

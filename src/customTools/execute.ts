@@ -60,13 +60,11 @@ export async function executeCustomTool(
   args: Record<string, unknown>,
   options: { sessionId?: string; defaultSchema?: string } = {},
 ): Promise<CustomToolQueryResult> {
-  const filled = applyDefaults(tool.parameters, args);
-  const parsed = inputSchemaFor(tool.parameters).safeParse(filled);
-  if (!parsed.success) {
-    return { success: false, error: formatSchemaIssues(parsed.error) };
+  const bound = bindCustomToolArgs(tool, args);
+  if (!bound.ok) {
+    return { success: false, error: bound.error };
   }
-
-  const values = tool.placeholderNames.map((name) => bindValue(parsed.data[name]));
+  const values = bound.params;
   const allowedSchemas = getAllowedSchemas();
   if (allowedSchemas) {
     const schemaResult = checkQuerySchemas(tool.sql, {
@@ -109,6 +107,24 @@ export async function executeCustomTool(
     log.debug({ err: error, tool: tool.name }, 'Custom tool failed');
     return { success: false, error: message };
   }
+}
+
+/**
+ * Parameter values in bind order, after defaults. The audit log uses the same list the query runs.
+ */
+export function bindCustomToolArgs(
+  tool: StoredTool,
+  args: Record<string, unknown>,
+): { ok: true; params: unknown[] } | { ok: false; error: string } {
+  const filled = applyDefaults(tool.parameters, args);
+  const parsed = inputSchemaFor(tool.parameters).safeParse(filled);
+  if (!parsed.success) {
+    return { ok: false, error: formatSchemaIssues(parsed.error) };
+  }
+  return {
+    ok: true,
+    params: tool.placeholderNames.map((name) => bindValue(parsed.data[name])),
+  };
 }
 
 function applyDefaults(

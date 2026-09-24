@@ -244,6 +244,14 @@ Control concurrent sessions to prevent resource exhaustion:
 MCP_MAX_SESSIONS=100  # Maximum concurrent sessions
 ```
 
+## Audit log
+
+`MCP_AUDIT_LOG` writes one JSON line for every tool call: who ran it, which tool, a hash of the SQL (or the text when `MCP_AUDIT_SQL=full`), how many parameters were bound, the row count, how long it took, and whether it succeeded, failed, or was rate limited. HTTP calls record the IBM i username. Stdio calls record `stdio`.
+
+Hashing is the default because the statement often contains customer values, and an audit file should not become a second copy of the data. Set `MCP_AUDIT_PARAMS=true` only when you need the bound values and the file is protected like a credential.
+
+The pino log is not this record. At `info` it does not keep the SQL, and at `debug` it is a diagnostic trace, not an answer to who ran what. A failed audit write is reported once and does not fail the tool call.
+
 ## Logging Security
 
 The structured logger automatically redacts sensitive fields:
