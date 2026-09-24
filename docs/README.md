@@ -56,6 +56,8 @@ graph LR
 | `execute_query` | Execute read-only SELECT queries |
 | `list_schemas` | List schemas/libraries (with optional filter) |
 | `list_tables` | List tables in a schema (with optional filter) |
+| `search_tables` | Find tables by name or description across libraries |
+| `search_columns` | Find columns by name or description across libraries |
 | `describe_table` | Get detailed column information |
 | `list_views` | List views in a schema (with optional filter) |
 | `list_indexes` | List SQL indexes for a table |

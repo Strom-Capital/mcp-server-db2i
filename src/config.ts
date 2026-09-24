@@ -377,6 +377,8 @@ export const TOOL_NAMES = [
   'execute_query',
   'list_schemas',
   'list_tables',
+  'search_tables',
+  'search_columns',
   'describe_table',
   'list_views',
   'list_indexes',

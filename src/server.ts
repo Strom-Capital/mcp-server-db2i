@@ -18,6 +18,8 @@ import { executeQueryTool } from './tools/query.js';
 import {
   listSchemasTool,
   listTablesTool,
+  searchTablesTool,
+  searchColumnsTool,
   describeTableTool,
   listViewsTool,
   listIndexesTool,
@@ -108,6 +110,38 @@ const listTablesOutputSchema = z.object({
     business_description: z.string().optional(),
   })).optional(),
   count: z.number().int().optional(),
+});
+
+const searchTablesOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    schema_name: z.string(),
+    table_name: z.string(),
+    table_type: z.string(),
+    table_text: z.string().nullable(),
+    business_description: z.string().optional(),
+  })).optional(),
+  count: z.number().int().optional(),
+  truncated: z.boolean().optional(),
+});
+
+const searchColumnsOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  data: z.array(z.object({
+    schema_name: z.string(),
+    table_name: z.string(),
+    column_name: z.string(),
+    system_column_name: z.string(),
+    data_type: z.string(),
+    length: z.number().nullable(),
+    numeric_scale: z.number().nullable(),
+    column_text: z.string().nullable(),
+    business_description: z.string().optional(),
+  })).optional(),
+  count: z.number().int().optional(),
+  truncated: z.boolean().optional(),
 });
 
 const describeTableOutputSchema = z.object({
@@ -379,6 +413,64 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
           sessionId,
         }),
         'Failed to list tables',
+        sessionContext
+      )
+    );
+  }
+
+  if (enabledTools.has('search_tables')) {
+    server.registerTool(
+      'search_tables',
+      {
+        title: 'Search Tables',
+        description: 'Find tables by name or description text across libraries. Matches TABLE_NAME, SYSTEM_TABLE_NAME, and TABLE_TEXT. Use * as a wildcard. When QUERY_ALLOWED_SCHEMAS is set, only those libraries are searched. Otherwise system libraries (Q* and SYS*) are skipped unless include_system is true.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          filter: z.string().describe('Name or text to match. Use * as a wildcard. Example: "ORDER*" matches tables starting with ORDER'),
+          schema: z.string().optional().describe('Limit the search to one library. Must be in QUERY_ALLOWED_SCHEMAS when that list is set.'),
+          include_system: z.boolean().optional().describe('Include Q* and SYS* libraries. Ignored when a schema or QUERY_ALLOWED_SCHEMAS is set.'),
+          limit: z.number().int().positive().optional().describe('Maximum rows to return. Capped by QUERY_MAX_LIMIT.'),
+        }),
+        outputSchema: searchTablesOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => searchTablesTool({
+          filter: args.filter,
+          schema: args.schema,
+          includeSystem: args.include_system,
+          limit: args.limit,
+          sessionId,
+        }),
+        'Failed to search tables',
+        sessionContext
+      )
+    );
+  }
+
+  if (enabledTools.has('search_columns')) {
+    server.registerTool(
+      'search_columns',
+      {
+        title: 'Search Columns',
+        description: 'Find columns by name or description text across libraries. Matches COLUMN_NAME, SYSTEM_COLUMN_NAME, and COLUMN_TEXT. Use * as a wildcard. When QUERY_ALLOWED_SCHEMAS is set, only those libraries are searched. Otherwise system libraries (Q* and SYS*) are skipped unless include_system is true.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          filter: z.string().describe('Name or text to match. Use * as a wildcard. Example: "ITEM*" matches columns starting with ITEM'),
+          schema: z.string().optional().describe('Limit the search to one library. Must be in QUERY_ALLOWED_SCHEMAS when that list is set.'),
+          include_system: z.boolean().optional().describe('Include Q* and SYS* libraries. Ignored when a schema or QUERY_ALLOWED_SCHEMAS is set.'),
+          limit: z.number().int().positive().optional().describe('Maximum rows to return. Capped by QUERY_MAX_LIMIT.'),
+        }),
+        outputSchema: searchColumnsOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => searchColumnsTool({
+          filter: args.filter,
+          schema: args.schema,
+          includeSystem: args.include_system,
+          limit: args.limit,
+          sessionId,
+        }),
+        'Failed to search columns',
         sessionContext
       )
     );

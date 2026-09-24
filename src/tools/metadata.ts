@@ -13,10 +13,16 @@ import {
   listViews,
   listIndexes,
   getTableConstraints,
+  searchColumns,
+  searchTables,
+  type CatalogSearchScope,
+  type SearchColumnRow,
+  type SearchTableRow,
 } from '../db/queries.js';
-import { loadConfig, getDefaultSchema } from '../config.js';
+import { applyQueryLimit, getAllowedSchemas, getDefaultSchema, loadConfig } from '../config.js';
 import { annotationFor } from '../customTools/context.js';
 import type { StoredRelation } from '../customTools/loader.js';
+import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
 
 /**
  * Standard success/error result type for metadata tools
@@ -196,4 +202,108 @@ export function getTableConstraintsTool(input: { schema?: string; table: string;
     const schema = resolveSchema(input.schema);
     return getTableConstraints(schema, input.table, input.sessionId);
   });
+}
+
+// ============================================================================
+// Catalog search
+// ============================================================================
+
+export interface CatalogSearchInput {
+  filter: string;
+  schema?: string;
+  includeSystem?: boolean;
+  limit?: number;
+  sessionId?: string;
+}
+
+type SearchResult<T> =
+  | { success: true; data: T[]; count: number; truncated: boolean }
+  | { success: false; error: string };
+
+function schemaDenied(schema: string, allowed: string[]): string {
+  return `Schema ${schema.trim().toUpperCase()} is not in QUERY_ALLOWED_SCHEMAS (${allowed.join(', ')}).`;
+}
+
+/**
+ * A filter of only * and % would match the whole catalog.
+ */
+function isWildcardOnly(filter: string): boolean {
+  return filter.replace(/[*%\s]/g, '').length === 0;
+}
+
+function resolveSearchScope(input: CatalogSearchInput): CatalogSearchScope | { error: string } {
+  if (isWildcardOnly(input.filter)) {
+    return { error: 'Filter must contain a name or text to match. A pattern of only * or % is not allowed.' };
+  }
+
+  const allowed = getAllowedSchemas();
+  const requested = input.schema?.trim().toUpperCase();
+
+  if (allowed) {
+    if (requested && !isSchemaAllowed(requested, allowed)) {
+      return { error: schemaDenied(requested, allowed) };
+    }
+    return {
+      schemas: requested ? [requested] : allowed.map((name) => name.toUpperCase()),
+      excludeSystem: false,
+      limit: applyQueryLimit(input.limit),
+    };
+  }
+
+  if (requested) {
+    return {
+      schemas: [requested],
+      excludeSystem: false,
+      limit: applyQueryLimit(input.limit),
+    };
+  }
+
+  return {
+    excludeSystem: input.includeSystem !== true,
+    limit: applyQueryLimit(input.limit),
+  };
+}
+
+function withColumnNotes(rows: SearchColumnRow[]): Array<SearchColumnRow & { business_description?: string }> {
+  return rows.map((row) => {
+    const description = annotationFor(row.schema_name, row.table_name)?.columns[row.column_name.toUpperCase()];
+    return description ? { ...row, business_description: description } : row;
+  });
+}
+
+function withTableNotes(rows: SearchTableRow[]): Array<SearchTableRow & { business_description?: string }> {
+  return rows.map((row) => {
+    const description = annotationFor(row.schema_name, row.table_name)?.description;
+    return description ? { ...row, business_description: description } : row;
+  });
+}
+
+export async function searchColumnsTool(input: CatalogSearchInput): Promise<SearchResult<SearchColumnRow & { business_description?: string }>> {
+  const scope = resolveSearchScope(input);
+  if ('error' in scope) {
+    return { success: false, error: scope.error };
+  }
+
+  try {
+    const result = await searchColumns(input.filter, scope, input.sessionId);
+    const data = withColumnNotes(result.rows);
+    return { success: true, data, count: data.length, truncated: result.truncated };
+  } catch (error) {
+    return { success: false, error: messageOf(error) };
+  }
+}
+
+export async function searchTablesTool(input: CatalogSearchInput): Promise<SearchResult<SearchTableRow & { business_description?: string }>> {
+  const scope = resolveSearchScope(input);
+  if ('error' in scope) {
+    return { success: false, error: scope.error };
+  }
+
+  try {
+    const result = await searchTables(input.filter, scope, input.sessionId);
+    const data = withTableNotes(result.rows);
+    return { success: true, data, count: data.length, truncated: result.truncated };
+  } catch (error) {
+    return { success: false, error: messageOf(error) };
+  }
 }
