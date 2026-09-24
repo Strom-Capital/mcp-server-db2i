@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.5.0...v2.5.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* count /auth attempts on arrival and drop CORS credentials ([#94](https://github.com/Strom-Capital/mcp-server-db2i/issues/94)) ([046f1e5](https://github.com/Strom-Capital/mcp-server-db2i/commit/046f1e512d7d8c8bd36c9fd3d27c2059f2c80467)), closes [#93](https://github.com/Strom-Capital/mcp-server-db2i/issues/93)
+
 ## [2.5.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.4.0...v2.5.0) (2026-09-24)
 
 
