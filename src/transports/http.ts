@@ -529,7 +529,8 @@ export function createHttpApp(): Express {
   });
 
   // Authentication endpoint (only active in 'required' auth mode)
-  app.post('/auth', createAuthRateLimitMiddleware(httpConfig.authRateLimit), async (req: Request, res: Response) => {
+  const authRateLimitMiddleware = createAuthRateLimitMiddleware(httpConfig.authRateLimit);
+  app.post('/auth', authRateLimitMiddleware, async (req: Request, res: Response) => {
     try {
       // Check if /auth endpoint is needed for current auth mode
       if (httpConfig.authMode !== 'required') {

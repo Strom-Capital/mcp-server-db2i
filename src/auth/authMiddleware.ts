@@ -215,7 +215,8 @@ function getClientIp(req: Request): string {
 export function createAuthRateLimitMiddleware(
   limit: AuthRateLimitConfig = DEFAULT_AUTH_RATE_LIMIT
 ): (req: Request, res: Response, next: NextFunction) => void {
-  return (req, res, next) => {
+  // Named, so the handler reads as a rate limiter in stack traces and to CodeQL
+  return function authRateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
     const ip = getClientIp(req);
     const now = Date.now();
     if (authAttempts.size >= AUTH_ATTEMPTS_SWEEP_SIZE) {
