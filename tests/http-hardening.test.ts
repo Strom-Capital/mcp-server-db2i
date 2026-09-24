@@ -83,6 +83,7 @@ describe('HTTP Origin validation', () => {
       MCP_SESSION_MODE: 'stateless',
       MCP_CORS_ORIGINS: 'https://allowed.example',
       DB2I_HOSTNAME: 'test-host',
+      DB2I_DRIVER: 'jt400',
       DB2I_USERNAME: 'test-user',
       DB2I_PASSWORD: 'test-pass',
     };
@@ -226,6 +227,7 @@ describe('HTTP /auth database host allowlist', () => {
       MCP_AUTH_MODE: 'required',
       MCP_SESSION_MODE: 'stateless',
       DB2I_HOSTNAME: 'test-host',
+      DB2I_DRIVER: 'jt400',
       DB2I_USERNAME: 'test-user',
       DB2I_PASSWORD: 'test-pass',
     };
@@ -277,6 +279,7 @@ describe('HTTP /auth rate limiting', () => {
       MCP_AUTH_MODE: 'required',
       MCP_SESSION_MODE: 'stateless',
       DB2I_HOSTNAME: 'test-host',
+      DB2I_DRIVER: 'jt400',
       DB2I_USERNAME: 'test-user',
       DB2I_PASSWORD: 'test-pass',
     };
@@ -357,6 +360,7 @@ describe('HTTP session ownership', () => {
       MCP_SESSION_MODE: 'stateful',
       MCP_CORS_ORIGINS: '',
       DB2I_HOSTNAME: 'test-host',
+      DB2I_DRIVER: 'jt400',
       DB2I_USERNAME: 'test-user',
       DB2I_PASSWORD: 'test-pass',
     };
@@ -452,6 +456,7 @@ describe('HTTP protocol eras', () => {
       MCP_AUTH_MODE: 'none',
       MCP_SESSION_MODE: 'stateless',
       DB2I_HOSTNAME: 'test-host',
+      DB2I_DRIVER: 'jt400',
       DB2I_USERNAME: 'test-user',
       DB2I_PASSWORD: 'test-pass',
     };

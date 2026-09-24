@@ -10,6 +10,8 @@ This guide covers running mcp-server-db2i with Docker and docker-compose.
 docker build -t mcp-server-db2i .
 ```
 
+This builds the default `odbc` image with the IBM i Access ODBC Driver. IBM publishes that driver for amd64 only, so on an arm64 host such as an Apple Silicon Mac add `--platform linux/amd64`, or build the `jt400` image instead. See [Multi-Stage Build](#multi-stage-build).
+
 ### Run with Environment Variables
 
 > **Security Warning:** Passing credentials via `-e` flags exposes them in process lists (`ps aux`), `docker inspect` output, and shell history. Use `--env-file` for local testing and Docker secrets for production deployments.
@@ -185,7 +187,7 @@ environment:
   - DB2I_USERNAME=${DB2I_USERNAME}
   - DB2I_PASSWORD=${DB2I_PASSWORD}
   - DB2I_SCHEMA=${DB2I_SCHEMA:-}
-  - DB2I_DRIVER=${DB2I_DRIVER:-jt400}
+  # DB2I_DRIVER is set by the image target (odbc or jt400)
   - DB2I_JDBC_OPTIONS=${DB2I_JDBC_OPTIONS:-}
   - DB2I_ODBC_OPTIONS=${DB2I_ODBC_OPTIONS:-}
   
@@ -245,25 +247,25 @@ The server reads the files at startup. A statement that is not a query, or that 
 The Dockerfile uses a multi-stage build with two runtime targets:
 
 1. **Builder stage**: Compiles TypeScript to JavaScript and prunes dev dependencies
-2. **`jt400` target** (default): OpenJDK 17 JRE for the JT400 JDBC driver
-3. **`odbc` target**: unixODBC and the IBM i Access ODBC Driver from IBM's apt repository, no Java. Sets `DB2I_DRIVER=odbc`.
+2. **`odbc` target** (default): unixODBC and the IBM i Access ODBC Driver from IBM's apt repository, no Java. Sets `DB2I_DRIVER=odbc`.
+3. **`jt400` target**: OpenJDK 17 JRE for the JT400 JDBC driver. Sets `DB2I_DRIVER=jt400`.
 
 ```bash
-# JDBC image (default, same as before)
+# ODBC image (default), no JDK or JRE
 docker build -t mcp-server-db2i .
+docker run --rm -i --env-file .env -e DB2I_ODBC_OPTIONS="SSL=1" mcp-server-db2i
 
-# ODBC image, no JDK or JRE
-docker build --target odbc -t mcp-server-db2i:odbc .
-docker run --rm -i --env-file .env -e DB2I_ODBC_OPTIONS="SSL=1" mcp-server-db2i:odbc
+# JDBC image
+docker build --target jt400 -t mcp-server-db2i:jt400 .
 ```
 
 IBM publishes the ODBC driver package for amd64, i386 and ppc64el only. On an arm64 host such as an Apple Silicon Mac, build and run the ODBC image under emulation with `--platform linux/amd64`; the build fails early with a message otherwise. The `jt400` image builds natively on arm64.
 
 ```bash
-docker build --platform linux/amd64 --target odbc -t mcp-server-db2i:odbc .
+docker build --platform linux/amd64 -t mcp-server-db2i .
 ```
 
-In `docker-compose.yml`, add `target: odbc` under `build` (and `platform: linux/amd64` on arm64 hosts) to use the ODBC image.
+The bundled `docker-compose.yml` builds the ODBC image with `platform: linux/amd64`. To use the JDBC image, set `target: jt400` under `build` and remove the `platform` line.
 
 Both images:
 - Use `node:22-bookworm-slim`. Bookworm is pinned so OpenJDK 17 stays available for the `jt400` target. Debian trixie does not package it.

@@ -3,11 +3,14 @@
 
 # MCP Server for IBM DB2i
 # Multi-stage build with two runtime targets:
-#   jt400 (default): JDBC via node-jt400, ships OpenJDK 17 JRE
-#   odbc:            IBM i Access ODBC driver, no Java
+#   odbc (default): IBM i Access ODBC driver, no Java
+#   jt400:          JDBC via node-jt400, ships OpenJDK 17 JRE
 #
-#   docker build -t mcp-server-db2i .                      # jt400 image
-#   docker build --target odbc -t mcp-server-db2i:odbc .   # odbc image
+#   docker build -t mcp-server-db2i .                        # odbc image
+#   docker build --target jt400 -t mcp-server-db2i:jt400 .   # jt400 image
+#
+# IBM publishes the ODBC driver for amd64, i386 and ppc64el only. On an arm64
+# host add --platform linux/amd64, or build the jt400 target, which runs natively.
 #
 # Note: ENV placeholders below are intentionally empty - they're overridden at runtime
 # via -e flags, --env-file, or Docker secrets. The BuildKit warning is suppressed above.
@@ -73,7 +76,7 @@ ENV DB2I_HOSTNAME=""
 ENV DB2I_USERNAME=""
 ENV DB2I_PASSWORD=""
 ENV DB2I_SCHEMA=""
-# jt400 (default) | odbc
+# odbc (default) | jt400. Each runtime target sets its own value.
 ENV DB2I_DRIVER=""
 ENV DB2I_JDBC_OPTIONS=""
 ENV DB2I_ODBC_OPTIONS=""
@@ -106,10 +109,28 @@ EXPOSE 3000
 # Set MCP_TRANSPORT=http to enable HTTP API
 CMD ["node", "dist/index.js"]
 
+# JT400 runtime: OpenJDK 17 JRE for node-jt400. Builds natively on arm64.
+# Bookworm is pinned because trixie has no OpenJDK 17.
+FROM runtime-base AS jt400
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set JAVA_HOME (symlink works on both arm64 and amd64)
+RUN ln -s /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/java-17-openjdk
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+ENV DB2I_DRIVER="jt400"
+
+USER mcpuser
+
 # ODBC runtime: unixODBC plus the IBM i Access ODBC Driver from IBM's apt
 # repository (https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/installation.html).
-# No Java. IBM publishes the driver for amd64, i386 and ppc64el only, so on an
-# arm64 host build with: docker build --platform linux/amd64 --target odbc .
+# Default target, kept last so `docker build .` builds it. No Java.
+# IBM publishes the driver for amd64, i386 and ppc64el only, so on an arm64
+# host build with: docker build --platform linux/amd64 .
 FROM runtime-base AS odbc
 
 ARG TARGETARCH
@@ -129,20 +150,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ENV DB2I_DRIVER="odbc"
-
-USER mcpuser
-
-# JT400 runtime (default target, kept last so `docker build .` builds it):
-# OpenJDK 17 JRE for node-jt400. Bookworm is pinned because trixie has no OpenJDK 17.
-FROM runtime-base AS jt400
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set JAVA_HOME (symlink works on both arm64 and amd64)
-RUN ln -s /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/java-17-openjdk
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 USER mcpuser

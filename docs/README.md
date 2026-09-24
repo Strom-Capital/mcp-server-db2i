@@ -8,7 +8,7 @@ Welcome to the mcp-server-db2i documentation. This guide provides detailed infor
 |-------|-------------|
 | [Use cases](use-cases.md) | REST APIs, BI pipelines, journal replication, and ad-hoc ERP analysis |
 | [HTTP Transport](http-transport.md) | HTTP API, auth, and protocol 2026-07-28 |
-| [Configuration](configuration.md) | Environment variables, JDBC options, and all settings |
+| [Configuration](configuration.md) | Environment variables, driver options, and all settings |
 | [Security](security.md) | Credentials management, rate limiting, and query validation |
 | [Business SQL tools](custom-tools.md) | YAML tools for orders, ledgers, and master data |
 | [Client Setup](client-setup.md) | Setup for Cursor, Claude Desktop, and Claude Code |
@@ -37,8 +37,8 @@ graph LR
         http["HTTP + Auth"]
         tools[["MCP Tools"]]
         profiles{{"System profiles"}}
-        jdbc["JT400 JDBC"]
         odbc["IBM i Access ODBC"]
+        jdbc["JT400 JDBC (optional)"]
     end
 
     subgraph prod ["IBM i: prod"]
@@ -53,9 +53,9 @@ graph LR
     agents -->|REST API| http
     stdio & http --> tools
     tools --> profiles
-    profiles --> jdbc & odbc
-    jdbc -->|JDBC| db2prod
-    odbc -->|ODBC| db2test
+    profiles --> odbc & jdbc
+    odbc -->|ODBC| db2prod
+    jdbc -->|JDBC| db2test
 ```
 
 ## Available Tools
@@ -95,7 +95,7 @@ The list tools support pattern matching:
 
 - IBM i V7R3 and later (V7R5 recommended)
 - Node.js 22 or higher
-- Java Runtime Environment (JRE) 11 or higher for the default `jt400` driver, or the IBM i Access ODBC Driver for `DB2I_DRIVER=odbc`
+- unixODBC with the IBM i Access ODBC Driver for the default `odbc` driver, or a JDK at install time and a JRE 11 or higher at runtime for the optional `jt400` driver
 - MCP spec 2026-07-28, plus stateless 2025-era clients (through 2025-11-25)
 
 ## Related Projects

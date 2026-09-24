@@ -12,13 +12,13 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Strom-Capital/mcp-server-db2i/pulls)
 [![GitHub last commit](https://img.shields.io/github/last-commit/Strom-Capital/mcp-server-db2i)](https://github.com/Strom-Capital/mcp-server-db2i/commits/main)
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases through the JT400 JDBC driver or the IBM i Access ODBC driver.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases through the IBM i Access ODBC driver, or optionally the JT400 JDBC driver.
 
 Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.Strom-Capital/mcp-server-db2i`.
 
 ## Architecture
 
-AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the JT400 JDBC driver (default) or the IBM i Access ODBC driver (`DB2I_DRIVER=odbc`, no Java). One server can reach several IBM i systems through connection profiles, each with its own driver.
+AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the IBM i Access ODBC driver (default, no Java) or the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`). One server can reach several IBM i systems through connection profiles, each with its own driver.
 
 ```mermaid
 graph LR
@@ -33,8 +33,8 @@ graph LR
         http["HTTP + Auth"]
         tools[["MCP Tools"]]
         profiles{{"System profiles"}}
-        jdbc["JT400 JDBC"]
         odbc["IBM i Access ODBC"]
+        jdbc["JT400 JDBC (optional)"]
     end
 
     subgraph prod ["IBM i: prod"]
@@ -49,9 +49,9 @@ graph LR
     agents -->|REST API| http
     stdio & http --> tools
     tools --> profiles
-    profiles --> jdbc & odbc
-    jdbc -->|JDBC| db2prod
-    odbc -->|ODBC| db2test
+    profiles --> odbc & jdbc
+    odbc -->|ODBC| db2prod
+    jdbc -->|JDBC| db2test
 ```
 
 ## Features
@@ -84,10 +84,13 @@ graph LR
 npm install -g mcp-server-db2i
 ```
 
+The default `odbc` driver needs unixODBC and the IBM i Access ODBC Driver on the machine. No Java is needed. To use the JT400 JDBC driver instead, have a JDK installed when you run `npm install` and set `DB2I_DRIVER=jt400`. See [Database Drivers](docs/configuration.md#database-drivers).
+
 Or with Docker:
 
 ```bash
-docker build -t mcp-server-db2i .
+docker build -t mcp-server-db2i .                  # odbc image (amd64; add --platform linux/amd64 on arm64)
+docker build --target jt400 -t mcp-server-db2i .   # jt400 image (builds natively on arm64)
 ```
 
 ### Configuration
@@ -200,7 +203,7 @@ Once connected, you can ask the AI assistant:
 | Guide | Description |
 |-------|-------------|
 | [HTTP Transport](docs/http-transport.md) | HTTP API, auth, and protocol versions |
-| [Configuration](docs/configuration.md) | All environment variables and JDBC options |
+| [Configuration](docs/configuration.md) | All environment variables and driver options |
 | [Security](docs/security.md) | Credentials, rate limiting, query validation |
 | [Business SQL tools](docs/custom-tools.md) | YAML tools for orders, ledgers, and master data |
 | [Use cases](docs/use-cases.md) | REST APIs, BI pipelines, replication, and ad-hoc analysis |
@@ -215,7 +218,7 @@ Once connected, you can ask the AI assistant:
 - `get_related_objects` needs IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release
 - `get_journal_info` needs the journal columns of `QSYS2.OBJECT_STATISTICS` (IBM i 7.3 Technology Refresh 2 or later)
 - Node.js 22 or higher
-- Java Runtime Environment (JRE) 11 or higher for the default `jt400` driver, or unixODBC with the IBM i Access ODBC Driver for `DB2I_DRIVER=odbc` (see [Database Drivers](docs/configuration.md#database-drivers))
+- unixODBC with the IBM i Access ODBC Driver for the default `odbc` driver, or a JDK at install time and a JRE 11 or higher at runtime for the optional `jt400` driver (see [Database Drivers](docs/configuration.md#database-drivers))
 - MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)
 
 ## Related Projects

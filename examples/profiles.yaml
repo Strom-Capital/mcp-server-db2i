@@ -4,6 +4,7 @@
 # calls that name no `system` run there. Passwords never go in this file:
 # use a quoted "${ENV_VAR}" reference or passwordFile (for example a Docker
 # secret). Quote references; YAML reads a bare ${...} inside { } as a map.
+# A profile without `driver` uses DB2I_DRIVER, which defaults to odbc.
 
 profiles:
   - name: prod

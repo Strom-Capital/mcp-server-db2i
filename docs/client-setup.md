@@ -185,7 +185,7 @@ Set a default schema to avoid specifying it in every query:
 }
 ```
 
-### With Custom JDBC Options
+### With Custom Driver Options
 
 ```json
 {
@@ -197,13 +197,15 @@ Set a default schema to avoid specifying it in every query:
         "-e", "DB2I_HOSTNAME=your-host",
         "-e", "DB2I_USERNAME=your-user",
         "-e", "DB2I_PASSWORD=your-password",
-        "-e", "DB2I_JDBC_OPTIONS=naming=sql;date format=iso;errors=full",
+        "-e", "DB2I_ODBC_OPTIONS=SSL=1",
         "mcp-server-db2i:latest"
       ]
     }
   }
 }
 ```
+
+`DB2I_ODBC_OPTIONS` applies to the default `odbc` image. With the `jt400` image, pass JDBC properties in `DB2I_JDBC_OPTIONS` instead, for example `naming=sql;date format=iso;errors=full`. See [Configuration](configuration.md#database-drivers).
 
 ### With Debug Logging
 

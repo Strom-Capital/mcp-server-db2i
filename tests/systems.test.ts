@@ -111,7 +111,7 @@ describe('DB2I_PROFILES', () => {
       password: 'prodpass',
       database: '*LOCAL',
       schema: 'SALES',
-      driver: 'jt400',
+      driver: 'odbc',
       jdbcOptions: { secure: 'true', naming: 'sql' },
       odbcOptions: {},
     });
@@ -122,6 +122,14 @@ describe('DB2I_PROFILES', () => {
     expect(test.config.username).toBe('TESTUSER');
     expect(test.config.odbcOptions).toEqual({ SSL: '1' });
     expect(test.allowedSchemas).toBeUndefined();
+  });
+
+  it('gives a profile without a driver DB2I_DRIVER, and lets its own driver win', () => {
+    process.env.DB2I_DRIVER = 'jt400';
+    useProfiles(TWO_SYSTEMS);
+    const [prod, test] = getSystems();
+    expect(prod.config.driver).toBe('jt400');
+    expect(test.config.driver).toBe('odbc');
   });
 
   it('falls back to QUERY_ALLOWED_SCHEMAS for a profile without its own list', () => {
