@@ -61,6 +61,10 @@ graph LR
 - **Business SQL tools** - Load read-only ERP queries and table notes from YAML, and check the files with `mcp-server-db2i validate-tools` before the server starts. See [Business SQL tools](docs/custom-tools.md)
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens
 - **Statement checks and DDL** - Validate object names, return the SQL that recreates an object, and list what depends on a table
+- **Catalog search and profiling** - Find tables and columns across libraries, check journaling, and profile a table's row counts and value ranges
+- **Column masking** - Redact sensitive columns, or show only their last four characters, in query results. See [Column masking](docs/security.md#column-masking)
+- **Audit log** - Record every tool call as one JSON line, with the SQL hashed by default. See [Audit log](docs/security.md#audit-log)
+- **Tool reload** - Reload YAML tool files when they change, with `MCP_CUSTOM_TOOLS_WATCH=true`
 
 ## Quick Start
 
@@ -170,6 +174,7 @@ Once connected, you can ask the AI assistant:
 | [Configuration](docs/configuration.md) | All environment variables and JDBC options |
 | [Security](docs/security.md) | Credentials, rate limiting, query validation |
 | [Business SQL tools](docs/custom-tools.md) | YAML tools for orders, ledgers, and master data |
+| [Use cases](docs/use-cases.md) | REST APIs, BI pipelines, replication, and ad-hoc analysis |
 | [Client Setup](docs/client-setup.md) | Cursor, Claude, Claude Code setup |
 | [Docker Guide](docs/docker.md) | Container deployment |
 | [Development](docs/development.md) | Contributing and local setup |
