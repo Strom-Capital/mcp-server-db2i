@@ -13,6 +13,10 @@ interface FakeJob {
   pages: Array<Record<string, unknown>[]>;
   /** Resolve to release a query that is waiting. */
   gate?: Promise<void>;
+  /** Thrown by the next execute. */
+  error?: Error;
+  /** False once the server process is gone. */
+  connected: boolean;
   closed: boolean;
   queryClosed: number;
 }
@@ -23,13 +27,15 @@ function fakeFactory() {
   let startGate: Promise<void> | undefined;
   let failNextStart = false;
 
-  const factory: JobFactory & { closed: boolean } = {
+  const factory: JobFactory & { closed: boolean; closeCount: number } = {
     closed: false,
+    closeCount: 0,
     async start() {
       const job: FakeJob = {
         id: jobs.length + 1,
         status: 'ready',
         pages: [[{ JOB: jobs.length + 1 }]],
+        connected: true,
         closed: false,
         queryClosed: 0,
       };
@@ -43,6 +49,7 @@ function fakeFactory() {
       }
       const handle = {
         getStatus: () => job.status,
+        getTransport: () => ({ isConnected: () => job.connected }),
         query: () => {
           let page = 0;
           const result = () => ({ data: job.pages[page], is_done: page === job.pages.length - 1 });
@@ -50,6 +57,11 @@ function fakeFactory() {
             async execute() {
               if (job.gate) {
                 await job.gate;
+              }
+              if (job.error) {
+                const error = job.error;
+                job.error = undefined;
+                throw error;
               }
               return result();
             },
@@ -66,12 +78,14 @@ function fakeFactory() {
         async close() {
           job.closed = true;
           job.status = 'ended';
+          job.connected = false;
         },
       };
       return handle as unknown as SQLJob;
     },
     async close() {
       factory.closed = true;
+      factory.closeCount += 1;
     },
     onDead(listener) {
       deadListeners.push(listener);
@@ -119,7 +133,7 @@ describe('JobPool', () => {
 
   it('starts no job until the first query, then reuses the idle job', async () => {
     const fake = fakeFactory();
-    pool = new JobPool(fake.factory, { maxJobs: 2, idleTimeout: 60_000 });
+    pool = new JobPool(fake.factory, { maxJobs: 2, idleTimeout: 60_000, requestTimeout: 60_000 });
     expect(pool.size).toBe(0);
     await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
     await pool.query('SELECT 2 FROM SYSIBM.SYSDUMMY1', []);
@@ -128,7 +142,7 @@ describe('JobPool', () => {
 
   it('starts one job for parallel queries while it is still starting', async () => {
     const fake = fakeFactory();
-    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000 });
+    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000, requestTimeout: 60_000 });
     const release = fake.holdStarts();
     const queries = [1, 2, 3].map((n) => pool!.query(`SELECT ${n} FROM SYSIBM.SYSDUMMY1`, []));
     release();
@@ -138,7 +152,7 @@ describe('JobPool', () => {
 
   it('starts a second job for a query that arrives while the first is busy, up to maxJobs', async () => {
     const fake = fakeFactory();
-    pool = new JobPool(fake.factory, { maxJobs: 2, idleTimeout: 60_000 });
+    pool = new JobPool(fake.factory, { maxJobs: 2, idleTimeout: 60_000, requestTimeout: 60_000 });
     await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
     const busy = gate();
     fake.jobs[0].gate = busy.promise;
@@ -163,7 +177,7 @@ describe('JobPool', () => {
 
   it('reads every page of a result', async () => {
     const fake = fakeFactory();
-    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000 });
+    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000, requestTimeout: 60_000 });
     await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
     fake.jobs[0].pages = [[{ N: 1 }, { N: 2 }], [{ N: 3 }], [{ N: 4 }]];
     await expect(pool.query('SELECT N FROM T', [])).resolves.toEqual([{ N: 1 }, { N: 2 }, { N: 3 }, { N: 4 }]);
@@ -171,7 +185,7 @@ describe('JobPool', () => {
 
   it('forgets a job that failed to start so the next query tries again', async () => {
     const fake = fakeFactory();
-    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000 });
+    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000, requestTimeout: 60_000 });
     fake.failNextStart();
     await expect(pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', [])).rejects.toThrow('startup failed');
     expect(pool.size).toBe(0);
@@ -180,17 +194,17 @@ describe('JobPool', () => {
 
   it('starts fresh jobs after the transport drops', async () => {
     const fake = fakeFactory();
-    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000 });
+    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000, requestTimeout: 60_000 });
     await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
     fake.kill();
     expect(pool.size).toBe(0);
     await expect(pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', [])).resolves.toEqual([{ JOB: 2 }]);
   });
 
-  it('closes idle jobs beyond the first after idleTimeout', async () => {
+  it('closes idle jobs after idleTimeout, and the transport with the last one', async () => {
     vi.useFakeTimers();
     const fake = fakeFactory();
-    pool = new JobPool(fake.factory, { maxJobs: 2, idleTimeout: 5_000 });
+    pool = new JobPool(fake.factory, { maxJobs: 2, idleTimeout: 5_000, requestTimeout: 60_000 });
     await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
     const busy = gate();
     fake.jobs[0].gate = busy.promise;
@@ -201,14 +215,72 @@ describe('JobPool', () => {
     expect(pool.size).toBe(2);
 
     await vi.advanceTimersByTimeAsync(10_000);
+    expect(pool.size).toBe(0);
+    expect(fake.jobs[0].closed).toBe(true);
+    expect(fake.jobs[1].closed).toBe(true);
+    expect(fake.factory.closeCount).toBe(1);
+
+    // The next query starts a job again.
+    await expect(pool.query('SELECT 3 FROM SYSIBM.SYSDUMMY1', [])).resolves.toEqual([{ JOB: 3 }]);
+  });
+
+  it('keeps a job that is still in use past idleTimeout', async () => {
+    vi.useFakeTimers();
+    const fake = fakeFactory();
+    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 5_000, requestTimeout: 60_000 });
+    await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
+    const busy = gate();
+    fake.jobs[0].gate = busy.promise;
+    const running = pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(pool.size).toBe(1);
+    expect(fake.factory.closeCount).toBe(0);
+    busy.open();
+    await running;
+  });
+
+  it('closes a job whose request outlives requestTimeout, and starts a new one', async () => {
+    vi.useFakeTimers();
+    const fake = fakeFactory();
+    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 600_000, requestTimeout: 2_000 });
+    await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
+    fake.jobs[0].gate = new Promise(() => undefined);
+
+    const hung = pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
+    const assertion = expect(hung).rejects.toThrow('requestTimeout');
+    await vi.advanceTimersByTimeAsync(2_000);
+    await assertion;
+    expect(pool.size).toBe(0);
+    expect(fake.jobs[0].closed).toBe(true);
+
+    await expect(pool.query('SELECT 2 FROM SYSIBM.SYSDUMMY1', [])).resolves.toEqual([{ JOB: 2 }]);
+  });
+
+  it('keeps a job after an SQL error', async () => {
+    const fake = fakeFactory();
+    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000, requestTimeout: 60_000 });
+    await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
+    fake.jobs[0].error = new Error('Table not found, 42704, -204');
+    await expect(pool.query('SELECT * FROM MYLIB.MISSING', [])).rejects.toThrow('[42704] Table not found');
     expect(pool.size).toBe(1);
     expect(fake.jobs[0].closed).toBe(false);
-    expect(fake.jobs[1].closed).toBe(true);
+  });
+
+  it('drops a job whose server process exited, even while mapepire-js still reports it busy', async () => {
+    const fake = fakeFactory();
+    pool = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000, requestTimeout: 60_000 });
+    await pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
+    fake.jobs[0].status = 'busy';
+    fake.jobs[0].connected = false;
+    fake.jobs[0].error = new Error('Connection failed with code 1');
+    await expect(pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', [])).rejects.toThrow('Connection failed');
+    expect(pool.size).toBe(0);
+    await expect(pool.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', [])).resolves.toEqual([{ JOB: 2 }]);
   });
 
   it('closes every job and the transport', async () => {
     const fake = fakeFactory();
-    const local = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000 });
+    const local = new JobPool(fake.factory, { maxJobs: 1, idleTimeout: 60_000, requestTimeout: 60_000 });
     await local.query('SELECT 1 FROM SYSIBM.SYSDUMMY1', []);
     await local.close();
     expect(fake.jobs[0].closed).toBe(true);

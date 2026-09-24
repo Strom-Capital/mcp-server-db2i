@@ -16,6 +16,7 @@ vi.mock('@ibm/mapepire-js', () => ({
           started.jobs += 1;
         },
         getStatus: () => 'ready',
+        getTransport: () => ({ isConnected: () => true }),
         query: () => ({
           execute: async () => ({ data: [{ N: 1 }], is_done: true }),
           fetchMore: async () => ({ data: [], is_done: true }),

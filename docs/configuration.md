@@ -254,7 +254,7 @@ Requirements on the IBM i:
 - A home directory for the user, which must exist and be writable.
 - Java 8 or later. mapepire-js uses `/QOpenSys/QIBM/ProdData/JavaVM/jdk80/64bit/bin/java` by default. Set `javaPath` to use another JDK.
 
-Each Mapepire job is a JVM on the IBM i. Starting one takes a few seconds, and the first start takes longer because of the upload. The pool starts jobs when queries need them, up to `maxJobs`, keeps the first one running, and closes the others after `idleTimeout`. Over HTTP with `MCP_AUTH_MODE=required`, every `/auth` login starts a job to check the credentials, so a login takes several seconds.
+Each Mapepire job is a JVM on the IBM i. Starting one takes a few seconds, and the first start takes longer because of the upload. The pool starts jobs when queries need them, up to `maxJobs`, and closes each one after `idleTimeout` without queries. The SSH session closes with the last job, and the next query opens it again. Over HTTP with `MCP_AUTH_MODE=required`, every `/auth` login starts a job to check the credentials, so a login takes several seconds.
 
 The JDBC connection runs on the IBM i with the JT400 driver, so `DB2I_JDBC_OPTIONS` applies as it does for `jt400`. That includes the read-only default (`access=read only`) and `libraries`. The session is encrypted by SSH, so `secure=true` is not needed.
 
@@ -280,13 +280,13 @@ If neither matches, the connection is refused and the error shows the key's fing
 | `hostKey` | - | Pinned host key fingerprint, `SHA256:` plus 43 base64 characters |
 | `knownHostsFile` | `~/.ssh/known_hosts` | known_hosts file to check the host key against when `hostKey` is not set |
 | `insecureHostKey` | `false` | `true` skips the host key check |
-| `privateKeyFile` | - | Private key for SSH login. When set, SSH does not use the password, and `DB2I_PASSWORD` can be left unset. The key must not have a passphrase |
+| `privateKeyFile` | - | Private key for SSH login. When set, SSH does not use the password, and `DB2I_PASSWORD` can be left unset. The key must not have a passphrase. HTTP `/auth` logins ignore it and log in with the caller's password |
 | `javaPath` | mapepire-js default (`jdk80`) | Java binary on the IBM i |
 | `serverPath` | - | Path of an installed Mapepire server JAR. When set, the bundled JAR is not uploaded |
 | `maxJobs` | `2` | Most Mapepire jobs (JVMs) one pool runs at a time |
-| `idleTimeout` | `600000` | Milliseconds before an idle job beyond the first is closed |
+| `idleTimeout` | `600000` | Milliseconds before an idle job is closed |
 | `startupTimeout` | `60000` | Milliseconds to wait for a job to start |
-| `requestTimeout` | `120000` | Milliseconds to wait for one query or fetch to answer |
+| `requestTimeout` | `120000` | Milliseconds to wait for one query or fetch to answer. A job that does not answer in time is closed |
 
 ```env
 DB2I_DRIVER=mapepire

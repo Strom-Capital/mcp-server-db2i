@@ -38,9 +38,13 @@ export function fingerprintOf(key: Buffer): string {
   return `SHA256:${createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`;
 }
 
-/** The name a known_hosts entry uses for this host: `host`, or `[host]:port` off port 22. */
+/**
+ * The name a known_hosts entry uses for this host: `host`, or `[host]:port`
+ * off port 22. Lowercase, as OpenSSH hashes it.
+ */
 function knownHostsName(host: string, port: number): string {
-  return port === 22 ? host : `[${host}]:${port}`;
+  const name = host.toLowerCase();
+  return port === 22 ? name : `[${name}]:${port}`;
 }
 
 /** Match a known_hosts wildcard pattern (`*` and `?`) against a name, ignoring case. */

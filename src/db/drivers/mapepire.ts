@@ -107,7 +107,7 @@ function loadSsh2(): Promise<Ssh2Module> {
 export interface JobFactory {
   /** Start a new job, connected and ready for queries. */
   start(): Promise<SQLJob>;
-  /** Close the transport. Jobs are closed by the pool first. */
+  /** Close the transport. Jobs are closed by the pool first. The next start opens it again. */
   close(): Promise<void>;
   /** Called when the transport drops, after which every started job is gone. */
   onDead(listener: () => void): void;
@@ -131,24 +131,54 @@ function bindParams(params: readonly QueryParam[]): Array<string | number | null
   return params.map((p) => (p instanceof Date ? toDb2Timestamp(p) : p));
 }
 
+/** A request that did not answer within requestTimeout. The pool closes its job. */
+class RequestTimeoutError extends Error {}
+
+/**
+ * mapepire-js accepts a requestTimeout but never enforces it, so the pool
+ * times each request itself.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new RequestTimeoutError(`Mapepire request did not answer within ${ms} ms (requestTimeout)`)),
+      ms
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /**
  * Run one statement on a job and read every row.
  */
-async function runOnJob(job: SQLJob, sql: string, params: readonly QueryParam[]): Promise<Row[]> {
+async function runOnJob(
+  job: SQLJob,
+  sql: string,
+  params: readonly QueryParam[],
+  requestTimeout: number
+): Promise<Row[]> {
   const query = job.query<Row>(sql, params.length > 0 ? { parameters: bindParams(params) } : {});
-  let result = await query.execute(FETCH_SIZE);
+  let result = await withTimeout(query.execute(FETCH_SIZE), requestTimeout);
   const rows: Row[] = [...(result.data ?? [])];
   try {
     while (!result.is_done) {
-      result = await query.fetchMore(FETCH_SIZE);
+      result = await withTimeout(query.fetchMore(FETCH_SIZE), requestTimeout);
       rows.push(...(result.data ?? []));
     }
-  } finally {
-    if (!result.is_done) {
+  } catch (error) {
+    // A timed-out job is closed by the pool, which ends the cursor with it.
+    if (!(error instanceof RequestTimeoutError)) {
       await query.close().catch(() => undefined);
     }
+    throw error;
   }
   return rows;
+}
+
+/** False once the job ended or its server process is gone. */
+function jobIsUsable(job: SQLJob): boolean {
+  return String(job.getStatus()) !== 'ended' && job.getTransport().isConnected();
 }
 
 interface JobSlot {
@@ -164,12 +194,14 @@ interface JobSlot {
 export interface JobPoolOptions {
   maxJobs: number;
   idleTimeout: number;
+  requestTimeout: number;
 }
 
 /**
  * Up to `maxJobs` Mapepire jobs, started on demand. A query takes an idle job,
  * else starts one below the cap, else shares the least busy job (mapepire-js
- * queues requests on a job). Jobs beyond the first close after `idleTimeout`.
+ * queues requests on a job). Jobs close after `idleTimeout`, and the transport
+ * closes with the last one.
  */
 export class JobPool implements DbPool {
   private slots: JobSlot[] = [];
@@ -184,7 +216,9 @@ export class JobPool implements DbPool {
       // The transport is gone, and every job with it. The next query reconnects.
       this.slots = [];
     });
-    this.sweeper = setInterval(() => this.closeIdleJobs(), Math.min(options.idleTimeout, 60_000));
+    this.sweeper = setInterval(() => {
+      void this.closeIdleJobs().catch(() => undefined);
+    }, Math.min(options.idleTimeout, 60_000));
     this.sweeper.unref();
   }
 
@@ -202,10 +236,13 @@ export class JobPool implements DbPool {
         throw new Error(describeMapepireError(error), { cause: error });
       }
       try {
-        return await runOnJob(job, sql, params);
+        return await runOnJob(job, sql, params, this.options.requestTimeout);
       } catch (error) {
-        if (String(job.getStatus()) === 'ended') {
+        // A timed-out job may still be running the statement, and a job whose
+        // server process exited stays "busy" in mapepire-js. Neither may be reused.
+        if (error instanceof RequestTimeoutError || !jobIsUsable(job)) {
           this.drop(slot);
+          void job.close().catch(() => undefined);
         }
         throw new Error(describeMapepireError(error), { cause: error });
       }
@@ -267,14 +304,21 @@ export class JobPool implements DbPool {
     this.slots = this.slots.filter((candidate) => candidate !== slot);
   }
 
-  private closeIdleJobs(): void {
+  private async closeIdleJobs(): Promise<void> {
     const now = Date.now();
-    // The first job stays up so the next query does not wait for a cold start.
-    for (const slot of this.slots.slice(1)) {
-      if (slot.job && slot.active === 0 && now - slot.lastUsed >= this.options.idleTimeout) {
-        this.drop(slot);
-        void closeSlot(slot);
-      }
+    const expired = this.slots.filter(
+      (slot) => slot.job && slot.active === 0 && now - slot.lastUsed >= this.options.idleTimeout
+    );
+    if (expired.length === 0) {
+      return;
+    }
+    for (const slot of expired) {
+      this.drop(slot);
+    }
+    await Promise.all(expired.map((slot) => closeSlot(slot)));
+    // No job left, so no JVM and no SSH session stays up. The next query reconnects.
+    if (!this.closed && this.slots.length === 0) {
+      await this.factory.close();
     }
   }
 }
@@ -371,7 +415,6 @@ export function createSshJobFactory(
           sshSingle: {
             ...createSSH2Connection(ssh),
             startupTimeout: settings.startupTimeout,
-            requestTimeout: settings.requestTimeout,
             ...(settings.javaPath ? { javaPath: settings.javaPath } : {}),
             ...(settings.serverPath ? { serverPath: settings.serverPath } : {}),
           },
@@ -386,6 +429,10 @@ export function createSshJobFactory(
       client = undefined;
       if (pending) {
         const ssh = await pending.catch(() => undefined);
+        // A deliberate close is not a drop: its close event must not clear the pool.
+        if (ssh && current === ssh) {
+          current = undefined;
+        }
         ssh?.end();
       }
     },
@@ -415,7 +462,7 @@ export const mapepireDriver: DbDriver = {
 
   async createPool(config: DB2iConfig, options: CreatePoolOptions): Promise<DbPool> {
     // Fail on a missing package now, like the other drivers, not on the first job.
-    await loadMapepire();
+    await Promise.all([loadMapepire(), loadSsh2()]);
     const settings = resolveMapepireSettings(config.mapepireOptions ?? {});
     const jdbcOptions = buildMapepireJdbcOptions(config, { readOnly: options.readOnly });
     return new JobPool(createJobFactory(config, settings, jdbcOptions), settings);

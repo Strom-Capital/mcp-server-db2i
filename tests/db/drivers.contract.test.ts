@@ -109,6 +109,7 @@ vi.mock('@ibm/mapepire-js', () => ({
           return { success: true };
         },
         getStatus: () => status,
+        getTransport: () => ({ isConnected: () => status === 'ready' }),
         query(sql: string, opts: { parameters?: unknown[] }) {
           return {
             async execute() {

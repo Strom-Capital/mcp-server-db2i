@@ -31,6 +31,7 @@ import {
   serializeOdbcConnectionString,
   assertExtendedMetadataAllowsMasking,
   resolveMapepireSettings,
+  withoutSshKeyLogin,
   buildMapepireJdbcOptions,
   defaultKnownHostsFile,
   TOOL_NAMES,
@@ -702,8 +703,17 @@ describe('Config Module', () => {
       );
       expect(() => resolveMapepireSettings({ maxJobs: '0' })).toThrow('maxJobs must be a whole number of at least 1');
       expect(() => resolveMapepireSettings({ sshPort: '22x' })).toThrow('sshPort must be a whole number');
+      expect(() => resolveMapepireSettings({ sshPort: '65536' })).toThrow(
+        'sshPort must be a whole number from 1 to 65535, got "65536"'
+      );
+      expect(resolveMapepireSettings({ sshPort: '65535' }).sshPort).toBe(65_535);
       expect(() => resolveMapepireSettings({ insecureHostKey: 'yes' })).toThrow('insecureHostKey must be true or false');
       expect(() => resolveMapepireSettings({ hostKey: 'MD5:aa:bb' })).toThrow('hostKey must be an OpenSSH SHA256 fingerprint');
+    });
+
+    it('should drop privateKeyFile in any case for a password login', () => {
+      expect(withoutSshKeyLogin({ PRIVATEKEYFILE: '/keys/id', maxJobs: '3' })).toEqual({ maxJobs: '3' });
+      expect(withoutSshKeyLogin(undefined)).toEqual({});
     });
 
     it('should reject a pinned key together with insecureHostKey', () => {

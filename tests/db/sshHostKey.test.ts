@@ -70,6 +70,13 @@ describe('knownHostKeys', () => {
     expect(knownHostKeys(contents, 'ibmi.example.com', 22).keys).toEqual([KEY_A]);
   });
 
+  it('matches a hashed entry when the configured host has upper case', () => {
+    const contents = `${hashedName('ibmi.example.com')} ssh-ed25519 ${b64(KEY_A)}`;
+    expect(knownHostKeys(contents, 'IBMI.Example.com', 22).keys).toEqual([KEY_A]);
+    const offPort = `${hashedName('[ibmi.example.com]:2222')} ssh-ed25519 ${b64(KEY_B)}`;
+    expect(knownHostKeys(offPort, 'IBMI.example.com', 2222).keys).toEqual([KEY_B]);
+  });
+
   it('honours a negated pattern', () => {
     const contents = `*.example.com,!ibmi.example.com ssh-ed25519 ${b64(KEY_A)}`;
     expect(knownHostKeys(contents, 'ibmi.example.com', 22).keys).toEqual([]);

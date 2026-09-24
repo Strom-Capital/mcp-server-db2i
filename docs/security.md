@@ -272,7 +272,7 @@ With `DB2I_DRIVER=mapepire` the server logs in to the IBM i with SSH and runs th
 - **Files on the IBM i.** On first use, mapepire-js uploads its bundled server JAR to `$HOME/.mapepire` in the user's home directory and checks its SHA-256. Later connections reuse it, or a JAR that Code for i left in `$HOME/.vscode`. Set `serverPath` to run an installed JAR instead. Delete `$HOME/.mapepire` to remove it.
 - **SSH access.** The user profile needs SSH login, which also allows a shell. Give the MCP server a dedicated, low-privilege profile, as you would for the other drivers. If sshd allows it, limit what that profile can do over SSH.
 - **Encryption.** SSH encrypts the whole session, so the JDBC `secure` option is not needed.
-- **Keys.** `privateKeyFile` logs in with a key instead of the password. The key file must not have a passphrase, so protect it like a password file.
+- **Keys.** `privateKeyFile` logs in with a key instead of the password. The key file must not have a passphrase, so protect it like a password file. Over HTTP with `MCP_AUTH_MODE=required`, `/auth` sessions ignore the key and log in over SSH with the caller's password, so the key cannot stand in for a caller's credentials.
 
 ## Audit log
 

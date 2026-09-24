@@ -23,6 +23,7 @@ import {
   isLoopbackHost,
   loadPartialConfig,
   normalizeDbHost,
+  withoutSshKeyLogin,
   type DB2iConfig,
 } from '../config.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -187,22 +188,25 @@ function authAllowedDbHosts(httpConfig: ReturnType<typeof getHttpConfig>): strin
 /**
  * The connection an /auth request asks for: a profile plus the caller's
  * credentials, or, without DB2I_PROFILES, the request's host over DB2I_*.
+ * The caller's password is what logs in, so a mapepire privateKeyFile is
+ * dropped: the server's key would accept any password.
  */
 function authConnection(authReq: AuthRequest): { system: string; config: DB2iConfig } {
   if (!isProfilesFileConfigured()) {
     if (authReq.system !== undefined && authReq.system !== DEFAULT_SYSTEM_NAME) {
       throw new Error(unknownSystemMessage(authReq.system));
     }
+    const config = loadPartialConfig({
+      hostname: authReq.host,
+      port: authReq.port,
+      username: authReq.username,
+      password: authReq.password,
+      database: authReq.database,
+      schema: authReq.schema,
+    });
     return {
       system: DEFAULT_SYSTEM_NAME,
-      config: loadPartialConfig({
-        hostname: authReq.host,
-        port: authReq.port,
-        username: authReq.username,
-        password: authReq.password,
-        database: authReq.database,
-        schema: authReq.schema,
-      }),
+      config: { ...config, mapepireOptions: withoutSshKeyLogin(config.mapepireOptions) },
     };
   }
 
@@ -220,6 +224,7 @@ function authConnection(authReq: AuthRequest): { system: string; config: DB2iCon
       username: authReq.username,
       password: authReq.password,
       schema: authReq.schema ?? profile.config.schema,
+      mapepireOptions: withoutSshKeyLogin(profile.config.mapepireOptions),
     },
   };
 }

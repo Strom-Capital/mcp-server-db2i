@@ -314,9 +314,7 @@ const MAPEPIRE_OPTION_KEYS = [
  * Look up a Mapepire option by name, ignoring key case.
  */
 function mapepireOption(options: Record<string, string>, name: string): string | undefined {
-  const lower = name.toLowerCase();
-  const key = Object.keys(options).find((candidate) => candidate.toLowerCase() === lower);
-  const value = key === undefined ? undefined : options[key]?.trim();
+  const value = jdbcOption(options, name.toLowerCase())?.trim();
   return value === '' ? undefined : value;
 }
 
@@ -325,15 +323,17 @@ function mapepireInt(
   name: string,
   fallback: number,
   min: number,
-  label: string
+  label: string,
+  max = Number.MAX_SAFE_INTEGER
 ): number {
   const raw = mapepireOption(options, name);
   if (raw === undefined) {
     return fallback;
   }
   const value = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < min) {
-    throw new Error(`${label}: ${name} must be a whole number of at least ${min}, got "${raw}"`);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < min || value > max) {
+    const range = max === Number.MAX_SAFE_INTEGER ? `of at least ${min}` : `from ${min} to ${max}`;
+    throw new Error(`${label}: ${name} must be a whole number ${range}, got "${raw}"`);
   }
   return value;
 }
@@ -402,7 +402,7 @@ export function resolveMapepireSettings(
     maxJobs: mapepireInt(options, 'maxJobs', 2, 1, label),
     idleTimeout: mapepireInt(options, 'idleTimeout', 600_000, 1_000, label),
     requestTimeout: mapepireInt(options, 'requestTimeout', 120_000, 1_000, label),
-    sshPort: mapepireInt(options, 'sshPort', 22, 1, label),
+    sshPort: mapepireInt(options, 'sshPort', 22, 1, label, 65_535),
     hostKey: hostKey?.replace(/=$/, ''),
     knownHostsFile: mapepireOption(options, 'knownHostsFile') ?? defaultKnownHostsFile(),
     hostKeyCheck: insecureHostKey ? 'off' : hostKey !== undefined ? 'pinned' : 'known_hosts',
@@ -421,6 +421,17 @@ export function usesSshKeyLogin(
   mapepireOptions: Record<string, string> | undefined
 ): boolean {
   return driver === 'mapepire' && mapepireOption(mapepireOptions ?? {}, 'privateKeyFile') !== undefined;
+}
+
+/**
+ * Mapepire options without `privateKeyFile`, so SSH logs in with the
+ * configured password. An HTTP /auth login checks the caller's password by
+ * connecting, and the server's own key would let any password through.
+ */
+export function withoutSshKeyLogin(mapepireOptions: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(mapepireOptions ?? {}).filter(([key]) => key.toLowerCase() !== 'privatekeyfile')
+  );
 }
 
 /**
