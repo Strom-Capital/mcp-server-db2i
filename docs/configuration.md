@@ -24,10 +24,12 @@ DB2I_PASSWORD=your-password
 | `DB2I_PASSWORD` | Yes* | - | User password |
 | `DB2I_USERNAME_FILE` | No | - | Path to file containing username (overrides `DB2I_USERNAME`) |
 | `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
-| `DB2I_PORT` | No | `446` | JDBC port (446 is standard for IBM i) |
+| `DB2I_PORT` | No | `446` | JDBC port (446 is standard for IBM i). Not used by the `odbc` driver, which talks to the host servers |
 | `DB2I_DATABASE` | No | `*LOCAL` | Database name |
-| `DB2I_SCHEMA` | No | - | Default schema/library. Also the JDBC library list for `execute_query` when `libraries` is not set |
-| `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated) |
+| `DB2I_SCHEMA` | No | - | Default schema/library. Also the library list for `execute_query` (JDBC `libraries`, ODBC `DBQ`) when the option is not set |
+| `DB2I_DRIVER` | No | `jt400` | Database driver: `jt400` (JDBC via node-jt400, needs a JRE) or `odbc` (IBM i Access ODBC driver, no Java). See [Database Drivers](#database-drivers) |
+| `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated). `jt400` driver only |
+| `DB2I_ODBC_OPTIONS` | No | - | Additional ODBC connection keywords (semicolon-separated). `odbc` driver only |
 
 *Either the environment variable or the corresponding `*_FILE` variable must be set. File-based secrets take priority when both are provided.
 
@@ -205,9 +207,69 @@ LOG_LEVEL=info
 NODE_ENV=production
 ```
 
+## Database Drivers
+
+`DB2I_DRIVER` picks how the server talks to Db2 for i. Both drivers run the same tools and apply the same defaults: system naming, ISO dates, a read-only query connection, `DB2I_SCHEMA` as the library list, and a second connection without the read-only setting for `QSYS2.GENERATE_SQL` (`get_object_ddl`). Each driver is loaded on first use, so an `odbc` install never starts Java.
+
+| Driver | Package | Needs | Options variable |
+|--------|---------|-------|------------------|
+| `jt400` (default) | [node-jt400](https://www.npmjs.com/package/node-jt400) | Java Runtime Environment 11 or later | `DB2I_JDBC_OPTIONS` |
+| `odbc` | [odbc](https://www.npmjs.com/package/odbc) (IBM/node-odbc, optional dependency) | unixODBC and the IBM i Access ODBC Driver | `DB2I_ODBC_OPTIONS` |
+
+The `odbc` package is an optional dependency. If its prebuilt binary is missing for your platform, `npm install` builds it from source and needs the unixODBC headers (`unixodbc-dev` on Debian and Ubuntu, `unixODBC-devel` on RHEL and SUSE).
+
+### Installing the IBM i Access ODBC Driver
+
+The driver is part of IBM i Access Client Solutions (ACS), but not of the ACS base download (the Java package with the 5250 emulator and Run SQL Scripts). It ships in the optional *Linux, Mac, and PASE Application Package* and *Windows Application Package*, and IBM also publishes the Linux and macOS packages from its own repositories ([instructions](https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/installation.html)). On every platform the driver registers as `IBM i Access ODBC Driver`, which is the name the server uses unless `DB2I_ODBC_OPTIONS` sets `DRIVER` or `DSN`.
+
+| Platform | Architectures | Driver manager | Install |
+|----------|---------------|----------------|---------|
+| Debian, Ubuntu | amd64, ppc64el (the apt repository also carries older i386 builds) | unixODBC (installed as a dependency) | IBM apt repository, or the `.deb` in the Linux Application Package |
+| RHEL, Fedora, CentOS Stream | x86_64, ppc64le | unixODBC | IBM rpm repository (`dnf install --refresh ibm-iaccess`), or the `.rpm` in the Linux Application Package |
+| SUSE, openSUSE | x86_64, ppc64le | unixODBC | Same rpm repository under `/etc/zypp/repos.d`, `zypper install ibm-iaccess` |
+| macOS 14 and later | Universal (Intel and Apple Silicon) | unixODBC from Homebrew, installed first. The driver does not work with iODBC | Homebrew tap `ibm/iaccess`, or `ibm-iaccess-<version>.pkg` in the macOS Application Package |
+| Windows 10 and later | x64 driver plus a 32-bit driver for 32-bit processes | Windows ODBC Data Source Administrator | `setup.exe` in the Windows Application Package. Use the 64-bit driver with 64-bit Node.js |
+| IBM i PASE | ppc64 | unixODBC (installed as a dependency) | `yum install ibm-iaccess`, or the `.rpm` in the PASE Application Package |
+
+Linux on arm64 (for example Raspberry Pi or Graviton) is not covered: IBM publishes no arm64 Linux build. Run the `jt400` driver there, or run the `odbc` image under amd64 emulation (see [docker.md](docker.md#multi-stage-build)).
+
+```bash
+# Debian / Ubuntu
+curl https://public.dhe.ibm.com/software/ibmi/products/odbc/debs/dists/1.1.0/ibmi-acs-1.1.0.list | sudo tee /etc/apt/sources.list.d/ibmi-acs-1.1.0.list
+sudo apt update && sudo apt install ibm-iaccess
+
+# RHEL / Fedora
+curl https://public.dhe.ibm.com/software/ibmi/products/odbc/rpms/ibmi-acs.repo | sudo tee /etc/yum.repos.d/ibmi-acs.repo
+sudo dnf install --refresh ibm-iaccess
+
+# SUSE
+curl https://public.dhe.ibm.com/software/ibmi/products/odbc/rpms/ibmi-acs.repo | sudo tee /etc/zypp/repos.d/ibmi-acs.repo
+sudo zypper refresh && sudo zypper install ibm-iaccess
+
+# macOS (unixODBC, not iODBC)
+brew install unixodbc
+brew tap ibm/iaccess https://public.dhe.ibm.com/software/ibmi/products/odbc/macos/tap/
+brew install ibm-iaccess
+
+# IBM i PASE
+yum install ibm-iaccess
+```
+
+Check the registration with `odbcinst -q -d` on Linux, macOS and PASE, or in the ODBC Data Source Administrator on Windows. The `odbc` npm package ships prebuilt binaries for Linux x64, macOS and Windows x64; on other targets `npm install` builds it and needs the unixODBC headers.
+
+Windows notes:
+
+- IBM ships the Windows driver for x64 and x86 only. On Windows on ARM install the **x64** build of Node.js; it runs under emulation and can load the x64 driver. A native ARM64 Node.js cannot load it.
+- `npm install` builds the JT400 bridge and needs a JDK. For an ODBC-only install without Java, run `npm ci --ignore-scripts` and then `npm rebuild odbc`, which only fetches the prebuilt ODBC binary.
+
+```env
+DB2I_DRIVER=odbc
+DB2I_ODBC_OPTIONS=SSL=1
+```
+
 ## JDBC Options
 
-The `DB2I_JDBC_OPTIONS` variable accepts semicolon-separated JDBC options for the JT400/JTOpen driver.
+The `DB2I_JDBC_OPTIONS` variable accepts semicolon-separated JDBC options for the JT400/JTOpen driver. It applies when `DB2I_DRIVER` is `jt400`.
 
 ### Common Options
 
@@ -246,6 +308,39 @@ The `naming` option affects how you reference tables:
 - **`sql`** (recommended): Use schema.table syntax (e.g., `MYLIB.CUSTOMERS`)
 - **`system`**: Use library/file syntax (e.g., `MYLIB/CUSTOMERS`)
 
+## ODBC Options
+
+The `DB2I_ODBC_OPTIONS` variable accepts semicolon-separated connection keywords for the IBM i Access ODBC Driver. It applies when `DB2I_DRIVER` is `odbc`. Keywords are case-insensitive and most have a long alias (`NAM` or `Naming`). IBM documents the full list under [Connection string keywords](https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords).
+
+### Common Keywords
+
+| Keyword | Values | Description |
+|---------|--------|-------------|
+| `NAM` (`Naming`) | `1`, `0` | `1` is system naming (`/` library separator), `0` is SQL naming (`.`). The server sets `1` unless you set it |
+| `DBQ` (`DefaultLibraries`) | `LIB1,LIB2,...` | Default library and library list. Start with a comma (`,LIB1,LIB2`) to set a list without a default library. Defaults to `DB2I_SCHEMA` |
+| `DFT` (`DateFormat`) | `5` ISO, `4` USA, `6` EUR, `7` JIS, `1` MDY, `2` DMY, `3` YMD | Date format. The server sets `5` unless you set it |
+| `TRIMCHAR` (`TrimCharFields`) | `1`, `0` | Trim trailing blanks from CHAR columns. The server sets `1` to match JT400 |
+| `SSL` | `1`, `0` | `1` encrypts the whole connection. The driver default only encrypts the password. Startup logs a warning when it is not `1` |
+| `CONNTYPE` (`ConnectionType`) | `2` read only, `1` read/call, `0` read/write | Statement access. Defaults to `2` when omitted. An explicit value overrides that default and is logged at startup |
+| `DRIVER` / `DSN` | driver name or DSN | Defaults to `DRIVER=IBM i Access ODBC Driver`. Set `DSN=...` to use a data source from `odbc.ini` instead |
+| `DATABASE` | RDB name | Independent auxiliary storage pool to connect to. Not set by default; `DB2I_DATABASE` is not passed to the driver |
+
+The server sets `CONNTYPE=2` on every query connection unless `DB2I_ODBC_OPTIONS` already contains `CONNTYPE`. The `get_object_ddl` connection omits `CONNTYPE`, so `QSYS2.GENERATE_SQL` can return its result set; that connection runs only the CALL.
+
+Set `SSL=1` only after the IBM i host servers are configured for TLS (Digital Certificate Manager). `DB2I_PORT` is not used: the ODBC driver connects to the host servers (8471, or 9471 with TLS), not the DRDA port.
+
+A `SYSTEM`, `UID` or `PWD` value containing `;`, `=` or `{` is wrapped in braces automatically. A value containing `}` cannot be expressed in an ODBC connection string and is rejected at startup.
+
+### Examples
+
+```env
+# TLS, SQL naming, and a library list with no default library
+DB2I_ODBC_OPTIONS=SSL=1;NAM=0;DBQ=,MYLIB,QGPL
+
+# Use a DSN from ~/.odbc.ini
+DB2I_ODBC_OPTIONS=DSN=PRODIBMI
+```
+
 ## Default Schema
 
 The `DB2I_SCHEMA` variable sets a default schema for the metadata tools and for `execute_query`. When set:
@@ -253,7 +348,7 @@ The `DB2I_SCHEMA` variable sets a default schema for the metadata tools and for 
 - You don't need to specify `schema` in each metadata tool call
 - Tools will use this schema if no schema is provided
 - You can still override it per-call by providing a `schema` parameter
-- `execute_query` uses it as the JDBC `libraries` list, unless `DB2I_JDBC_OPTIONS` already sets `libraries`. With `naming=sql`, the first library is the default schema, so `FROM CUSTOMERS` resolves to `MYLIB.CUSTOMERS`. An explicit `libraries` option always wins.
+- `execute_query` uses it as the library list: JDBC `libraries` unless `DB2I_JDBC_OPTIONS` already sets `libraries`, or ODBC `DBQ` unless `DB2I_ODBC_OPTIONS` already sets `DBQ`. With SQL naming, the first library is the default schema, so `FROM CUSTOMERS` resolves to `MYLIB.CUSTOMERS`. An explicit option always wins.
 
 In HTTP `required` mode, the schema sent to `/auth` is used for that session and falls back to `DB2I_SCHEMA` when the client omits it.
 

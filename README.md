@@ -12,13 +12,13 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Strom-Capital/mcp-server-db2i/pulls)
 [![GitHub last commit](https://img.shields.io/github/last-commit/Strom-Capital/mcp-server-db2i)](https://github.com/Strom-Capital/mcp-server-db2i/commits/main)
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases using the JT400 JDBC driver.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases through the JT400 JDBC driver or the IBM i Access ODBC driver.
 
 Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.Strom-Capital/mcp-server-db2i`.
 
 ## Architecture
 
-AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the JT400 JDBC driver.
+AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the JT400 JDBC driver (default) or the IBM i Access ODBC driver (`DB2I_DRIVER=odbc`, no Java).
 
 ```mermaid
 graph LR
@@ -207,7 +207,7 @@ Once connected, you can ask the AI assistant:
 - `get_related_objects` needs IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release
 - `get_journal_info` needs the journal columns of `QSYS2.OBJECT_STATISTICS` (IBM i 7.3 Technology Refresh 2 or later)
 - Node.js 22 or higher
-- Java Runtime Environment (JRE) 11 or higher
+- Java Runtime Environment (JRE) 11 or higher for the default `jt400` driver, or unixODBC with the IBM i Access ODBC Driver for `DB2I_DRIVER=odbc` (see [Database Drivers](docs/configuration.md#database-drivers))
 - MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)
 
 ## Related Projects
@@ -225,5 +225,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - [node-jt400](https://www.npmjs.com/package/node-jt400) - JT400 JDBC driver wrapper for Node.js
+- [node-odbc](https://github.com/IBM/node-odbc) - ODBC bindings for Node.js, maintained by IBM
 - [Model Context Protocol](https://modelcontextprotocol.io/) - The protocol specification
 - [@modelcontextprotocol/server](https://github.com/modelcontextprotocol/typescript-sdk) - Official TypeScript SDK (spec 2026-07-28, with stateless 2025-era clients)

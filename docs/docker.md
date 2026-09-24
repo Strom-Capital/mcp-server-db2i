@@ -187,7 +187,9 @@ environment:
   - DB2I_USERNAME=${DB2I_USERNAME}
   - DB2I_PASSWORD=${DB2I_PASSWORD}
   - DB2I_SCHEMA=${DB2I_SCHEMA:-}
+  - DB2I_DRIVER=${DB2I_DRIVER:-jt400}
   - DB2I_JDBC_OPTIONS=${DB2I_JDBC_OPTIONS:-}
+  - DB2I_ODBC_OPTIONS=${DB2I_ODBC_OPTIONS:-}
   
   # Transport settings
   - MCP_TRANSPORT=${MCP_TRANSPORT:-stdio}
@@ -242,16 +244,36 @@ The server reads the files at startup. A statement that is not a query, or that 
 
 ## Multi-Stage Build
 
-The Dockerfile uses a multi-stage build for minimal image size:
+The Dockerfile uses a multi-stage build with two runtime targets:
 
-1. **Builder stage**: Compiles TypeScript to JavaScript
-2. **Production stage**: Contains only runtime dependencies
+1. **Builder stage**: Compiles TypeScript to JavaScript and prunes dev dependencies
+2. **`jt400` target** (default): OpenJDK 17 JRE for the JT400 JDBC driver
+3. **`odbc` target**: unixODBC and the IBM i Access ODBC Driver from IBM's apt repository, no Java. Sets `DB2I_DRIVER=odbc`.
 
-The final image:
-- Uses `node:22-bookworm-slim`. Bookworm is pinned so OpenJDK 17 stays available. Debian trixie does not package it.
-- Runs as non-root user (`mcpuser`)
-- Includes only production dependencies
-- Defaults `MCP_SESSION_MODE` to `stateless`, matching the server. `stateful` is deprecated.
+```bash
+# JDBC image (default, same as before)
+docker build -t mcp-server-db2i .
+
+# ODBC image, no JDK or JRE
+docker build --target odbc -t mcp-server-db2i:odbc .
+docker run --rm -i --env-file .env -e DB2I_ODBC_OPTIONS="SSL=1" mcp-server-db2i:odbc
+```
+
+IBM publishes the ODBC driver package for amd64, i386 and ppc64el only. On an arm64 host such as an Apple Silicon Mac, build and run the ODBC image under emulation with `--platform linux/amd64`; the build fails early with a message otherwise. The `jt400` image builds natively on arm64.
+
+```bash
+docker build --platform linux/amd64 --target odbc -t mcp-server-db2i:odbc .
+```
+
+In `docker-compose.yml`, add `target: odbc` under `build` (and `platform: linux/amd64` on arm64 hosts) to use the ODBC image.
+
+Both images:
+- Use `node:22-bookworm-slim`. Bookworm is pinned so OpenJDK 17 stays available for the `jt400` target. Debian trixie does not package it.
+- Run as non-root user (`mcpuser`)
+- Include only production dependencies
+- Default `MCP_SESSION_MODE` to `stateless`, matching the server. `stateful` is deprecated.
+
+The `odbc` image installs `ibm-iaccess` from `public.dhe.ibm.com` at build time, so the build needs network access to that host. See [Database Drivers](configuration.md#database-drivers) for the ODBC keywords.
 
 ## Health Checks
 

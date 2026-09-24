@@ -40,7 +40,9 @@ describe('TokenManager', () => {
     password: 'testpass',
     database: '*LOCAL',
     schema: 'TESTLIB',
+    driver: 'jt400',
     jdbcOptions: {},
+    odbcOptions: {},
   };
 
   beforeEach(() => {
