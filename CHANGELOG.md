@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.3.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.2.1...v2.3.0) (2026-09-24)
+
+
+### Features
+
+* require Node 22 and node-jt400 7 ([#53](https://github.com/Strom-Capital/mcp-server-db2i/issues/53)) ([2afc062](https://github.com/Strom-Capital/mcp-server-db2i/commit/2afc0629c3a0062c13ba257f8d377e9d39666150))
+
+
+### CI/CD
+
+* retry MCP Registry publish until npm shows the version ([#55](https://github.com/Strom-Capital/mcp-server-db2i/issues/55)) ([598b708](https://github.com/Strom-Capital/mcp-server-db2i/commit/598b7080cc1cdbd5533912c370d8f72652bb1f70))
+
 ## [2.2.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.2.0...v2.2.1) (2026-09-23)
 
 
