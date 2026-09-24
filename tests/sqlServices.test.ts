@@ -359,6 +359,35 @@ describe('SQL service tools', () => {
       expect(query).not.toHaveBeenCalled();
     });
 
+    it('should report a library that does not exist', async () => {
+      query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
+
+      const result = await getJournalInfoTool({ schema: 'nosuchlib' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Library NOSUCHLIB was not found.');
+      expect(query.mock.calls[1]?.[0]).toContain('QSYS2.SYSSCHEMAS');
+      expect(query.mock.calls[1]?.[1]).toEqual(['NOSUCHLIB', 'NOSUCHLIB']);
+    });
+
+    it('should return an empty list for a library with no data files', async () => {
+      query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ FOUND: 1 }] });
+
+      const result = await getJournalInfoTool({ schema: 'MYLIB', filter: 'NOMATCH*' });
+
+      expect(result.success).toBe(true);
+      expect(result.count).toBe(0);
+      expect(result.needsAttention).toBe(0);
+    });
+
+    it('should not look up the library when rows come back', async () => {
+      query.mockResolvedValueOnce({ rows: [journalRow({})] });
+
+      await getJournalInfoTool({ schema: 'MYLIB' });
+
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
     it('should explain when OBJECT_STATISTICS has no journal columns', async () => {
       query.mockRejectedValueOnce(new Error('[SQL0206] Column or global variable JOURNALED not found.'));
 
