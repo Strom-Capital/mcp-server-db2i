@@ -18,7 +18,7 @@ Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.g
 
 ## Architecture
 
-AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the JT400 JDBC driver (default) or the IBM i Access ODBC driver (`DB2I_DRIVER=odbc`, no Java).
+AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the JT400 JDBC driver (default) or the IBM i Access ODBC driver (`DB2I_DRIVER=odbc`, no Java). One server can reach several IBM i systems through connection profiles, each with its own driver.
 
 ```mermaid
 graph LR
@@ -32,18 +32,26 @@ graph LR
         stdio["stdio"]
         http["HTTP + Auth"]
         tools[["MCP Tools"]]
+        profiles{{"System profiles"}}
         jdbc["JT400 JDBC"]
+        odbc["IBM i Access ODBC"]
     end
 
-    subgraph ibmi ["IBM i"]
-        db2[("DB2 for i")]
+    subgraph prod ["IBM i: prod"]
+        db2prod[("DB2 for i")]
+    end
+
+    subgraph test ["IBM i: test"]
+        db2test[("DB2 for i")]
     end
 
     claude & cursor -->|MCP Protocol| stdio
     agents -->|REST API| http
     stdio & http --> tools
-    tools --> jdbc
-    jdbc -->|JDBC| db2
+    tools --> profiles
+    profiles --> jdbc & odbc
+    jdbc -->|JDBC| db2prod
+    odbc -->|ODBC| db2test
 ```
 
 ## Features
@@ -57,6 +65,7 @@ graph LR
 - **HTTP Transport** - REST API with token authentication for web/agent integration
 - **Current MCP spec** - Speaks [2026-07-28](https://modelcontextprotocol.io/) and still serves stateless 2025-era clients
 - **Dual Transport** - Run stdio and HTTP simultaneously
+- **Multiple systems** - Reach several IBM i systems from one server with `DB2I_PROFILES`, each with its own driver, credentials, and library allowlist. Tools take an optional `system` argument. See [Multiple systems](docs/configuration.md#multiple-systems)
 - **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
 - **Business SQL tools** - Load read-only ERP queries and table notes from YAML, and check the files with `mcp-server-db2i validate-tools` before the server starts. See [Business SQL tools](docs/custom-tools.md)
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens

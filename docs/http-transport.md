@@ -172,6 +172,27 @@ curl -X POST http://localhost:3000/mcp \
 | `database` | No | Database name (falls back to `DB2I_DATABASE`) |
 | `schema` | No | Default schema (falls back to `DB2I_SCHEMA`) |
 | `duration` | No | Token lifetime in seconds (max 86400) |
+| `system` | No | Profile from `DB2I_PROFILES` to log in to (default: the first). Not accepted with `host`, `port`, or `database` |
+
+## Multiple Systems
+
+With [`DB2I_PROFILES`](configuration.md#multiple-systems) set, a login in `required` mode picks a system:
+
+```bash
+curl -X POST http://localhost:3000/auth \
+  -H "Content-Type: application/json" \
+  -d '{"username": "MYUSER", "password": "mypassword", "system": "test"}'
+```
+
+The host, port, database, driver, and driver options come from the `test` profile. The username and password come from the request, and the server tests them on that system before it returns a token. The token is bound to that system:
+
+- Tools on that token have no `system` argument, and every call runs on `test`.
+- Business SQL tools fixed to another system with `system:` are not listed.
+- To use another system, log in again with its name.
+
+`host`, `port`, and `database` are refused while `DB2I_PROFILES` is set, because the profile supplies them. When `MCP_AUTH_ALLOWED_DB_HOSTS` is unset, `/auth` may connect only to the profile hosts. When it is set, a profile whose host is not in the list cannot be used.
+
+In `token` and `none` modes there is no login, so every caller can reach every profile, and each call picks one with the `system` argument. Each caller runs as the profile's configured user.
 
 ## API Endpoints
 
