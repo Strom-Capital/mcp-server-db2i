@@ -50,18 +50,23 @@
         },
         {
           "name": "DB2I_DRIVER",
-          "description": "Database driver: odbc (default, IBM i Access ODBC driver, no Java) or jt400 (optional node-jt400 package, needs a JDK at install and a JRE at runtime)",
+          "description": "Database driver: odbc (default, IBM i Access ODBC driver, no Java), jt400 (optional node-jt400 package, needs a JDK at install and a JRE at runtime) or mapepire (Mapepire over SSH, needs Java on the IBM i only)",
           "isRequired": false,
           "default": "odbc"
         },
         {
           "name": "DB2I_JDBC_OPTIONS",
-          "description": "Extra JT400 JDBC properties, semicolon-separated (jt400 driver)",
+          "description": "Extra JT400 JDBC properties, semicolon-separated (jt400 and mapepire drivers)",
           "isRequired": false
         },
         {
           "name": "DB2I_ODBC_OPTIONS",
           "description": "Extra IBM i Access ODBC connection keywords, semicolon-separated (odbc driver)",
+          "isRequired": false
+        },
+        {
+          "name": "DB2I_MAPEPIRE_OPTIONS",
+          "description": "SSH and Mapepire settings, semicolon-separated, e.g. hostKey=SHA256:...;maxJobs=2 (mapepire driver)",
           "isRequired": false
         }
       ]

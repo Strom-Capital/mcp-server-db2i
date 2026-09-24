@@ -17,6 +17,40 @@ vi.mock('node-jt400', () => ({
   })),
 }));
 
+const sshLogins = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+
+vi.mock('ssh2', async () => {
+  const { EventEmitter } = await import('node:events');
+  class Client extends EventEmitter {
+    end() {
+      setImmediate(() => this.emit('close'));
+    }
+    connect(config: Record<string, unknown>) {
+      sshLogins.push(config);
+      setImmediate(() => this.emit('ready'));
+      return this;
+    }
+  }
+  return { Client };
+});
+
+vi.mock('@ibm/mapepire-js', () => ({
+  createSSH2Connection: () => ({ exec: vi.fn(), upload: vi.fn() }),
+  SQLJob: {
+    withConfig: () => ({
+      connect: async () => ({ success: true }),
+      getStatus: () => 'ready',
+      getTransport: () => ({ isConnected: () => true }),
+      query: () => ({
+        execute: async () => ({ data: [{ N: 1 }], is_done: true }),
+        fetchMore: async () => ({ data: [], is_done: true }),
+        close: async () => ({}),
+      }),
+      close: async () => undefined,
+    }),
+  },
+}));
+
 import { createHttpApp } from '../src/transports/http.js';
 import { getTokenManager } from '../src/auth/tokenManager.js';
 import { resetSystems } from '../src/systems.js';
@@ -34,6 +68,11 @@ profiles:
     driver: jt400
     username: TESTUSER
     password: \${TEST_PASSWORD}
+  - name: keyed
+    host: ibmi.example.com
+    driver: mapepire
+    username: MCPREAD
+    mapepireOptions: "privateKeyFile=/keys/id_ed25519;insecureHostKey=true"
 `;
 
 async function listen(app: Express): Promise<{ server: http.Server; baseUrl: string }> {
@@ -112,6 +151,19 @@ describe('HTTP /auth with DB2I_PROFILES', () => {
     expect(session?.config.username).toBe('CALLER');
   });
 
+  it('logs in with the caller’s password, not the profile’s SSH key', async () => {
+    sshLogins.length = 0;
+    const res = await postAuth({ system: 'keyed', username: 'MCPREAD', password: 'callerpass' });
+    expect(res.status).toBe(201);
+    expect(sshLogins).toHaveLength(1);
+    expect(sshLogins[0].password).toBe('callerpass');
+    expect(sshLogins[0].privateKey).toBeUndefined();
+
+    const { access_token } = await res.json() as { access_token: string };
+    const session = getTokenManager().validateToken(access_token).session;
+    expect(session?.config.mapepireOptions).toEqual({ insecureHostKey: 'true' });
+  });
+
   it('uses the first profile when no system is named', async () => {
     const res = await postAuth({});
     expect(res.status).toBe(201);
@@ -131,7 +183,7 @@ describe('HTTP /auth with DB2I_PROFILES', () => {
     const unknown = await postAuth({ system: 'dev' });
     expect(unknown.status).toBe(400);
     expect((await unknown.json() as { error_description: string }).error_description).toBe(
-      'Unknown system "dev". Available: prod, test'
+      'Unknown system "dev". Available: prod, test, keyed'
     );
 
     expect(await poolConfigs()).toHaveLength(0);

@@ -114,6 +114,7 @@ describe('DB2I_PROFILES', () => {
       driver: 'odbc',
       jdbcOptions: { secure: 'true', naming: 'sql' },
       odbcOptions: {},
+      mapepireOptions: {},
     });
     expect(prod.allowedSchemas).toEqual(['SALES', 'QSYS2']);
     expect(prod.defaultSchema).toBe('SALES');
@@ -130,6 +131,40 @@ describe('DB2I_PROFILES', () => {
     const [prod, test] = getSystems();
     expect(prod.config.driver).toBe('jt400');
     expect(test.config.driver).toBe('odbc');
+  });
+
+  it('loads a mapepire profile and its mapepireOptions', () => {
+    process.env.DEV_PASSWORD = 'devpass';
+    useProfiles(`
+profiles:
+  - name: dev
+    host: dev.example.com
+    driver: mapepire
+    username: DEVUSER
+    password: \${DEV_PASSWORD}
+    mapepireOptions: "sshPort=2222;maxJobs=1"
+`);
+    const [dev] = getSystems();
+    expect(dev.config.driver).toBe('mapepire');
+    expect(dev.config.password).toBe('devpass');
+    expect(dev.config.mapepireOptions).toEqual({ sshPort: '2222', maxJobs: '1' });
+  });
+
+  it('needs no password for a mapepire profile that logs in with an SSH key', () => {
+    useProfiles(`
+profiles:
+  - name: dev
+    host: dev.example.com
+    driver: mapepire
+    username: DEVUSER
+    mapepireOptions: "privateKeyFile=/home/devuser/.ssh/id_ed25519"
+  - name: test
+    host: test.example.com
+    driver: odbc
+    username: TESTUSER
+    mapepireOptions: "privateKeyFile=/home/devuser/.ssh/id_ed25519"
+`);
+    expect(() => getSystems()).toThrow(/test.*password is required/);
   });
 
   it('falls back to QUERY_ALLOWED_SCHEMAS for a profile without its own list', () => {

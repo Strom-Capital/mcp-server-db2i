@@ -24,6 +24,7 @@ import {
   normalizeSchemaList,
   parseJdbcOptions,
   readSecretFromFile,
+  usesSshKeyLogin,
   validateHostname,
   type DB2iConfig,
 } from './config.js';
@@ -68,6 +69,7 @@ const profileSchema = z.strictObject({
   passwordFile: z.string().min(1).optional(),
   jdbcOptions: z.string().optional(),
   odbcOptions: z.string().optional(),
+  mapepireOptions: z.string().optional(),
 });
 
 const profilesFileSchema = z.strictObject({
@@ -188,8 +190,13 @@ function toSystem(def: ProfileDef, where: string): SystemProfile {
     throw new SystemsError(`${where}: host "${def.host}" is not a valid hostname or IPv4 address`);
   }
 
+  const driver = def.driver ?? getDbDriver();
+  const mapepireOptions = parseJdbcOptions(def.mapepireOptions);
   const username = credential(def.username, def.usernameFile, 'username', where);
-  const password = credential(def.password, def.passwordFile, 'password', where);
+  // A mapepire profile that logs in with an SSH key needs no password.
+  const keyLogin =
+    usesSshKeyLogin(driver, mapepireOptions) && def.password === undefined && def.passwordFile === undefined;
+  const password = keyLogin ? '' : credential(def.password, def.passwordFile, 'password', where);
   const schema = def.schema?.trim() ?? '';
 
   return {
@@ -201,9 +208,10 @@ function toSystem(def: ProfileDef, where: string): SystemProfile {
       password,
       database: '*LOCAL',
       schema,
-      driver: def.driver ?? getDbDriver(),
+      driver,
       jdbcOptions: parseJdbcOptions(def.jdbcOptions),
       odbcOptions: parseJdbcOptions(def.odbcOptions),
+      mapepireOptions,
     },
     allowedSchemas: def.allowedSchemas ? normalizeSchemaList(def.allowedSchemas) : getAllowedSchemas(),
     defaultSchema: schema || undefined,

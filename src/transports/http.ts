@@ -23,6 +23,7 @@ import {
   isLoopbackHost,
   loadPartialConfig,
   normalizeDbHost,
+  withoutSshKeyLogin,
   type DB2iConfig,
 } from '../config.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -64,6 +65,9 @@ export function notifyCustomToolsChanged(): void {
   mcpHttpHandler?.notify.toolsChanged();
 }
 
+/** IBM i system name: 1-10 characters, not starting with a digit or `_`. */
+const IBMI_LIBRARY_NAME = /^[A-Za-z$#@][A-Za-z0-9_$#@]{0,9}$/;
+
 /**
  * Validate auth request body
  */
@@ -96,8 +100,13 @@ function validateAuthRequest(body: unknown): AuthValidationResult {
     return { valid: false, error: 'database must be a string if provided' };
   }
 
-  if (req.schema !== undefined && typeof req.schema !== 'string') {
-    return { valid: false, error: 'schema must be a string if provided' };
+  // The schema becomes a driver option, and the Mapepire driver sends options
+  // as one unescaped `key=value;...` string. Accept only a library name.
+  if (
+    req.schema !== undefined &&
+    (typeof req.schema !== 'string' || !IBMI_LIBRARY_NAME.test(req.schema.trim()))
+  ) {
+    return { valid: false, error: 'schema must be an IBM i library name if provided' };
   }
 
   if (req.duration !== undefined) {
@@ -118,7 +127,7 @@ function validateAuthRequest(body: unknown): AuthValidationResult {
       host: typeof req.host === 'string' ? req.host.trim() : undefined,
       port: typeof req.port === 'number' ? req.port : undefined,
       database: typeof req.database === 'string' ? req.database : undefined,
-      schema: typeof req.schema === 'string' ? req.schema : undefined,
+      schema: typeof req.schema === 'string' ? req.schema.trim() : undefined,
       duration: typeof req.duration === 'number' ? req.duration : undefined,
       system: typeof req.system === 'string' ? req.system.trim() : undefined,
     },
@@ -187,22 +196,25 @@ function authAllowedDbHosts(httpConfig: ReturnType<typeof getHttpConfig>): strin
 /**
  * The connection an /auth request asks for: a profile plus the caller's
  * credentials, or, without DB2I_PROFILES, the request's host over DB2I_*.
+ * The caller's password is what logs in, so a mapepire privateKeyFile is
+ * dropped: the server's key would accept any password.
  */
 function authConnection(authReq: AuthRequest): { system: string; config: DB2iConfig } {
   if (!isProfilesFileConfigured()) {
     if (authReq.system !== undefined && authReq.system !== DEFAULT_SYSTEM_NAME) {
       throw new Error(unknownSystemMessage(authReq.system));
     }
+    const config = loadPartialConfig({
+      hostname: authReq.host,
+      port: authReq.port,
+      username: authReq.username,
+      password: authReq.password,
+      database: authReq.database,
+      schema: authReq.schema,
+    });
     return {
       system: DEFAULT_SYSTEM_NAME,
-      config: loadPartialConfig({
-        hostname: authReq.host,
-        port: authReq.port,
-        username: authReq.username,
-        password: authReq.password,
-        database: authReq.database,
-        schema: authReq.schema,
-      }),
+      config: { ...config, mapepireOptions: withoutSshKeyLogin(config.mapepireOptions) },
     };
   }
 
@@ -220,6 +232,7 @@ function authConnection(authReq: AuthRequest): { system: string; config: DB2iCon
       username: authReq.username,
       password: authReq.password,
       schema: authReq.schema ?? profile.config.schema,
+      mapepireOptions: withoutSshKeyLogin(profile.config.mapepireOptions),
     },
   };
 }

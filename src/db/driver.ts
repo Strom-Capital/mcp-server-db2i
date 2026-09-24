@@ -3,7 +3,8 @@
  *
  * connection.ts manages pools; a driver knows how to create one. Each driver
  * module is loaded with a dynamic import on first use, so an ODBC install never
- * resolves node-jt400 or starts a JVM, and a JT400 install never loads libodbc.
+ * resolves node-jt400 or starts a JVM, a JT400 install never loads libodbc, and
+ * neither loads the Mapepire client or ssh2.
  */
 
 import type { DB2iConfig, DbDriverName } from '../config.js';
@@ -39,6 +40,10 @@ async function importDriver(name: DbDriverName): Promise<DbDriver> {
     case 'odbc': {
       const mod = await import('./drivers/odbc.js');
       return mod.odbcDriver;
+    }
+    case 'mapepire': {
+      const mod = await import('./drivers/mapepire.js');
+      return mod.mapepireDriver;
     }
     default: {
       const unknown: never = name;
@@ -84,4 +89,12 @@ export function toParams(params: readonly unknown[]): QueryParam[] {
       if (p instanceof Date) return p;
       return String(p);
     });
+}
+
+/**
+ * Db2 for i accepts `YYYY-MM-DD HH:MM:SS.ffffff` for a timestamp parameter.
+ * The value is rendered in UTC, the same instant a Date represents.
+ */
+export function toDb2Timestamp(date: Date): string {
+  return `${date.toISOString().slice(0, 23).replace('T', ' ')}000`;
 }

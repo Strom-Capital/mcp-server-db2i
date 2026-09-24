@@ -265,6 +265,13 @@ IBM publishes the ODBC driver package for amd64, i386 and ppc64el only. On an ar
 docker build --platform linux/amd64 -t mcp-server-db2i .
 ```
 
+Either image can run the `mapepire` driver, because it needs nothing native. Override the driver and pin the host key, since the container has no `known_hosts`. Alternatively, mount a known_hosts file and set `knownHostsFile` to its path.
+
+```bash
+docker run --rm -i --env-file .env -e DB2I_DRIVER=mapepire \
+  -e DB2I_MAPEPIRE_OPTIONS="hostKey=SHA256:abc...xyz" mcp-server-db2i:jt400
+```
+
 The bundled `docker-compose.yml` builds the ODBC image with `platform: linux/amd64`. To use the JDBC image, set `target: jt400` under `build` and remove the `platform` line.
 
 Both images:

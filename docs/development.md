@@ -81,7 +81,7 @@ mcp-server-db2i/
 │   ├── db/                # Database layer
 │   │   ├── connection.ts  # Connection pools per caller and system
 │   │   ├── driver.ts      # Driver interface
-│   │   ├── drivers/       # jt400 and odbc implementations
+│   │   ├── drivers/       # jt400, odbc and mapepire implementations
 │   │   ├── queries.ts     # Catalog queries
 │   │   ├── profile.ts     # profile_table statistics
 │   │   └── sqlServices.ts # PARSE_STATEMENT, GENERATE_SQL, RELATED_OBJECTS
@@ -263,7 +263,9 @@ describe('myTool', () => {
 
 ### Connection Pool
 
-The `db/connection.ts` module manages connection pools. It does not know which driver it uses: `db/driver.ts` defines the `DbPool` and `DbDriver` interfaces, and `db/drivers/jt400.ts` and `db/drivers/odbc.ts` implement them. The driver module is imported on first use, and a pool connects on its first query. `tests/db/drivers.contract.test.ts` runs both implementations against fakes.
+The `db/connection.ts` module manages connection pools. It does not know which driver it uses: `db/driver.ts` defines the `DbPool` and `DbDriver` interfaces, and `db/drivers/jt400.ts`, `db/drivers/odbc.ts` and `db/drivers/mapepire.ts` implement them. The driver module is imported on first use, and a pool connects on its first query. `tests/db/drivers.contract.test.ts` runs every implementation against fakes.
+
+The `mapepire` driver keeps its own job pool (`JobPool`), which gets jobs from a `JobFactory`. Only the SSH factory exists today. A daemon transport would add a second factory and reuse the pool. `tests/db/mapepirePool.test.ts` tests the pool against a fake factory, and `db/drivers/sshHostKey.ts` holds the host key check.
 
 Pools:
 

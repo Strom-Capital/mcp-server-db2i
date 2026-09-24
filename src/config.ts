@@ -3,9 +3,10 @@
  * Handles environment variables and the JDBC / ODBC connection options
  *
  * Database driver:
- * - DB2I_DRIVER: 'odbc' | 'jt400' (default: 'odbc')
- * - DB2I_JDBC_OPTIONS: extra JT400 properties, `key=value;key=value`
+ * - DB2I_DRIVER: 'odbc' | 'jt400' | 'mapepire' (default: 'odbc')
+ * - DB2I_JDBC_OPTIONS: extra JT400 properties, `key=value;key=value` (jt400 and mapepire)
  * - DB2I_ODBC_OPTIONS: extra IBM i Access ODBC keywords, `KEY=value;KEY=value`
+ * - DB2I_MAPEPIRE_OPTIONS: Mapepire transport settings, `key=value;key=value`
  *
  * Supports file-based secrets (e.g., Docker secrets) via *_FILE environment variables.
  * File-based secrets take priority over plain environment variables.
@@ -29,12 +30,16 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 /**
  * Database drivers. `jt400` is the JDBC bridge (needs a JRE). `odbc` uses the
  * npm `odbc` package with the IBM i Access ODBC driver and needs no Java.
+ * `mapepire` runs the Mapepire server on the IBM i inside an SSH session and
+ * needs Java on the IBM i only.
  */
-export const DB_DRIVERS = ['jt400', 'odbc'] as const;
+export const DB_DRIVERS = ['jt400', 'odbc', 'mapepire'] as const;
 
 /** Name of the one system the DB2I_* variables describe when DB2I_PROFILES is unset. */
 export const DEFAULT_SYSTEM_NAME = 'default';
@@ -53,6 +58,8 @@ export interface DB2iConfig {
   jdbcOptions: Record<string, string>;
   /** Extra ODBC connection keywords from DB2I_ODBC_OPTIONS. Used when driver is odbc. */
   odbcOptions: Record<string, string>;
+  /** Transport settings from DB2I_MAPEPIRE_OPTIONS. Used when driver is mapepire. */
+  mapepireOptions?: Record<string, string>;
 }
 
 /**
@@ -247,6 +254,209 @@ export function odbcConnectionSecurity(
   };
 }
 
+/**
+ * Mapepire transports. `ssh` starts the Mapepire server inside an SSH session.
+ * `daemon` (a running Mapepire server on port 8076) is reserved for later.
+ */
+export const MAPEPIRE_TRANSPORTS = ['ssh', 'daemon'] as const;
+export type MapepireTransport = (typeof MAPEPIRE_TRANSPORTS)[number];
+
+/** How the SSH host key is checked. */
+export type HostKeyCheck = 'pinned' | 'known_hosts' | 'off';
+
+/** Settings shared by every Mapepire transport. */
+interface MapepireCommonSettings {
+  /** Milliseconds to wait for the Mapepire server to start. */
+  startupTimeout: number;
+  /** Maximum Mapepire jobs (server processes) per pool. */
+  maxJobs: number;
+  /** Milliseconds before an idle job beyond the first is closed. */
+  idleTimeout: number;
+  /** Milliseconds to wait for one request (a query or a fetch) to answer. */
+  requestTimeout: number;
+}
+
+export interface MapepireSshSettings extends MapepireCommonSettings {
+  transport: 'ssh';
+  sshPort: number;
+  /** Pinned host key fingerprint, `SHA256:<base64>`. */
+  hostKey?: string;
+  /** known_hosts file to check the host key against. */
+  knownHostsFile: string;
+  hostKeyCheck: HostKeyCheck;
+  /** Private key file for SSH login instead of the password. */
+  privateKeyFile?: string;
+  /** Java binary on the IBM i. Unset means the mapepire-js default. */
+  javaPath?: string;
+  /** Server JAR already on the IBM i. Unset means the bundled JAR is installed privately. */
+  serverPath?: string;
+}
+
+/** Settings of every implemented transport. A daemon member is added with that transport. */
+export type MapepireSettings = MapepireSshSettings;
+
+const MAPEPIRE_OPTION_KEYS = [
+  'transport',
+  'startupTimeout',
+  'maxJobs',
+  'idleTimeout',
+  'requestTimeout',
+  'sshPort',
+  'hostKey',
+  'knownHostsFile',
+  'insecureHostKey',
+  'privateKeyFile',
+  'javaPath',
+  'serverPath',
+] as const;
+
+/**
+ * Look up a Mapepire option by name, ignoring key case.
+ */
+function mapepireOption(options: Record<string, string>, name: string): string | undefined {
+  const value = jdbcOption(options, name.toLowerCase())?.trim();
+  return value === '' ? undefined : value;
+}
+
+function mapepireInt(
+  options: Record<string, string>,
+  name: string,
+  fallback: number,
+  min: number,
+  label: string,
+  max = Number.MAX_SAFE_INTEGER
+): number {
+  const raw = mapepireOption(options, name);
+  if (raw === undefined) {
+    return fallback;
+  }
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < min || value > max) {
+    const range = max === Number.MAX_SAFE_INTEGER ? `of at least ${min}` : `from ${min} to ${max}`;
+    throw new Error(`${label}: ${name} must be a whole number ${range}, got "${raw}"`);
+  }
+  return value;
+}
+
+function mapepireBool(options: Record<string, string>, name: string, label: string): boolean {
+  const raw = mapepireOption(options, name);
+  if (raw === undefined) {
+    return false;
+  }
+  const value = raw.toLowerCase();
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`${label}: ${name} must be true or false, got "${raw}"`);
+}
+
+/** The default known_hosts file, `~/.ssh/known_hosts`. */
+export function defaultKnownHostsFile(): string {
+  return join(homedir(), '.ssh', 'known_hosts');
+}
+
+/**
+ * Parse and check DB2I_MAPEPIRE_OPTIONS (or a profile's mapepireOptions).
+ * Throws on an unknown key, a bad value or an unsupported transport, so a
+ * mistake stops startup instead of the first query.
+ */
+export function resolveMapepireSettings(
+  options: Record<string, string> = parseJdbcOptions(process.env.DB2I_MAPEPIRE_OPTIONS),
+  label = 'DB2I_MAPEPIRE_OPTIONS'
+): MapepireSettings {
+  const known = new Set<string>(MAPEPIRE_OPTION_KEYS.map((key) => key.toLowerCase()));
+  for (const key of Object.keys(options)) {
+    if (!known.has(key.toLowerCase())) {
+      throw new Error(
+        `${label}: unknown option "${key}". Valid options: ${MAPEPIRE_OPTION_KEYS.join(', ')}`
+      );
+    }
+  }
+
+  const rawTransport = mapepireOption(options, 'transport')?.toLowerCase() ?? 'ssh';
+  if (!(MAPEPIRE_TRANSPORTS as readonly string[]).includes(rawTransport)) {
+    throw new Error(
+      `${label}: transport must be one of: ${MAPEPIRE_TRANSPORTS.join(', ')}, got "${rawTransport}"`
+    );
+  }
+  const transport = rawTransport as MapepireTransport;
+  if (transport === 'daemon') {
+    throw new Error(
+      `${label}: transport=daemon is not supported yet. Use transport=ssh, or the odbc or jt400 driver.`
+    );
+  }
+
+  const hostKey = mapepireOption(options, 'hostKey');
+  if (hostKey !== undefined && !/^SHA256:[A-Za-z0-9+/]{43}=?$/.test(hostKey)) {
+    throw new Error(
+      `${label}: hostKey must be an OpenSSH SHA256 fingerprint such as SHA256:abc...xyz (43 base64 characters), got "${hostKey}"`
+    );
+  }
+  const insecureHostKey = mapepireBool(options, 'insecureHostKey', label);
+  if (insecureHostKey && hostKey !== undefined) {
+    throw new Error(`${label}: set either hostKey or insecureHostKey=true, not both`);
+  }
+
+  return {
+    transport,
+    startupTimeout: mapepireInt(options, 'startupTimeout', 60_000, 1_000, label),
+    maxJobs: mapepireInt(options, 'maxJobs', 2, 1, label),
+    idleTimeout: mapepireInt(options, 'idleTimeout', 600_000, 1_000, label),
+    requestTimeout: mapepireInt(options, 'requestTimeout', 120_000, 1_000, label),
+    sshPort: mapepireInt(options, 'sshPort', 22, 1, label, 65_535),
+    hostKey: hostKey?.replace(/=$/, ''),
+    knownHostsFile: mapepireOption(options, 'knownHostsFile') ?? defaultKnownHostsFile(),
+    hostKeyCheck: insecureHostKey ? 'off' : hostKey !== undefined ? 'pinned' : 'known_hosts',
+    privateKeyFile: mapepireOption(options, 'privateKeyFile'),
+    javaPath: mapepireOption(options, 'javaPath'),
+    serverPath: mapepireOption(options, 'serverPath'),
+  };
+}
+
+/**
+ * True when the mapepire driver logs in over SSH with a private key, so no
+ * password is needed.
+ */
+export function usesSshKeyLogin(
+  driver: DbDriverName,
+  mapepireOptions: Record<string, string> | undefined
+): boolean {
+  return driver === 'mapepire' && mapepireOption(mapepireOptions ?? {}, 'privateKeyFile') !== undefined;
+}
+
+/**
+ * Mapepire options without `privateKeyFile`, so SSH logs in with the
+ * configured password. An HTTP /auth login checks the caller's password by
+ * connecting, and the server's own key would let any password through.
+ */
+export function withoutSshKeyLogin(mapepireOptions: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(mapepireOptions ?? {}).filter(([key]) => key.toLowerCase() !== 'privatekeyfile')
+  );
+}
+
+/**
+ * JT400 properties for the Mapepire server's JDBC connection. Same defaults
+ * and read-only rule as the jt400 driver, without host and credentials: the
+ * server runs on the IBM i as the SSH user.
+ */
+export function buildMapepireJdbcOptions(
+  config: DB2iConfig,
+  options?: BuildConnectionOptions
+): Record<string, string> {
+  const { host: _host, user: _user, password: _password, ...jdbc } = buildConnectionConfig(
+    config,
+    options
+  );
+  // mapepire-js joins these as `key=value;...` with no escaping, so a `;`
+  // would add a property, and an `=` in a key would split it.
+  for (const [key, value] of Object.entries(jdbc)) {
+    if (key.includes(';') || key.includes('=') || value.includes(';')) {
+      throw new Error(`JDBC option "${key}" cannot contain ';' (or '=' in the name) with the mapepire driver`);
+    }
+  }
+  return jdbc;
+}
+
 export interface ConnectionSecurity {
   driver: DbDriverName;
   /** The variable that carries driver options, for log messages. */
@@ -257,14 +467,20 @@ export interface ConnectionSecurity {
   secure: boolean;
   /** What to set to turn encryption on, for log messages. */
   secureHint: string;
+  /** mapepire only: how the SSH host key is checked. */
+  hostKeyCheck?: HostKeyCheck;
 }
 
 /**
  * Security-relevant settings of the selected driver, for the startup warnings.
+ * `options` are the driver's own options (JDBC options for jt400 and mapepire).
+ * `mapepireOptions` are the Mapepire transport settings.
  */
 export function connectionSecurity(
   driver: DbDriverName = getDbDriver(),
-  options?: Record<string, string>
+  options?: Record<string, string>,
+  mapepireOptions?: Record<string, string>,
+  mapepireLabel?: string
 ): ConnectionSecurity {
   if (driver === 'odbc') {
     return {
@@ -272,6 +488,18 @@ export function connectionSecurity(
       optionsVariable: 'DB2I_ODBC_OPTIONS',
       ...odbcConnectionSecurity(options),
       secureHint: 'SSL=1',
+    };
+  }
+  if (driver === 'mapepire') {
+    const settings = resolveMapepireSettings(mapepireOptions, mapepireLabel);
+    return {
+      driver,
+      optionsVariable: 'DB2I_JDBC_OPTIONS',
+      accessOverride: jdbcConnectionSecurity(options).accessOverride,
+      // SSH encrypts the session. The JDBC connection stays on the IBM i.
+      secure: true,
+      secureHint: '',
+      hostKeyCheck: settings.hostKeyCheck,
     };
   }
   return {
@@ -285,7 +513,8 @@ export function connectionSecurity(
 /**
  * JT400 `extended metadata=true` replaces column names with LABEL ON text.
  * Masking matches result keys, so that option would let a value through.
- * The ODBC driver reports column names, so the check only applies to jt400.
+ * The ODBC driver reports column names, so the check applies to jt400 and to
+ * mapepire, whose server uses JT400 with the same options.
  */
 export function assertExtendedMetadataAllowsMasking(
   maskingLoaded: boolean,
@@ -293,7 +522,7 @@ export function assertExtendedMetadataAllowsMasking(
   options: Record<string, string> = parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS),
   optionsLabel = 'DB2I_JDBC_OPTIONS'
 ): void {
-  if (!maskingLoaded || driver !== 'jt400') {
+  if (!maskingLoaded || driver === 'odbc') {
     return;
   }
   const value = jdbcOption(options, 'extended metadata');
@@ -331,7 +560,9 @@ export function loadConfig(): DB2iConfig {
       'DB2I_USERNAME environment variable is required (or DB2I_USERNAME_FILE for file-based secret)'
     );
   }
-  if (!password) {
+  const driver = getDbDriver();
+  const mapepireOptions = parseJdbcOptions(process.env.DB2I_MAPEPIRE_OPTIONS);
+  if (!password && !usesSshKeyLogin(driver, mapepireOptions)) {
     throw new Error(
       'DB2I_PASSWORD environment variable is required (or DB2I_PASSWORD_FILE for file-based secret)'
     );
@@ -341,12 +572,13 @@ export function loadConfig(): DB2iConfig {
     hostname,
     port: readIntEnv('DB2I_PORT', 446),
     username,
-    password,
+    password: password ?? '',
     database: process.env.DB2I_DATABASE || '*LOCAL',
     schema: process.env.DB2I_SCHEMA || '',
-    driver: getDbDriver(),
+    driver,
     jdbcOptions: parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS),
     odbcOptions: parseJdbcOptions(process.env.DB2I_ODBC_OPTIONS),
+    mapepireOptions,
   };
 }
 
@@ -1207,5 +1439,6 @@ export function loadPartialConfig(overrides: {
     driver: getDbDriver(),
     jdbcOptions: parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS),
     odbcOptions: parseJdbcOptions(process.env.DB2I_ODBC_OPTIONS),
+    mapepireOptions: parseJdbcOptions(process.env.DB2I_MAPEPIRE_OPTIONS),
   };
 }

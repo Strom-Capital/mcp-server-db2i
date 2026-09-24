@@ -4,7 +4,8 @@ This guide covers security features and best practices for mcp-server-db2i.
 
 ## Security Features
 
-- **Read-only access**: Only SELECT statements are permitted, and the driver connection is opened read only (JDBC `access=read only`, ODBC `CONNTYPE=2`) unless `DB2I_JDBC_OPTIONS` sets `access` or `DB2I_ODBC_OPTIONS` sets `CONNTYPE`
+- **Read-only access**: Only SELECT statements are permitted, and the driver connection is opened read only (JDBC `access=read only` for `jt400` and `mapepire`, ODBC `CONNTYPE=2`) unless `DB2I_JDBC_OPTIONS` sets `access` or `DB2I_ODBC_OPTIONS` sets `CONNTYPE`
+- **SSH host key check**: The `mapepire` driver refuses an IBM i whose SSH host key does not match a pinned fingerprint or `known_hosts`, so a spoofed host never receives the password
 - **No credentials in code**: All sensitive data via environment variables or file-based secrets
 - **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
 - **Result limiting**: Default limit of 1000 rows, configurable max limit (default: 10000)
@@ -151,7 +152,7 @@ Additional regex patterns block:
 
 Before the keyword scan, string literals, comments, and the quotes around delimited identifiers are removed. A literal or a quoted name earlier in the statement cannot hide a later call. Words that appear only inside a literal or a comment are ignored.
 
-The driver connection is a second layer. JT400 uses `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`; the ODBC driver uses `CONNTYPE=2` unless `DB2I_ODBC_OPTIONS` sets `CONNTYPE`. An explicit override is logged at startup.
+The driver connection is a second layer. JT400 and the Mapepire server (which uses JT400 on the IBM i) use `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`; the ODBC driver uses `CONNTYPE=2` unless `DB2I_ODBC_OPTIONS` sets `CONNTYPE`. An explicit override is logged at startup.
 
 ### Statement parse check
 
@@ -259,9 +260,19 @@ The server rejects a statement that uses a masked column as anything other than 
 
 `profile_table` writes its own statements, so the select-list check does not apply to it. It never selects `MIN` or `MAX` of a masked column when it scans, and it drops the stored low and high values of a masked column. Distinct and null counts are still returned, marked with `masked` and the rule. With `compute: true` the generated aggregate goes to the audit log like any other SQL.
 
-`extended metadata=true` in `DB2I_JDBC_OPTIONS` makes JT400 label result keys with `LABEL ON` text instead of the column name. Masking would miss those keys, so the server refuses to start when that option is set and a masking rule is loaded.
+`extended metadata=true` in `DB2I_JDBC_OPTIONS` makes JT400 label result keys with `LABEL ON` text instead of the column name. Masking would miss those keys, so the server refuses to start when that option is set and a masking rule is loaded. The same check applies to the `mapepire` driver, which reads the same JDBC options.
 
 A view, an alias, or a table function that reads a masked table is not covered unless the view itself is listed in `masking`.
+
+## Mapepire driver (SSH)
+
+With `DB2I_DRIVER=mapepire` the server logs in to the IBM i with SSH and runs the Mapepire server inside that session. Some things to know:
+
+- **Host key.** The host key must match `hostKey` or an entry in `known_hosts` before the password is sent. `insecureHostKey=true` skips the check and logs a warning at startup. Do not use it across a network you don't trust.
+- **Files on the IBM i.** On first use, mapepire-js uploads its bundled server JAR to `$HOME/.mapepire` in the user's home directory and checks its SHA-256. Later connections reuse it, or a JAR that Code for i left in `$HOME/.vscode`. Set `serverPath` to run an installed JAR instead. Delete `$HOME/.mapepire` to remove it.
+- **SSH access.** The user profile needs SSH login, which also allows a shell. Give the MCP server a dedicated, low-privilege profile, as you would for the other drivers. If sshd allows it, limit what that profile can do over SSH.
+- **Encryption.** SSH encrypts the whole session, so the JDBC `secure` option is not needed.
+- **Keys.** `privateKeyFile` logs in with a key instead of the password. The key file must not have a passphrase, so protect it like a password file. Over HTTP with `MCP_AUTH_MODE=required`, `/auth` sessions ignore the key and log in over SSH with the caller's password, so the key cannot stand in for a caller's credentials.
 
 ## Audit log
 
@@ -304,6 +315,7 @@ LOG_LEVEL=info
 - [ ] Use Docker secrets or external secret management
 - [ ] Enable TLS for HTTP transport
 - [ ] Set `secure=true` in `DB2I_JDBC_OPTIONS` (or `SSL=1` in `DB2I_ODBC_OPTIONS`) after the IBM i host servers are configured for SSL
+- [ ] With the `mapepire` driver, pin `hostKey` or keep the host in `known_hosts`, and leave `insecureHostKey` unset
 - [ ] Set `MCP_ALLOWED_HOSTS` to the public hostname when the HTTP server is not loopback-only
 - [ ] Leave `access` (JDBC) and `CONNTYPE` (ODBC) unset so the connection stays read only, or treat an explicit value as a deliberate override
 - [ ] Set appropriate rate limits
