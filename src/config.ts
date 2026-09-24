@@ -170,6 +170,22 @@ export function jdbcConnectionSecurity(
 }
 
 /**
+ * JT400 `extended metadata=true` replaces column names with LABEL ON text.
+ * Masking matches result keys, so that option would let a value through.
+ */
+export function assertExtendedMetadataAllowsMasking(maskingLoaded: boolean): void {
+  if (!maskingLoaded) {
+    return;
+  }
+  const value = jdbcOption(parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS), 'extended metadata');
+  if (value?.toLowerCase() === 'true') {
+    throw new Error(
+      'DB2I_JDBC_OPTIONS sets extended metadata=true, which renames result columns, so masking rules cannot be applied. Remove that option or the masking rules.'
+    );
+  }
+}
+
+/**
  * Load configuration from environment variables.
  *
  * Supports file-based secrets for sensitive values (recommended for production):

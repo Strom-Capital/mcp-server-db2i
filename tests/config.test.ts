@@ -24,6 +24,7 @@ import {
   getAuthAllowedDbHosts,
   hostnameOf,
   jdbcConnectionSecurity,
+  assertExtendedMetadataAllowsMasking,
   TOOL_NAMES,
   type DB2iConfig,
   type QueryLimitConfig,
@@ -873,6 +874,17 @@ describe('Config Module', () => {
       delete process.env.MCP_CUSTOM_TOOLS_WATCH;
       delete process.env.MCP_CUSTOM_TOOLS;
       expect(() => assertCustomToolsWatch()).not.toThrow();
+    });
+  });
+
+  describe('assertExtendedMetadataAllowsMasking', () => {
+    it('should reject extended metadata when masking is loaded', () => {
+      delete process.env.DB2I_JDBC_OPTIONS;
+      expect(() => assertExtendedMetadataAllowsMasking(true)).not.toThrow();
+      process.env.DB2I_JDBC_OPTIONS = 'extended metadata=true';
+      expect(() => assertExtendedMetadataAllowsMasking(true)).toThrow(/extended metadata=true/);
+      expect(() => assertExtendedMetadataAllowsMasking(false)).not.toThrow();
+      delete process.env.DB2I_JDBC_OPTIONS;
     });
   });
 

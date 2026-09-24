@@ -147,6 +147,20 @@ export const toolSchema = z.strictObject({
 
 export type ToolDef = z.infer<typeof toolSchema>;
 
+export const MASK_RULES = ['redact', 'last4'] as const;
+
+export type MaskRule = (typeof MASK_RULES)[number];
+
+export const maskingSchema = z.record(
+  z.string().regex(TABLE_REF, 'Masking key must be SCHEMA.TABLE'),
+  z.record(
+    z.string().regex(SQL_NAME, 'Column name must be an unquoted SQL name'),
+    z.enum(MASK_RULES),
+  ),
+);
+
+export type MaskingDef = z.infer<typeof maskingSchema>;
+
 export const customToolsFileSchema = z.strictObject({
   version: z.literal(1),
   tools: z.array(toolSchema).optional(),
@@ -154,13 +168,15 @@ export const customToolsFileSchema = z.strictObject({
     z.string().regex(TABLE_REF, 'Annotation key must be SCHEMA.TABLE'),
     annotationSchema,
   ).optional(),
+  masking: maskingSchema.optional(),
 }).superRefine((file, ctx) => {
   const toolCount = file.tools?.length ?? 0;
   const annotationCount = file.annotations ? Object.keys(file.annotations).length : 0;
-  if (toolCount === 0 && annotationCount === 0) {
+  const maskingCount = file.masking ? Object.keys(file.masking).length : 0;
+  if (toolCount === 0 && annotationCount === 0 && maskingCount === 0) {
     ctx.addIssue({
       code: 'custom',
-      message: 'Add at least one tool or annotation',
+      message: 'Add at least one tool, annotation, or masking rule',
     });
   }
 });
