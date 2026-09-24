@@ -481,6 +481,16 @@ export function journalNeedsAttention(row: Pick<JournalInfoRow, 'journaled' | 'h
   return !row.has_primary_key && row.journal_images !== '*BOTH';
 }
 
+export async function schemaExists(schema: string, sessionId?: string): Promise<boolean> {
+  const name = schema.trim().toUpperCase();
+  const result = await executeQuery(
+    `SELECT 1 AS FOUND FROM QSYS2.SYSSCHEMAS WHERE SCHEMA_NAME = ? OR SYSTEM_SCHEMA_NAME = ? FETCH FIRST 1 ROW ONLY`,
+    [name, name],
+    sessionId
+  );
+  return result.rows.length > 0;
+}
+
 /**
  * Journal state for the physical data files in a library.
  * Logical files and source files are left out.

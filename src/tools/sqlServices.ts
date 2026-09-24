@@ -18,6 +18,7 @@ import {
   listJournalInfo,
   listRelatedObjects,
   PARSE_STATEMENT_UNAVAILABLE,
+  schemaExists,
   type JournalInfoRow,
   type RelatedObject,
   type StatementInspection,
@@ -217,6 +218,10 @@ export async function getJournalInfoTool(input: {
     }
 
     const result = await listJournalInfo(schema, input.filter, applyQueryLimit(input.limit), input.sessionId);
+    // OBJECT_STATISTICS returns no rows for a library that does not exist.
+    if (result.rows.length === 0 && !(await schemaExists(schema, input.sessionId))) {
+      return { success: false, error: `Library ${schema.trim().toUpperCase()} was not found.` };
+    }
     return {
       success: true,
       schema: schema.trim().toUpperCase(),
