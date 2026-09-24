@@ -68,7 +68,7 @@ body:
     id: node-version
     attributes:
       label: Node.js Version
-      placeholder: "20.x"
+      placeholder: "22.x"
 
   - type: input
     id: ibm-i-version
