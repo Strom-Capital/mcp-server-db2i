@@ -71,7 +71,7 @@ describe('catalog search', () => {
 
       expect(result).toEqual({
         success: false,
-        error: 'Schema OUTSIDELIB is not in QUERY_ALLOWED_SCHEMAS (MYLIB).',
+        error: 'Schema OUTSIDELIB is not in the allowed schemas (MYLIB).',
       });
       expect(query).not.toHaveBeenCalled();
     });

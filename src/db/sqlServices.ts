@@ -22,8 +22,6 @@ export const SQL_OBJECT_TYPES = [
   'SEQUENCE',
 ] as const;
 
-export type SqlObjectType = (typeof SQL_OBJECT_TYPES)[number];
-
 const TABLE_NAME_TYPES = new Set(['TABLE', 'VIEW', 'ALIAS']);
 const ROUTINE_NAME_TYPES = new Set(['FUNCTION', 'PROCEDURE']);
 const UNQUOTED_NAME = /^[A-Z0-9_@#$]{1,128}$/;
@@ -122,7 +120,7 @@ export function isParseStatementMissing(error: unknown): boolean {
  * Reject names that are not safe to embed in the GENERATE_SQL call.
  * The procedure's named arguments are literals, not parameter markers.
  */
-export function requireSqlName(value: string, label: string): string {
+function requireSqlName(value: string, label: string): string {
   const name = value.trim().toUpperCase();
   if (!UNQUOTED_NAME.test(name)) {
     throw new Error(`${label} must be an unquoted IBM i name (letters, digits, and _ @ # $).`);
@@ -163,11 +161,11 @@ export async function hasRoutine(schema: string, name: string, target?: DbTarget
 }
 
 function allowlistViolation(kind: 'Table' | 'Routine', schema: string, name: string, allowed: string[]): string {
-  return `${kind} ${schema}.${name} is not in QUERY_ALLOWED_SCHEMAS (${allowed.join(', ')}).`;
+  return `${kind} ${schema}.${name} is not in the allowed schemas (${allowed.join(', ')}).`;
 }
 
 function unresolvedTable(table: string): string {
-  return `Unqualified table ${table} has no default schema. Set DB2I_SCHEMA or qualify the table with a library.`;
+  return `Unqualified table ${table} has no default schema. Set DB2I_SCHEMA (or schema in the profile), or qualify the table with a library.`;
 }
 
 async function lookupPairs(
@@ -477,7 +475,7 @@ export function isJournalColumnMissing(error: unknown): boolean {
  * A replication tool needs the table journaled, and a table without a primary
  * key needs before images too, so an update can be matched to its row.
  */
-export function journalNeedsAttention(row: Pick<JournalInfoRow, 'journaled' | 'has_primary_key' | 'journal_images'>): boolean {
+function journalNeedsAttention(row: Pick<JournalInfoRow, 'journaled' | 'has_primary_key' | 'journal_images'>): boolean {
   if (!row.journaled) {
     return true;
   }

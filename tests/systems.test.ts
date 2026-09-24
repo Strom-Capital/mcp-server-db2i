@@ -39,7 +39,6 @@ profiles:
   - name: test
     host: test.example.com
     driver: odbc
-    port: 8471
     username: TESTUSER
     password: \${TEST_PASSWORD}
     odbcOptions: "SSL=1"
@@ -120,7 +119,6 @@ describe('DB2I_PROFILES', () => {
     expect(prod.defaultSchema).toBe('SALES');
 
     expect(test.config.driver).toBe('odbc');
-    expect(test.config.port).toBe(8471);
     expect(test.config.username).toBe('TESTUSER');
     expect(test.config.odbcOptions).toEqual({ SSL: '1' });
     expect(test.allowedSchemas).toBeUndefined();

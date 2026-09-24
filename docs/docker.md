@@ -182,8 +182,6 @@ All environment variables can be set in docker-compose.yml or via `.env` file:
 environment:
   # Database connection
   - DB2I_HOSTNAME=${DB2I_HOSTNAME}
-  - DB2I_PORT=${DB2I_PORT:-446}
-  - DB2I_DATABASE=${DB2I_DATABASE:-*LOCAL}
   - DB2I_USERNAME=${DB2I_USERNAME}
   - DB2I_PASSWORD=${DB2I_PASSWORD}
   - DB2I_SCHEMA=${DB2I_SCHEMA:-}

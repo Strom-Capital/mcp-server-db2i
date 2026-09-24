@@ -35,17 +35,6 @@
           "isSecret": true
         },
         {
-          "name": "DB2I_PORT",
-          "description": "DRDA port",
-          "format": "number",
-          "default": "446"
-        },
-        {
-          "name": "DB2I_DATABASE",
-          "description": "Database name",
-          "default": "*LOCAL"
-        },
-        {
           "name": "DB2I_SCHEMA",
           "description": "Default schema (library)",
           "placeholder": "MYLIB"

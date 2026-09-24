@@ -28,7 +28,7 @@ const PARSE_DIALECTS = ['db2', 'mysql'] as const;
 
 const UNPARSEABLE_MESSAGE =
   'Query could not be parsed, so its libraries could not be checked. ' +
-  'While QUERY_ALLOWED_SCHEMAS is set, system naming (LIB/FILE) and TABLE(...) functions are not accepted.';
+  'While a schema allowlist is set, system naming (LIB/FILE) and TABLE(...) functions are not accepted.';
 
 interface ParsedQuery {
   tables: string[];
@@ -176,14 +176,14 @@ export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): Sch
 
       if (!defaultSchema) {
         violations.push(
-          `Unqualified table ${ref.table} has no default schema. Set DB2I_SCHEMA or qualify the table with a library.`
+          `Unqualified table ${ref.table} has no default schema. Set DB2I_SCHEMA (or schema in the profile), or qualify the table with a library.`
         );
         continue;
       }
 
       if (!allowed.has(defaultSchema)) {
         violations.push(
-          `Unqualified table ${ref.table} resolves to ${defaultSchema}, which is not in QUERY_ALLOWED_SCHEMAS.`
+          `Unqualified table ${ref.table} resolves to ${defaultSchema}, which is not in the allowed schemas.`
         );
       }
       continue;
@@ -191,7 +191,7 @@ export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): Sch
 
     if (!allowed.has(ref.schema)) {
       violations.push(
-        `Table ${ref.schema}.${ref.table} is not in QUERY_ALLOWED_SCHEMAS (${[...allowed].join(', ')}).`
+        `Table ${ref.schema}.${ref.table} is not in the allowed schemas (${[...allowed].join(', ')}).`
       );
     }
   }

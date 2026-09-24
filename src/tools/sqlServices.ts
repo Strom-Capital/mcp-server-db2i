@@ -72,13 +72,13 @@ function unique(items: string[]): string[] {
 }
 
 export function schemaDenied(schema: string, allowed: string[]): string {
-  return `Schema ${schema.trim().toUpperCase()} is not in QUERY_ALLOWED_SCHEMAS (${allowed.join(', ')}).`;
+  return `Schema ${schema.trim().toUpperCase()} is not in the allowed schemas (${allowed.join(', ')}).`;
 }
 
 export function requireSchema(schema: string | undefined, fallback: string | undefined): string {
   const resolved = schema?.trim() || fallback?.trim();
   if (!resolved) {
-    throw new Error('Schema is required. Either provide it as a parameter or set DB2I_SCHEMA environment variable.');
+    throw new Error('Schema is required. Provide it as a parameter, or set a default schema (DB2I_SCHEMA, or schema in the profile).');
   }
   return resolved;
 }

@@ -24,8 +24,8 @@ DB2I_PASSWORD=your-password
 | `DB2I_PASSWORD` | Yes* | - | User password |
 | `DB2I_USERNAME_FILE` | No | - | Path to file containing username (overrides `DB2I_USERNAME`) |
 | `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
-| `DB2I_PORT` | No | `446` | JDBC port (446 is standard for IBM i). Not used by the `odbc` driver, which talks to the host servers |
-| `DB2I_DATABASE` | No | `*LOCAL` | Database name |
+| `DB2I_PORT` | No | `446` | Not used. Both drivers connect to the IBM i host servers (8471, or 9471 with TLS), not the DRDA port |
+| `DB2I_DATABASE` | No | `*LOCAL` | Not used. To reach an independent ASP, set the driver option (`database name` for jt400, `DATABASE` for ODBC) |
 | `DB2I_SCHEMA` | No | - | Default schema/library. Also the library list for `execute_query` (JDBC `libraries`, ODBC `DBQ`) when the option is not set |
 | `DB2I_DRIVER` | No | `jt400` | Database driver: `jt400` (JDBC via node-jt400, needs a JRE) or `odbc` (IBM i Access ODBC driver, no Java). See [Database Drivers](#database-drivers) |
 | `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated). `jt400` driver only |
@@ -159,8 +159,6 @@ DB2I_PASSWORD=mypassword
 ```env
 # Database connection
 DB2I_HOSTNAME=ibmi.example.com
-DB2I_PORT=446
-DB2I_DATABASE=*LOCAL
 DB2I_USERNAME=MYUSER
 DB2I_PASSWORD=mypassword
 DB2I_SCHEMA=MYLIB
@@ -295,8 +293,6 @@ profiles:
 | `name` | Yes | - | Name tools use in their `system` argument. Letters, digits, `_` and `-` |
 | `host` | Yes | - | IBM i hostname or IPv4 address |
 | `driver` | No | `jt400` | `jt400` or `odbc`. Each profile can use a different driver |
-| `port` | No | `446` | JDBC port. Not used by `odbc` |
-| `database` | No | `*LOCAL` | Database name |
 | `schema` | No | - | Default library, like `DB2I_SCHEMA` |
 | `allowedSchemas` | No | `QUERY_ALLOWED_SCHEMAS` | Libraries queries on this system may use |
 | `username` | Yes* | - | User profile, as text or a `"${ENV_VAR}"` reference |

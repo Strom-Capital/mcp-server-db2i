@@ -70,10 +70,8 @@ RUN useradd -m -s /bin/bash mcpuser
 # Environment variables (to be provided at runtime)
 # Database connection
 ENV DB2I_HOSTNAME=""
-ENV DB2I_PORT="446"
 ENV DB2I_USERNAME=""
 ENV DB2I_PASSWORD=""
-ENV DB2I_DATABASE="*LOCAL"
 ENV DB2I_SCHEMA=""
 # jt400 (default) | odbc
 ENV DB2I_DRIVER=""

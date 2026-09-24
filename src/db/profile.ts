@@ -58,11 +58,11 @@ function textOrNull(value: unknown): string | null {
   return text.length > 0 ? text : null;
 }
 
-export function quoteIdentifier(name: string): string {
+function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-export function isCountOnlyType(dataType: string): boolean {
+function isCountOnlyType(dataType: string): boolean {
   return COUNT_ONLY_TYPES.has(dataType.trim().toUpperCase());
 }
 

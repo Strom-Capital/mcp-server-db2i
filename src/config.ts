@@ -614,8 +614,6 @@ export const TOOL_NAMES = [
   'get_business_context',
 ] as const;
 
-export type ToolName = (typeof TOOL_NAMES)[number];
-
 /**
  * A YAML-defined tool that tool selection can name directly or by toolset.
  */
@@ -909,30 +907,10 @@ export interface HttpConfig {
 }
 
 /**
- * Default HTTP configuration values
- */
-export const DEFAULT_HTTP_CONFIG: HttpConfig = {
-  transport: 'stdio',
-  port: 3000,
-  host: '127.0.0.1',
-  sessionMode: 'stateless',
-  authMode: 'required',
-  tls: {
-    enabled: false,
-  },
-  tokenExpiry: 3600,
-  maxSessions: 100,
-  corsOrigins: [],
-  allowedHosts: ['localhost', '127.0.0.1', '::1'],
-  allowUnauthenticatedHttp: false,
-  authAllowedDbHosts: null,
-};
-
-/**
  * Parse CORS origins from environment variable
  * Returns array of allowed origins, or ['*'] for all
  */
-export function getCorsOrigins(): string[] {
+function getCorsOrigins(): string[] {
   const origins = process.env.MCP_CORS_ORIGINS;
   if (!origins || origins.trim() === '') {
     return [];
@@ -1078,7 +1056,7 @@ export function getSessionMode(): SessionMode {
  * - MCP_AUTH_MODE: 'required' | 'token' | 'none' (default: 'required')
  * - MCP_AUTH_TOKEN: Static token for 'token' mode (required if mode='token')
  */
-export function getAuthMode(): AuthMode {
+function getAuthMode(): AuthMode {
   const mode = process.env.MCP_AUTH_MODE?.toLowerCase();
   if (mode === 'none' || mode === 'token') {
     return mode;
@@ -1089,14 +1067,14 @@ export function getAuthMode(): AuthMode {
 /**
  * Get the static auth token for 'token' mode
  */
-export function getStaticToken(): string | undefined {
+function getStaticToken(): string | undefined {
   return process.env.MCP_AUTH_TOKEN;
 }
 
 /**
  * Get TLS configuration from environment variables
  */
-export function getTlsConfig(): TlsConfig {
+function getTlsConfig(): TlsConfig {
   const enabled = process.env.MCP_TLS_ENABLED?.toLowerCase();
   const isEnabled = enabled === 'true' || enabled === '1';
 

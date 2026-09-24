@@ -156,7 +156,6 @@ async function main(): Promise<void> {
 
       // Register the stdio pools. Other systems connect on their first query.
       initializePool(config, system.name);
-      logger.debug('Global database connection pool initialized');
 
       // Test the default system's connection
       const connected = await testConnection();

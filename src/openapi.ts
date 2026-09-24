@@ -504,17 +504,15 @@ export function getOpenApiSpec(baseUrl?: string): OpenApiSpec {
               type: 'integer',
               minimum: 1,
               maximum: 65535,
-              description: 'Connection port (falls back to DB2I_PORT, default: 446)',
-              example: 446,
+              description: 'Accepted for compatibility. Not used by either driver.',
             },
             database: {
               type: 'string',
-              description: 'Database name (falls back to DB2I_DATABASE, default: *LOCAL)',
-              example: '*LOCAL',
+              description: 'Accepted for compatibility. Not used by either driver.',
             },
             schema: {
               type: 'string',
-              description: 'Default schema (falls back to DB2I_SCHEMA)',
+              description: 'Default schema (falls back to DB2I_SCHEMA, or the profile schema with DB2I_PROFILES)',
               example: 'MYLIB',
             },
             duration: {

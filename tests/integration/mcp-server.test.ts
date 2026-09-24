@@ -201,7 +201,7 @@ describe('MCP Server Integration', () => {
 
       expect(result.isError).toBe(true);
       const errorText = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(errorText).toBe('Schema OTHERLIB is not in QUERY_ALLOWED_SCHEMAS (TESTLIB).');
+      expect(errorText).toBe('Schema OTHERLIB is not in the allowed schemas (TESTLIB).');
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
