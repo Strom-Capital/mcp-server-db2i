@@ -74,7 +74,9 @@ describe('Custom ERP tools', () => {
       password: 'test-pass',
       database: '*LOCAL',
       schema: 'MYLIB',
+      driver: 'jt400',
       jdbcOptions: {},
+      odbcOptions: {},
     });
 
     [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

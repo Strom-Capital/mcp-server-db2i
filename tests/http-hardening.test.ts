@@ -26,7 +26,9 @@ const dbConfig: DB2iConfig = {
   password: 'test-pass',
   database: '*LOCAL',
   schema: 'TESTLIB',
+  driver: 'jt400',
   jdbcOptions: {},
+  odbcOptions: {},
 };
 
 async function listen(app: Express): Promise<{ server: http.Server; baseUrl: string }> {

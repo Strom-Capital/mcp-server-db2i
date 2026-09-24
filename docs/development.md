@@ -5,7 +5,8 @@ This guide covers setting up a development environment and contributing to mcp-s
 ## Prerequisites
 
 - **Node.js** 22 or higher (required for `--env-file` flag)
-- **Java Runtime Environment (JRE)** 11 or higher (for JDBC)
+- **Java Runtime Environment (JRE)** 11 or higher (for the default `jt400` driver; `npm install` builds the JDBC bridge)
+- **unixODBC** and the **IBM i Access ODBC Driver** only if you run with `DB2I_DRIVER=odbc` (see [Database Drivers](configuration.md#database-drivers))
 - **npm** or **yarn**
 - Access to an IBM i system (for integration testing)
 
@@ -254,7 +255,9 @@ describe('myTool', () => {
 
 ### Connection Pool
 
-The `db/connection.ts` module manages JDBC connection pools:
+The `db/connection.ts` module manages connection pools. It does not know which driver it uses: `db/driver.ts` defines the `DbPool` and `DbDriver` interfaces, and `db/drivers/jt400.ts` and `db/drivers/odbc.ts` implement them. The driver module is imported on first use, and a pool connects on its first query. `tests/db/drivers.contract.test.ts` runs both implementations against fakes.
+
+Pools:
 
 - **Global pool**: For stdio transport
 - **Session pools**: For HTTP transport (per-authenticated user)

@@ -68,7 +68,9 @@ describe('MCP Server Integration', () => {
       password: 'test-pass',
       database: '*LOCAL',
       schema: 'TESTLIB',
+      driver: 'jt400',
       jdbcOptions: {},
+      odbcOptions: {},
     });
 
     // Create linked transports for in-memory communication
@@ -817,7 +819,9 @@ describe('MCP Server Integration', () => {
         password: 'test-pass',
         database: '*LOCAL',
         schema: 'TESTLIB',
+        driver: 'jt400',
         jdbcOptions: {},
+        odbcOptions: {},
       }, 'session-token-abc');
       await sessionServer.connect(sessionServerTransport);
       const sessionClient = new Client({ name: 'session-test', version: '1.0.0' });

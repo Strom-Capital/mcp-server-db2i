@@ -16,6 +16,9 @@ certs/
 *.key
 *.p12
 
+# IBM i Access Client Solutions / ODBC driver installers (licensed, never commit)
+IBM i Access Client Solutions/
+
 # IDE
 .idea/
 .vscode/

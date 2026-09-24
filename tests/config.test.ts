@@ -24,6 +24,11 @@ import {
   getAuthAllowedDbHosts,
   hostnameOf,
   jdbcConnectionSecurity,
+  odbcConnectionSecurity,
+  connectionSecurity,
+  getDbDriver,
+  buildOdbcConnectionConfig,
+  serializeOdbcConnectionString,
   assertExtendedMetadataAllowsMasking,
   TOOL_NAMES,
   type DB2iConfig,
@@ -468,7 +473,9 @@ describe('Config Module', () => {
       password: 'testpass',
       database: '*LOCAL',
       schema: '',
+      driver: 'jt400',
       jdbcOptions: {},
+      odbcOptions: {},
     };
 
     it('should include host, user, and password', () => {
@@ -580,6 +587,200 @@ describe('Config Module', () => {
       const security = jdbcConnectionSecurity({ access: 'all', secure: 'true' });
       expect(security.accessOverride).toBe('all');
       expect(security.secure).toBe(true);
+    });
+  });
+
+  describe('getDbDriver', () => {
+    it('should default to jt400', () => {
+      delete process.env.DB2I_DRIVER;
+      expect(getDbDriver()).toBe('jt400');
+      process.env.DB2I_DRIVER = '';
+      expect(getDbDriver()).toBe('jt400');
+    });
+
+    it('should accept odbc in any case', () => {
+      process.env.DB2I_DRIVER = 'ODBC';
+      expect(getDbDriver()).toBe('odbc');
+      delete process.env.DB2I_DRIVER;
+    });
+
+    it('should reject an unknown driver', () => {
+      process.env.DB2I_DRIVER = 'mapepire';
+      expect(() => getDbDriver()).toThrow('Invalid DB2I_DRIVER value: "mapepire"');
+      delete process.env.DB2I_DRIVER;
+    });
+
+    it('should populate driver and odbcOptions in loadConfig', () => {
+      process.env.DB2I_HOSTNAME = 'host';
+      process.env.DB2I_USERNAME = 'user';
+      process.env.DB2I_PASSWORD = 'pass';
+      process.env.DB2I_DRIVER = 'odbc';
+      process.env.DB2I_ODBC_OPTIONS = 'SSL=1; DBQ=,LIB1,LIB2';
+      const config = loadConfig();
+      expect(config.driver).toBe('odbc');
+      expect(config.odbcOptions).toEqual({ SSL: '1', DBQ: ',LIB1,LIB2' });
+      delete process.env.DB2I_DRIVER;
+      delete process.env.DB2I_ODBC_OPTIONS;
+    });
+  });
+
+  describe('buildOdbcConnectionConfig', () => {
+    const baseConfig: DB2iConfig = {
+      hostname: 'myhost.example.com',
+      port: 446,
+      username: 'TESTUSER',
+      password: 'testpass',
+      database: '*LOCAL',
+      schema: '',
+      driver: 'odbc',
+      jdbcOptions: {},
+      odbcOptions: {},
+    };
+
+    it('should set the driver, system and credentials', () => {
+      const keywords = buildOdbcConnectionConfig(baseConfig);
+      expect(keywords['DRIVER']).toBe('IBM i Access ODBC Driver');
+      expect(keywords['SYSTEM']).toBe('myhost.example.com');
+      expect(keywords['UID']).toBe('TESTUSER');
+      expect(keywords['PWD']).toBe('testpass');
+    });
+
+    it('should not pass the DRDA port or database name', () => {
+      const keywords = buildOdbcConnectionConfig(baseConfig);
+      expect(Object.keys(keywords)).not.toContain('PORT');
+      expect(Object.keys(keywords)).not.toContain('DATABASE');
+    });
+
+    it('should default to system naming, ISO dates and trimmed CHAR columns', () => {
+      const keywords = buildOdbcConnectionConfig(baseConfig);
+      expect(keywords['NAM']).toBe('1');
+      expect(keywords['DFT']).toBe('5');
+      expect(keywords['TRIMCHAR']).toBe('1');
+    });
+
+    it('should default the connection type to read only', () => {
+      expect(buildOdbcConnectionConfig(baseConfig)['CONNTYPE']).toBe('2');
+    });
+
+    it('should omit CONNTYPE when readOnly is false', () => {
+      const keywords = buildOdbcConnectionConfig(
+        { ...baseConfig, odbcOptions: { ConnectionType: '2' } },
+        { readOnly: false }
+      );
+      expect(keywords['CONNTYPE']).toBeUndefined();
+      expect(keywords['ConnectionType']).toBeUndefined();
+    });
+
+    it('should keep an explicit connection type on the query connection', () => {
+      const keywords = buildOdbcConnectionConfig({
+        ...baseConfig,
+        odbcOptions: { ConnectionType: '0' },
+      });
+      expect(keywords['ConnectionType']).toBe('0');
+      expect(keywords['CONNTYPE']).toBeUndefined();
+    });
+
+    it('should not override naming, date format or trimming aliases', () => {
+      const keywords = buildOdbcConnectionConfig({
+        ...baseConfig,
+        odbcOptions: { Naming: '0', DateFormat: '4', TrimCharFields: '0' },
+      });
+      expect(keywords['NAM']).toBeUndefined();
+      expect(keywords['DFT']).toBeUndefined();
+      expect(keywords['TRIMCHAR']).toBeUndefined();
+      expect(keywords['Naming']).toBe('0');
+    });
+
+    it('should omit the default driver when a DSN or DRIVER is given', () => {
+      expect(buildOdbcConnectionConfig({ ...baseConfig, odbcOptions: { DSN: 'MYDSN' } })['DRIVER']).toBeUndefined();
+      expect(
+        buildOdbcConnectionConfig({ ...baseConfig, odbcOptions: { Driver: 'Other' } })['DRIVER']
+      ).toBeUndefined();
+    });
+
+    it('should use the schema as the library list when DBQ is not set', () => {
+      expect(buildOdbcConnectionConfig({ ...baseConfig, schema: 'MYLIB' })['DBQ']).toBe('MYLIB');
+      expect(buildOdbcConnectionConfig(baseConfig)['DBQ']).toBeUndefined();
+    });
+
+    it('should keep an explicit library list over the schema', () => {
+      const keywords = buildOdbcConnectionConfig({
+        ...baseConfig,
+        schema: 'MYLIB',
+        odbcOptions: { DefaultLibraries: ',OTHERLIB' },
+      });
+      expect(keywords['DBQ']).toBeUndefined();
+      expect(keywords['DefaultLibraries']).toBe(',OTHERLIB');
+    });
+
+    it('should merge extra keywords after the defaults', () => {
+      const keywords = buildOdbcConnectionConfig({
+        ...baseConfig,
+        odbcOptions: { SSL: '1', CCSID: '1208' },
+      });
+      expect(keywords['SSL']).toBe('1');
+      expect(keywords['CCSID']).toBe('1208');
+      expect(keywords['NAM']).toBe('1');
+    });
+  });
+
+  describe('serializeOdbcConnectionString', () => {
+    it('should join keywords with semicolons', () => {
+      expect(serializeOdbcConnectionString({ DRIVER: 'IBM i Access ODBC Driver', NAM: '1' })).toBe(
+        'DRIVER=IBM i Access ODBC Driver;NAM=1'
+      );
+    });
+
+    it('should brace values with special characters', () => {
+      expect(serializeOdbcConnectionString({ PWD: 'a;b=c', UID: ' x ' })).toBe(
+        'PWD={a;b=c};UID={ x }'
+      );
+    });
+
+    it('should reject a closing brace', () => {
+      expect(() => serializeOdbcConnectionString({ PWD: 'a}b' })).toThrow(
+        'ODBC connection keyword PWD contains "}"'
+      );
+    });
+  });
+
+  describe('odbcConnectionSecurity and connectionSecurity', () => {
+    it('should report TLS as off and no override by default', () => {
+      delete process.env.DB2I_ODBC_OPTIONS;
+      expect(odbcConnectionSecurity()).toEqual({ accessOverride: undefined, secure: false });
+    });
+
+    it('should report CONNTYPE as an override and SSL=1 as secure', () => {
+      const security = odbcConnectionSecurity({ ConnectionType: '0', ssl: '1' });
+      expect(security.accessOverride).toBe('0');
+      expect(security.secure).toBe(true);
+    });
+
+    it('should describe the jt400 driver', () => {
+      process.env.DB2I_JDBC_OPTIONS = 'secure=true';
+      const security = connectionSecurity('jt400');
+      expect(security).toMatchObject({
+        driver: 'jt400',
+        optionsVariable: 'DB2I_JDBC_OPTIONS',
+        secure: true,
+        secureHint: 'secure=true',
+      });
+      delete process.env.DB2I_JDBC_OPTIONS;
+    });
+
+    it('should describe the odbc driver from DB2I_DRIVER', () => {
+      process.env.DB2I_DRIVER = 'odbc';
+      process.env.DB2I_ODBC_OPTIONS = 'CONNTYPE=0';
+      const security = connectionSecurity();
+      expect(security).toMatchObject({
+        driver: 'odbc',
+        optionsVariable: 'DB2I_ODBC_OPTIONS',
+        accessOverride: '0',
+        secure: false,
+        secureHint: 'SSL=1',
+      });
+      delete process.env.DB2I_DRIVER;
+      delete process.env.DB2I_ODBC_OPTIONS;
     });
   });
 
@@ -890,6 +1091,15 @@ describe('Config Module', () => {
       process.env.DB2I_JDBC_OPTIONS = 'extended metadata=true';
       expect(() => assertExtendedMetadataAllowsMasking(true)).toThrow(/extended metadata=true/);
       expect(() => assertExtendedMetadataAllowsMasking(false)).not.toThrow();
+      delete process.env.DB2I_JDBC_OPTIONS;
+    });
+
+    it('should not apply to the odbc driver', () => {
+      process.env.DB2I_JDBC_OPTIONS = 'extended metadata=true';
+      expect(() => assertExtendedMetadataAllowsMasking(true, 'odbc')).not.toThrow();
+      process.env.DB2I_DRIVER = 'odbc';
+      expect(() => assertExtendedMetadataAllowsMasking(true)).not.toThrow();
+      delete process.env.DB2I_DRIVER;
       delete process.env.DB2I_JDBC_OPTIONS;
     });
   });

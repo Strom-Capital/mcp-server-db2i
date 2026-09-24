@@ -1,0 +1,13 @@
+# Keep the build context small: the Dockerfile copies package files, tsconfig.json and src only.
+node_modules
+dist
+coverage
+.git
+.env
+.env.*
+local
+examples
+docs
+tests
+IBM i Access Client Solutions
+*.log

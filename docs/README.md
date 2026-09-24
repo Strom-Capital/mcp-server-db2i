@@ -87,7 +87,7 @@ The list tools support pattern matching:
 
 - IBM i V7R3 and later (V7R5 recommended)
 - Node.js 22 or higher
-- Java Runtime Environment (JRE) 11 or higher (for JDBC)
+- Java Runtime Environment (JRE) 11 or higher for the default `jt400` driver, or the IBM i Access ODBC Driver for `DB2I_DRIVER=odbc`
 - MCP spec 2026-07-28, plus stateless 2025-era clients (through 2025-11-25)
 
 ## Related Projects

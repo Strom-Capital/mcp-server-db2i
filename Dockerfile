@@ -2,7 +2,12 @@
 # check=skip=SecretsUsedInArgOrEnv
 
 # MCP Server for IBM DB2i
-# Multi-stage build for smaller final image
+# Multi-stage build with two runtime targets:
+#   jt400 (default): JDBC via node-jt400, ships OpenJDK 17 JRE
+#   odbc:            IBM i Access ODBC driver, no Java
+#
+#   docker build -t mcp-server-db2i .                      # jt400 image
+#   docker build --target odbc -t mcp-server-db2i:odbc .   # odbc image
 #
 # Note: ENV placeholders below are intentionally empty - they're overridden at runtime
 # via -e flags, --env-file, or Docker secrets. The BuildKit warning is suppressed above.
@@ -10,12 +15,14 @@
 # Build stage
 FROM node:22-bookworm-slim AS builder
 
-# Install build dependencies (Python, make, g++ for node-gyp, Java for node-jt400)
+# Install build dependencies (Python, make, g++ for node-gyp, Java for node-jt400,
+# unixODBC headers in case the odbc prebuilt binary is unavailable for this platform)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
     openjdk-17-jdk-headless \
+    unixodbc-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Find and set JAVA_HOME (works on both arm64 and amd64)
@@ -42,18 +49,9 @@ RUN npm run build
 # Prune dev dependencies for smaller production image
 RUN npm prune --production
 
-# Production stage
-FROM node:22-bookworm-slim
-
-# Install OpenJDK for JDBC (required by node-jt400 at runtime)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set JAVA_HOME (symlink works on both arm64 and amd64)
-RUN ln -s /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/java-17-openjdk
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
+# Shared runtime layer: application files, user and env placeholders.
+# The driver-specific stages below add their native runtime and set USER.
+FROM node:22-bookworm-slim AS runtime-base
 
 WORKDIR /app
 
@@ -68,7 +66,6 @@ COPY --from=builder /app/dist ./dist
 
 # Create non-root user for security
 RUN useradd -m -s /bin/bash mcpuser
-USER mcpuser
 
 # Environment variables (to be provided at runtime)
 # Database connection
@@ -78,7 +75,10 @@ ENV DB2I_USERNAME=""
 ENV DB2I_PASSWORD=""
 ENV DB2I_DATABASE="*LOCAL"
 ENV DB2I_SCHEMA=""
+# jt400 (default) | odbc
+ENV DB2I_DRIVER=""
 ENV DB2I_JDBC_OPTIONS=""
+ENV DB2I_ODBC_OPTIONS=""
 
 # Transport settings
 # stdio (default) | http | both
@@ -107,3 +107,44 @@ EXPOSE 3000
 # The MCP server communicates via stdio by default
 # Set MCP_TRANSPORT=http to enable HTTP API
 CMD ["node", "dist/index.js"]
+
+# ODBC runtime: unixODBC plus the IBM i Access ODBC Driver from IBM's apt
+# repository (https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/installation.html).
+# No Java. IBM publishes the driver for amd64, i386 and ppc64el only, so on an
+# arm64 host build with: docker build --platform linux/amd64 --target odbc .
+FROM runtime-base AS odbc
+
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      amd64|ppc64le|386) ;; \
+      *) echo "The IBM i Access ODBC Driver is not published for $TARGETARCH. Build with --platform linux/amd64." >&2; exit 1 ;; \
+    esac
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    unixodbc \
+    && curl -fsSL https://public.dhe.ibm.com/software/ibmi/products/odbc/debs/dists/1.1.0/ibmi-acs-1.1.0.list \
+       -o /etc/apt/sources.list.d/ibmi-acs-1.1.0.list \
+    && apt-get update && apt-get install -y --no-install-recommends ibm-iaccess \
+    && apt-get purge -y curl && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV DB2I_DRIVER="odbc"
+
+USER mcpuser
+
+# JT400 runtime (default target, kept last so `docker build .` builds it):
+# OpenJDK 17 JRE for node-jt400. Bookworm is pinned because trixie has no OpenJDK 17.
+FROM runtime-base AS jt400
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set JAVA_HOME (symlink works on both arm64 and amd64)
+RUN ln -s /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/java-17-openjdk
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+USER mcpuser
