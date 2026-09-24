@@ -112,6 +112,34 @@ describe('HTTP Origin validation', () => {
       });
       expect(res.status).toBe(200);
       expect(res.headers.get('access-control-allow-origin')).toBe('https://allowed.example');
+      expect(res.headers.get('access-control-allow-credentials')).toBeNull();
+      expect(res.headers.get('vary')).toMatch(/\bOrigin\b/);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('sends Vary: Origin on same-origin responses when origins are restricted', async () => {
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await fetch(`${baseUrl}/health`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('vary')).toMatch(/\bOrigin\b/);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('answers a wildcard configuration with a literal * and no credentials', async () => {
+    process.env.MCP_CORS_ORIGINS = '*';
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await fetch(`${baseUrl}/health`, {
+        headers: { Origin: 'https://anywhere.example' },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('access-control-allow-origin')).toBe('*');
+      expect(res.headers.get('access-control-allow-credentials')).toBeNull();
     } finally {
       await closeServer(server);
     }
@@ -226,6 +254,91 @@ describe('HTTP /auth database host allowlist', () => {
       const body = await res.json() as { error_description: string };
       expect(body.error_description).toBe('Host is not allowed');
       expect(pool).not.toHaveBeenCalled();
+    } finally {
+      await closeServer(server);
+    }
+  });
+});
+
+describe('HTTP /auth rate limiting', () => {
+  const originalEnv = process.env;
+  // The limiter is module state keyed by client IP, so each test starts in a
+  // later rate-limit window instead of relying on test order.
+  let clock = Date.now();
+
+  beforeEach(() => {
+    clock += 10 * 60_000;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(clock);
+    process.env = {
+      ...originalEnv,
+      MCP_AUTH_MODE: 'required',
+      MCP_SESSION_MODE: 'stateless',
+      DB2I_HOSTNAME: 'test-host',
+      DB2I_USERNAME: 'test-user',
+      DB2I_PASSWORD: 'test-pass',
+    };
+    delete process.env.MCP_AUTH_ALLOWED_DB_HOSTS;
+  });
+
+  afterEach(async () => {
+    const { pool } = await import('node-jt400');
+    vi.mocked(pool).mockImplementation(() => ({
+      query: vi.fn().mockResolvedValue([]),
+    }) as unknown as ReturnType<typeof pool>);
+    vi.useRealTimers();
+    await getTokenManager().shutdown();
+    process.env = originalEnv;
+  });
+
+  async function mockDbLogin(succeeds: boolean): Promise<void> {
+    const { pool } = await import('node-jt400');
+    vi.mocked(pool).mockImplementation(() => ({
+      query: vi.fn(() =>
+        new Promise((resolve, reject) => {
+          setTimeout(() => (succeeds ? resolve([]) : reject(new Error('Password not correct'))), 50);
+        })
+      ),
+      close: vi.fn().mockResolvedValue(undefined),
+    }) as unknown as ReturnType<typeof pool>);
+  }
+
+  function postAuth(baseUrl: string): Promise<Response> {
+    return fetch(`${baseUrl}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'user', password: 'wrong' }),
+    });
+  }
+
+  it('counts parallel attempts before any of them finishes', async () => {
+    await mockDbLogin(false);
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const responses = await Promise.all(Array.from({ length: 8 }, () => postAuth(baseUrl)));
+      const statuses = responses.map((res) => res.status).sort();
+      expect(statuses).toEqual([401, 401, 401, 401, 401, 429, 429, 429]);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('resets the count after a successful login', async () => {
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      await mockDbLogin(false);
+      for (let i = 0; i < 4; i++) {
+        expect((await postAuth(baseUrl)).status).toBe(401);
+      }
+
+      await mockDbLogin(true);
+      expect((await postAuth(baseUrl)).status).toBe(201);
+
+      await mockDbLogin(false);
+      for (let i = 0; i < 5; i++) {
+        expect((await postAuth(baseUrl)).status).toBe(401);
+      }
+      expect((await postAuth(baseUrl)).status).toBe(429);
     } finally {
       await closeServer(server);
     }

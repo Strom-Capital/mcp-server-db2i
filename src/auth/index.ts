@@ -22,7 +22,6 @@ export {
   authMiddleware,
   optionalAuthMiddleware,
   authRateLimitMiddleware,
-  recordFailedAuthAttempt,
   clearAuthRateLimit,
   type AuthenticatedRequest,
 } from './authMiddleware.js';

@@ -207,7 +207,9 @@ export function optionalAuthMiddleware(
  * Rate limiting middleware for auth endpoints
  * 
  * Simple in-memory rate limiter to prevent brute force attacks.
- * Tracks failed attempts by IP address.
+ * Tracks attempts by IP address. Each attempt is counted when it arrives,
+ * because failures are only known after a slow database connection test and
+ * parallel requests would otherwise all pass the check.
  */
 const authAttempts = new Map<string, { count: number; resetAt: number }>();
 const AUTH_RATE_LIMIT = {
@@ -235,7 +237,8 @@ function getClientIp(req: Request): string {
  * Auth rate limiting middleware
  * 
  * Limits authentication attempts per IP to prevent brute force.
- * Should be applied to the /auth endpoint.
+ * Should be applied to the /auth endpoint. Call clearAuthRateLimit
+ * after a successful authentication.
  */
 export function authRateLimitMiddleware(
   req: Request,
@@ -245,15 +248,13 @@ export function authRateLimitMiddleware(
   const ip = getClientIp(req);
   const now = Date.now();
 
-  // Clean up expired entries
-  const entry = authAttempts.get(ip);
-  if (entry && entry.resetAt < now) {
-    authAttempts.delete(ip);
+  let current = authAttempts.get(ip);
+  if (!current || current.resetAt <= now) {
+    current = { count: 0, resetAt: now + AUTH_RATE_LIMIT.windowMs };
+    authAttempts.set(ip, current);
   }
 
-  const current = authAttempts.get(ip);
-
-  if (current && current.count >= AUTH_RATE_LIMIT.maxAttempts) {
+  if (current.count >= AUTH_RATE_LIMIT.maxAttempts) {
     const retryAfter = Math.ceil((current.resetAt - now) / 1000);
     log.warn({ ip, attempts: current.count }, 'Auth rate limit exceeded');
     res.status(429).json({
@@ -264,25 +265,8 @@ export function authRateLimitMiddleware(
     return;
   }
 
+  current.count++;
   next();
-}
-
-/**
- * Record a failed auth attempt for rate limiting
- */
-export function recordFailedAuthAttempt(req: Request): void {
-  const ip = getClientIp(req);
-  const now = Date.now();
-
-  const current = authAttempts.get(ip);
-  if (current && current.resetAt > now) {
-    current.count++;
-  } else {
-    authAttempts.set(ip, {
-      count: 1,
-      resetAt: now + AUTH_RATE_LIMIT.windowMs,
-    });
-  }
 }
 
 /**

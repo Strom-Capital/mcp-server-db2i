@@ -200,9 +200,11 @@ When using HTTP transport, additional security measures apply:
 - **`required`** (default): clients exchange IBM i credentials at `POST /auth`. Those credentials are not taken from the environment. Tokens expire after 1 hour by default (`MCP_TOKEN_EXPIRY`).
 - **`token`** and **`none`**: the server uses `DB2I_*` environment credentials. `token` still requires `MCP_AUTH_TOKEN`. Use `none` only on a trusted network. A non-loopback bind with `MCP_AUTH_MODE=none` refuses to start unless `MCP_ALLOW_UNAUTHENTICATED_HTTP=true`.
 
-`POST /auth` opens a database connection to test the credentials. By default that host must be `DB2I_HOSTNAME`. Set `MCP_AUTH_ALLOWED_DB_HOSTS` to a comma-separated list to allow more than one. When neither value is set, any host is accepted and a warning is logged. A rejected host returns 400 and counts as a failed attempt. It does not open a connection.
+`POST /auth` opens a database connection to test the credentials. By default that host must be `DB2I_HOSTNAME`. Set `MCP_AUTH_ALLOWED_DB_HOSTS` to a comma-separated list to allow more than one. When neither value is set, any host is accepted and a warning is logged. A rejected host returns 400 and does not open a connection. It still counts toward the `/auth` rate limit.
 
 Every request is checked against an allowlist of `Host` values before it is routed. Loopback names are always allowed. Add public names with `MCP_ALLOWED_HOSTS` when the server is reached by a hostname other than the bind address. A rejected `Host` returns 403. The rejected value is logged and is not echoed in the response. This blocks a page that rebinds its name onto the loopback address and sends that name in both `Host` and `Origin`.
+
+Browser requests with an `Origin` header must be same-origin or listed in `MCP_CORS_ORIGINS`. Others get 403. A listed origin is echoed in `Access-Control-Allow-Origin` with `Vary: Origin`, and `MCP_CORS_ORIGINS='*'` answers with a literal `*`. The server never sends `Access-Control-Allow-Credentials`, because tokens travel in the `Authorization` header rather than in cookies.
 
 See [HTTP Transport](http-transport.md) for the request shapes. Protocol sessions (`Mcp-Session-Id`) are deprecated; pools stay isolated by auth token in the default stateless mode.
 
@@ -212,13 +214,13 @@ The `/auth` endpoint has additional rate limiting to prevent brute-force attacks
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| Max attempts | 5 | Maximum failed attempts before lockout |
+| Max attempts | 5 | Maximum attempts before lockout |
 | Window | 60 seconds | Time window for tracking attempts |
 
 **Behavior:**
-- Failed authentication attempts are tracked per IP address
-- After 5 failed attempts within 60 seconds, the IP is temporarily locked out
-- Successful authentication clears the failure count for that IP
+- Authentication attempts are tracked per IP address and counted when they arrive, so parallel requests cannot get past the limit while earlier attempts are still testing their credentials
+- After 5 attempts within 60 seconds, further requests from that IP get 429 until the window ends
+- Successful authentication clears the count for that IP
 - Lockout automatically expires after the window period
 
 > **Note:** These values are currently hardcoded. Environment variable configuration may be added in a future release.
