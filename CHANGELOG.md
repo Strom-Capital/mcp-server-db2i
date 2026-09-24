@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.8.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.7.0...v2.8.0) (2026-09-24)
+
+
+### Features
+
+* add a Mapepire-over-SSH driver (DB2I_DRIVER=mapepire) ([#109](https://github.com/Strom-Capital/mcp-server-db2i/issues/109)) ([808c996](https://github.com/Strom-Capital/mcp-server-db2i/commit/808c9965ccdea144b5089e27093c9e2f948b649e))
+
+
+### Bug Fixes
+
+* shorten server.json description to the registry limit ([#107](https://github.com/Strom-Capital/mcp-server-db2i/issues/107)) ([f3d8676](https://github.com/Strom-Capital/mcp-server-db2i/commit/f3d8676649d5b73f028b11f3f58e62eb8c875163))
+
 ## [2.7.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.6.0...v2.7.0) (2026-09-24)
 
 
