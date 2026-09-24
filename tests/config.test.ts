@@ -20,6 +20,7 @@ import {
   isQueryParseCheckEnabled,
   isCustomToolsWatchEnabled,
   assertCustomToolsWatch,
+  getAuditConfig,
   getAuthAllowedDbHosts,
   hostnameOf,
   jdbcConnectionSecurity,
@@ -872,6 +873,20 @@ describe('Config Module', () => {
       delete process.env.MCP_CUSTOM_TOOLS_WATCH;
       delete process.env.MCP_CUSTOM_TOOLS;
       expect(() => assertCustomToolsWatch()).not.toThrow();
+    });
+  });
+
+  describe('getAuditConfig', () => {
+    it('should be off when MCP_AUDIT_LOG is unset', () => {
+      delete process.env.MCP_AUDIT_LOG;
+      delete process.env.MCP_AUDIT_SQL;
+      expect(getAuditConfig()).toBeUndefined();
+    });
+
+    it('should reject an unknown SQL mode', () => {
+      process.env.MCP_AUDIT_SQL = 'raw';
+      expect(() => getAuditConfig()).toThrow(/MCP_AUDIT_SQL must be "hash" or "full"/);
+      delete process.env.MCP_AUDIT_SQL;
     });
   });
 });
