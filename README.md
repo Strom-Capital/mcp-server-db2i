@@ -127,6 +127,8 @@ See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, C
 | `validate_query` | Check a statement without running it, including catalog names |
 | `get_object_ddl` | Return the SQL DDL that recreates an object |
 | `get_related_objects` | List objects that depend on a table |
+| `get_journal_info` | List journal, images, and primary key per table, and flag tables a replication tool cannot read |
+| `profile_table` | Row count, last change, and per-column distinct and null counts from stored statistics or a scan |
 | `get_business_context` | List business descriptions and relations loaded from YAML |
 
 ### Filter Syntax
@@ -177,6 +179,7 @@ Once connected, you can ask the AI assistant:
 - IBM i V7R3 and later (V7R5 recommended)
 - `validate_query` and the `execute_query` parse check need `QSYS2.PARSE_STATEMENT` (IBM i 7.3 with Db2 PTF group SF99703 level 3, or 7.4 and later)
 - `get_related_objects` needs IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release
+- `get_journal_info` needs the journal columns of `QSYS2.OBJECT_STATISTICS` (IBM i 7.3 Technology Refresh 2 or later)
 - Node.js 22 or higher
 - Java Runtime Environment (JRE) 11 or higher
 - MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)

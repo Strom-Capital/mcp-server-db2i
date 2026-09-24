@@ -724,6 +724,12 @@ describe('Config Module', () => {
       expect(tools).toContain('search_tables');
     });
 
+    it('should enable and disable get_journal_info and profile_table by name', () => {
+      process.env.MCP_TOOLS_ENABLED = 'get_journal_info,profile_table,describe_table';
+      process.env.MCP_TOOLS_DISABLED = 'profile_table';
+      expect(getEnabledTools()).toEqual(['describe_table', 'get_journal_info']);
+    });
+
     it('should apply the denylist after the allowlist', () => {
       process.env.MCP_TOOLS_ENABLED = 'execute_query,list_tables';
       process.env.MCP_TOOLS_DISABLED = 'execute_query';

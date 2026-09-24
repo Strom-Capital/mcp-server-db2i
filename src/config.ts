@@ -402,6 +402,8 @@ export const TOOL_NAMES = [
   'validate_query',
   'get_object_ddl',
   'get_related_objects',
+  'get_journal_info',
+  'profile_table',
   'get_business_context',
 ] as const;
 

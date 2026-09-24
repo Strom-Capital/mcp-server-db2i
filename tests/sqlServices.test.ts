@@ -13,7 +13,7 @@ vi.mock('../src/db/connection.js', () => ({
 import { executeProcedure, executeQuery } from '../src/db/connection.js';
 import { clearRoutineCache, generateObjectDdl } from '../src/db/sqlServices.js';
 import { executeQueryTool } from '../src/tools/query.js';
-import { getObjectDdlTool, getRelatedObjectsTool, validateQueryTool } from '../src/tools/sqlServices.js';
+import { getJournalInfoTool, getObjectDdlTool, getRelatedObjectsTool, validateQueryTool } from '../src/tools/sqlServices.js';
 
 const query = vi.mocked(executeQuery);
 const procedure = vi.mocked(executeProcedure);
@@ -270,6 +270,102 @@ describe('SQL service tools', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('OTHERLIB');
       expect(query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('get_journal_info', () => {
+    function journalRow(row: Record<string, unknown>) {
+      return {
+        TABLE_NAME: 'ORDERS',
+        SYSTEM_TABLE_NAME: 'ORDERS',
+        JOURNALED: 'YES',
+        JOURNAL_LIBRARY: 'MYLIB',
+        JOURNAL_NAME: 'QSQJRN',
+        JOURNAL_IMAGES: '*AFTER',
+        OMIT_JOURNAL_ENTRY: '*OPNCLO',
+        JOURNAL_START_TIMESTAMP: '2026-01-05 08:00:00.000000',
+        PRIMARY_KEYS: '1',
+        ...row,
+      };
+    }
+
+    it('should normalize rows and flag tables a replication tool cannot use', async () => {
+      query.mockResolvedValueOnce({
+        rows: [
+          journalRow({}),
+          journalRow({ TABLE_NAME: 'ORDERHDR', SYSTEM_TABLE_NAME: 'ORDERHDR', PRIMARY_KEYS: '0' }),
+          journalRow({ TABLE_NAME: 'CUSTOMERS', SYSTEM_TABLE_NAME: 'CUSTOMERS', PRIMARY_KEYS: '0', JOURNAL_IMAGES: '*BOTH' }),
+          journalRow({
+            TABLE_NAME: 'ORDERLINES',
+            SYSTEM_TABLE_NAME: 'ORDERLIN',
+            JOURNALED: 'NO',
+            JOURNAL_LIBRARY: null,
+            JOURNAL_NAME: null,
+            JOURNAL_IMAGES: null,
+            OMIT_JOURNAL_ENTRY: null,
+            JOURNAL_START_TIMESTAMP: null,
+          }),
+        ],
+      });
+
+      const result = await getJournalInfoTool({ schema: 'mylib' });
+
+      expect(result.success).toBe(true);
+      expect(result.schema).toBe('MYLIB');
+      expect(result.count).toBe(4);
+      expect(result.needsAttention).toBe(2);
+      expect(result.truncated).toBe(false);
+      expect(result.data?.map((row) => [row.table_name, row.needs_attention])).toEqual([
+        ['ORDERS', false],
+        ['ORDERHDR', true],
+        ['CUSTOMERS', false],
+        ['ORDERLINES', true],
+      ]);
+      expect(result.data?.[0]).toMatchObject({
+        journaled: true,
+        journal_library: 'MYLIB',
+        journal_name: 'QSQJRN',
+        journal_images: '*AFTER',
+        omit_entries: '*OPNCLO',
+        has_primary_key: true,
+      });
+      expect(result.data?.[3]).toMatchObject({ system_table_name: 'ORDERLIN', journaled: false, journal_name: null });
+
+      const [sql, params] = query.mock.calls[0] ?? [];
+      expect(sql).toContain('QSYS2.OBJECT_STATISTICS(?,');
+      expect(sql).toContain("O.OBJATTRIBUTE = 'PF'");
+      expect(params).toEqual(['MYLIB', '%', '%']);
+    });
+
+    it('should use the default schema, the filter, and report truncation', async () => {
+      process.env.QUERY_MAX_LIMIT = '1';
+      query.mockResolvedValueOnce({ rows: [journalRow({}), journalRow({ TABLE_NAME: 'ORDERHDR' })] });
+
+      const result = await getJournalInfoTool({ filter: 'ORD*', defaultSchema: 'MYLIB' });
+
+      expect(result.count).toBe(1);
+      expect(result.truncated).toBe(true);
+      expect(query.mock.calls[0]?.[0]).toContain('FETCH FIRST 2 ROWS ONLY');
+      expect(query.mock.calls[0]?.[1]).toEqual(['MYLIB', 'ORD%', 'ORD%']);
+    });
+
+    it('should reject a schema outside the allowlist without querying', async () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
+
+      const result = await getJournalInfoTool({ schema: 'OTHERLIB' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('OTHERLIB');
+      expect(query).not.toHaveBeenCalled();
+    });
+
+    it('should explain when OBJECT_STATISTICS has no journal columns', async () => {
+      query.mockRejectedValueOnce(new Error('[SQL0206] Column or global variable JOURNALED not found.'));
+
+      const result = await getJournalInfoTool({ schema: 'MYLIB' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('7.3 Technology Refresh 2');
     });
   });
 

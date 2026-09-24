@@ -1,11 +1,13 @@
 /**
- * IBM i SQL services used by validate_query, get_object_ddl, and get_related_objects.
+ * IBM i SQL services used by validate_query, get_object_ddl, get_related_objects,
+ * and get_journal_info.
  *
- * PARSE_STATEMENT and RELATED_OBJECTS run on the read-only query pool.
+ * PARSE_STATEMENT, RELATED_OBJECTS, and OBJECT_STATISTICS run on the read-only query pool.
  * GENERATE_SQL runs on the procedure pool because a read-only connection rejects it.
  */
 
 import { executeProcedure, executeQuery } from './connection.js';
+import { filterToLikePattern } from './queries.js';
 import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
 
 export const SQL_OBJECT_TYPES = [
@@ -442,4 +444,93 @@ export async function listRelatedObjects(
     system_name: textCell(row.SYSTEM_NAME),
     object_text: textCell(row.OBJECT_TEXT),
   }));
+}
+
+export const JOURNAL_INFO_UNAVAILABLE =
+  'QSYS2.OBJECT_STATISTICS on this system does not return journal columns. They require IBM i 7.3 Technology Refresh 2 or a later release.';
+
+export interface JournalInfoRow {
+  table_name: string;
+  system_table_name: string;
+  journaled: boolean;
+  journal_library: string | null;
+  journal_name: string | null;
+  journal_images: string | null;
+  omit_entries: string | null;
+  journal_start: string | null;
+  has_primary_key: boolean;
+  needs_attention: boolean;
+}
+
+/**
+ * True when OBJECT_STATISTICS lacks the journal columns (SQL0206 on an older release).
+ */
+export function isJournalColumnMissing(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bSQL0206\b/.test(message) && /JOURNAL/i.test(message);
+}
+
+/**
+ * A replication tool needs the table journaled, and a table without a primary
+ * key needs before images too, so an update can be matched to its row.
+ */
+export function journalNeedsAttention(row: Pick<JournalInfoRow, 'journaled' | 'has_primary_key' | 'journal_images'>): boolean {
+  if (!row.journaled) {
+    return true;
+  }
+  return !row.has_primary_key && row.journal_images !== '*BOTH';
+}
+
+/**
+ * Journal state for the physical data files in a library.
+ * Logical files and source files are left out.
+ */
+export async function listJournalInfo(
+  schema: string,
+  filter: string | undefined,
+  limit: number,
+  sessionId?: string
+): Promise<{ rows: JournalInfoRow[]; truncated: boolean }> {
+  const count = limit + 1;
+  if (!Number.isSafeInteger(count) || count < 2) {
+    throw new Error('Limit must be a positive integer.');
+  }
+  const pattern = filterToLikePattern(filter);
+
+  const sql = `
+    SELECT T.TABLE_NAME, T.SYSTEM_TABLE_NAME, O.JOURNALED, O.JOURNAL_LIBRARY, O.JOURNAL_NAME,
+           O.JOURNAL_IMAGES, O.OMIT_JOURNAL_ENTRY, O.JOURNAL_START_TIMESTAMP,
+           (SELECT COUNT(*) FROM QSYS2.SYSCST C
+             WHERE C.TABLE_SCHEMA = T.TABLE_SCHEMA AND C.TABLE_NAME = T.TABLE_NAME
+               AND C.CONSTRAINT_TYPE = 'PRIMARY KEY') AS PRIMARY_KEYS
+    FROM TABLE(QSYS2.OBJECT_STATISTICS(?, '*FILE')) O
+    JOIN QSYS2.SYSTABLES T
+      ON T.SYSTEM_TABLE_SCHEMA = O.OBJLIB AND T.SYSTEM_TABLE_NAME = O.OBJNAME
+    WHERE O.OBJATTRIBUTE = 'PF'
+      AND T.FILE_TYPE = 'D'
+      AND (T.TABLE_NAME LIKE ? OR T.SYSTEM_TABLE_NAME LIKE ?)
+    ORDER BY T.TABLE_NAME
+    FETCH FIRST ${count} ROWS ONLY
+  `;
+
+  const result = await executeQuery(sql, [schema.trim().toUpperCase(), pattern, pattern], sessionId);
+  const rows = result.rows.map((row) => {
+    const base = {
+      table_name: textCell(row.TABLE_NAME) ?? '',
+      system_table_name: textCell(row.SYSTEM_TABLE_NAME) ?? '',
+      journaled: cell(row.JOURNALED) === 'YES',
+      journal_library: textCell(row.JOURNAL_LIBRARY),
+      journal_name: textCell(row.JOURNAL_NAME),
+      journal_images: cell(row.JOURNAL_IMAGES),
+      omit_entries: cell(row.OMIT_JOURNAL_ENTRY),
+      journal_start: textCell(row.JOURNAL_START_TIMESTAMP),
+      has_primary_key: Number(row.PRIMARY_KEYS ?? 0) > 0,
+    };
+    return { ...base, needs_attention: journalNeedsAttention(base) };
+  });
+
+  if (rows.length > limit) {
+    return { rows: rows.slice(0, limit), truncated: true };
+  }
+  return { rows, truncated: false };
 }

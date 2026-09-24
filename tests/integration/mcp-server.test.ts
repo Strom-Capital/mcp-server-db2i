@@ -113,6 +113,8 @@ describe('MCP Server Integration', () => {
       expect(toolNames).toContain('validate_query');
       expect(toolNames).toContain('get_object_ddl');
       expect(toolNames).toContain('get_related_objects');
+      expect(toolNames).toContain('get_journal_info');
+      expect(toolNames).toContain('profile_table');
     });
 
     it('should have correct metadata for execute_query tool', async () => {

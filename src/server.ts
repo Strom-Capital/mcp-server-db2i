@@ -26,10 +26,12 @@ import {
   getTableConstraintsTool,
 } from './tools/metadata.js';
 import {
+  getJournalInfoTool,
   getObjectDdlTool,
   getRelatedObjectsTool,
   validateQueryTool,
 } from './tools/sqlServices.js';
+import { profileTableTool } from './tools/profile.js';
 import { getBusinessContextTool } from './customTools/context.js';
 import { bindCustomToolArgs, executeCustomTool } from './customTools/execute.js';
 import { getCustomTools, type StoredTool } from './customTools/registry.js';
@@ -37,6 +39,7 @@ import type { LoadedCustomTools } from './customTools/loader.js';
 import { getSessionManager } from './transports/sessionManager.js';
 import { inputSchemaFor } from './customTools/schema.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
+import { MAX_COMPUTED_COLUMNS } from './db/profile.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { writeAudit, type AuditCall } from './utils/auditLog.js';
 import { formatToolText } from './utils/formatResult.js';
@@ -229,6 +232,57 @@ const relatedObjectsOutputSchema = z.object({
   count: z.number().int().optional(),
 });
 
+const journalInfoOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  schema: z.string().optional(),
+  data: z.array(z.object({
+    table_name: z.string(),
+    system_table_name: z.string(),
+    journaled: z.boolean(),
+    journal_library: z.string().nullable(),
+    journal_name: z.string().nullable(),
+    journal_images: z.string().nullable(),
+    omit_entries: z.string().nullable(),
+    journal_start: z.string().nullable(),
+    has_primary_key: z.boolean(),
+    needs_attention: z.boolean(),
+  })).optional(),
+  count: z.number().int().optional(),
+  needsAttention: z.number().int().optional(),
+  truncated: z.boolean().optional(),
+});
+
+const profileTableOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  schema: z.string().optional(),
+  table: z.string().optional(),
+  mode: z.enum(['stored', 'computed']).optional(),
+  table_stats: z.object({
+    number_rows: z.number().nullable(),
+    number_deleted_rows: z.number().nullable(),
+    data_size: z.number().nullable(),
+    last_change: z.string().nullable(),
+    last_used: z.string().nullable(),
+  }).nullable().optional(),
+  computed_rows: z.number().nullable().optional(),
+  data: z.array(z.object({
+    column_name: z.string(),
+    data_type: z.string(),
+    source: z.enum(['stored', 'computed', 'none']),
+    distinct_values: z.number().nullable(),
+    null_count: z.number().nullable(),
+    low: z.string().nullable(),
+    high: z.string().nullable(),
+    statistics_updated: z.string().nullable().optional(),
+    masked: z.enum(['redact', 'last4']).optional(),
+  })).optional(),
+  count: z.number().int().optional(),
+  truncated: z.boolean().optional(),
+  sql: z.string().optional(),
+});
+
 const businessContextOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
@@ -266,6 +320,8 @@ interface ToolAudit<TArgs> {
   tool: string;
   /** SQL and arguments to record. Metadata tools pass sql: null and their arguments. */
   audit?: (args: TArgs) => Pick<AuditCall, 'sql' | 'params' | 'args'>;
+  /** SQL the handler built at run time, read from a successful result. */
+  resultSql?: (result: ToolResult) => string | undefined;
 }
 
 /**
@@ -339,7 +395,8 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       };
     }
 
-    recordAudit(audit?.tool, identity, facts, {
+    const builtSql = audit?.resultSql?.(result);
+    recordAudit(audit?.tool, identity, builtSql ? { ...facts, sql: builtSql } : facts, {
       outcome: 'success',
       durationMs,
       rowCount: rowCountOf(result),
@@ -743,6 +800,69 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         'Failed to list related objects',
         sessionContext,
         argsAudit('get_related_objects'),
+      )
+    );
+  }
+
+  if (enabledTools.has('get_journal_info')) {
+    server.registerTool(
+      'get_journal_info',
+      {
+        title: 'Get Journal Info',
+        description: 'List the physical data files in a library with their journal, journal library, journal images, omitted entries, and whether they have a primary key, using QSYS2.OBJECT_STATISTICS. needs_attention is true when a table is not journaled, or has no primary key and does not journal both images, which journal-based replication tools need. Requires IBM i 7.3 Technology Refresh 2 or later.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) to inspect. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "ORDER*" matches tables starting with ORDER'),
+          limit: z.number().int().positive().optional().describe('Maximum rows to return. Capped by QUERY_MAX_LIMIT.'),
+        }),
+        outputSchema: journalInfoOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => getJournalInfoTool({
+          schema: args.schema,
+          filter: args.filter,
+          limit: args.limit,
+          sessionId,
+          defaultSchema: getDefaultSchema(),
+        }),
+        'Failed to read journal info',
+        sessionContext,
+        argsAudit('get_journal_info'),
+      )
+    );
+  }
+
+  if (enabledTools.has('profile_table')) {
+    server.registerTool(
+      'profile_table',
+      {
+        title: 'Profile Table',
+        description: `Profile a table for ETL work: row count, deleted rows, size, and last change from QSYS2.SYSTABLESTAT, plus per-column distinct count, null count, and low and high values. By default column numbers come from stored statistics in QSYS2.SYSCOLUMNSTAT (low and high are the second-lowest and second-highest values), and columns without collected statistics report source "none". Set compute to true to scan the table for exact numbers on up to ${MAX_COMPUTED_COLUMNS} columns. Masked columns keep their counts and return no values.`,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          schema: z.string().optional().describe(`Schema (library) that contains the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          table: z.string().describe('Table name'),
+          compute: z.boolean().optional().describe('Scan the table for exact counts, MIN, and MAX. Slower on large tables. Default false.'),
+          columns: z.array(z.string()).optional().describe(`Columns to profile. Defaults to every column (the first ${MAX_COMPUTED_COLUMNS} when compute is true).`),
+        }),
+        outputSchema: profileTableOutputSchema,
+      },
+      withToolHandler(
+        (args, sessionId) => profileTableTool({
+          schema: args.schema,
+          table: args.table,
+          compute: args.compute,
+          columns: args.columns,
+          sessionId,
+          defaultSchema: getDefaultSchema(),
+        }),
+        'Failed to profile table',
+        sessionContext,
+        {
+          ...argsAudit('profile_table'),
+          resultSql: (result) => (typeof result.sql === 'string' ? result.sql : undefined),
+        },
       )
     );
   }
