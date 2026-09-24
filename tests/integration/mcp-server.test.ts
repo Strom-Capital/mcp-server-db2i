@@ -104,6 +104,8 @@ describe('MCP Server Integration', () => {
       expect(toolNames).toContain('get_business_context');
       expect(toolNames).toContain('list_schemas');
       expect(toolNames).toContain('list_tables');
+      expect(toolNames).toContain('search_tables');
+      expect(toolNames).toContain('search_columns');
       expect(toolNames).toContain('describe_table');
       expect(toolNames).toContain('list_views');
       expect(toolNames).toContain('list_indexes');
@@ -461,6 +463,67 @@ describe('MCP Server Integration', () => {
       expect(mockQuery).toHaveBeenCalledWith(
         expect.any(String),
         expect.arrayContaining(['TESTLIB'])
+      );
+    });
+  });
+
+  describe('search_tables Tool', () => {
+    it('should return tables matching the filter', async () => {
+      mockQuery.mockResolvedValueOnce([
+        { TABLE_SCHEMA: 'MYLIB', TABLE_NAME: 'ORDERS', TABLE_TYPE: 'T', TABLE_TEXT: 'Order lines' },
+      ]);
+
+      const result = await client.callTool({
+        name: 'search_tables',
+        arguments: { filter: 'ORDER*', schema: 'MYLIB' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse((result.content[0] as { type: 'text'; text: string }).text);
+      expect(content.success).toBe(true);
+      expect(content.data).toEqual([
+        { schema_name: 'MYLIB', table_name: 'ORDERS', table_type: 'T', table_text: 'Order lines' },
+      ]);
+      expect(content.truncated).toBe(false);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('QSYS2.SYSTABLES'),
+        expect.arrayContaining(['ORDER%', 'MYLIB'])
+      );
+    });
+  });
+
+  describe('search_columns Tool', () => {
+    it('should return columns matching the filter', async () => {
+      mockQuery.mockResolvedValueOnce([
+        {
+          TABLE_SCHEMA: 'MYLIB',
+          TABLE_NAME: 'ORDERS',
+          COLUMN_NAME: 'ITEMNO',
+          SYSTEM_COLUMN_NAME: 'ITEMNO',
+          DATA_TYPE: 'CHAR',
+          LENGTH: 15,
+          NUMERIC_SCALE: 0,
+          COLUMN_TEXT: 'Item',
+        },
+      ]);
+
+      const result = await client.callTool({
+        name: 'search_columns',
+        arguments: { filter: 'ITEMNO', schema: 'MYLIB' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBeUndefined();
+      const content = JSON.parse((result.content[0] as { type: 'text'; text: string }).text);
+      expect(content.success).toBe(true);
+      expect(content.data[0]).toMatchObject({
+        schema_name: 'MYLIB',
+        table_name: 'ORDERS',
+        column_name: 'ITEMNO',
+        column_text: 'Item',
+      });
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('QSYS2.SYSCOLUMNS'),
+        expect.arrayContaining(['%ITEMNO%', 'MYLIB'])
       );
     });
   });

@@ -713,6 +713,13 @@ describe('Config Module', () => {
       expect(tools).toHaveLength(TOOL_NAMES.length - 1);
     });
 
+    it('should drop search_columns when it is denylisted', () => {
+      process.env.MCP_TOOLS_DISABLED = 'search_columns';
+      const tools = getEnabledTools();
+      expect(tools).not.toContain('search_columns');
+      expect(tools).toContain('search_tables');
+    });
+
     it('should apply the denylist after the allowlist', () => {
       process.env.MCP_TOOLS_ENABLED = 'execute_query,list_tables';
       process.env.MCP_TOOLS_DISABLED = 'execute_query';

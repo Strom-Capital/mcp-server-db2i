@@ -81,7 +81,7 @@ DB2I_PASSWORD=your-password
 | `MCP_TOOLS_ENABLED` | - | Comma-separated allowlist. If set, only these tools are registered |
 | `MCP_TOOLS_DISABLED` | - | Comma-separated denylist, applied after the allowlist |
 
-Valid built-in names: `execute_query`, `list_schemas`, `list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`, `validate_query`, `get_object_ddl`, `get_related_objects`, `get_business_context`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
+Valid built-in names: `execute_query`, `list_schemas`, `list_tables`, `search_tables`, `search_columns`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`, `validate_query`, `get_object_ddl`, `get_related_objects`, `get_business_context`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
 
 When [business SQL tools](custom-tools.md) are loaded, the same variables also accept a custom tool name or `toolset:<name>`. A toolset selector matches only custom tools in that group. `toolset:sales` does not register `execute_query`.
 
@@ -260,7 +260,7 @@ Without a default schema, metadata tools require a `schema` argument, and an unq
 
 ## Schema Allowlist
 
-`QUERY_ALLOWED_SCHEMAS` limits which libraries `execute_query`, `validate_query`, `get_object_ddl`, `get_related_objects`, and business SQL tools may reference. It is off when unset or empty. It is read from the server environment only, so a client cannot widen it by choosing a different schema at `/auth`. `get_related_objects` omits dependents whose schema is outside the list. A business SQL tool that names a library outside the list stops the server at startup.
+`QUERY_ALLOWED_SCHEMAS` limits which libraries `execute_query`, `validate_query`, `get_object_ddl`, `get_related_objects`, `search_tables`, `search_columns`, and business SQL tools may reference. It is off when unset or empty. It is read from the server environment only, so a client cannot widen it by choosing a different schema at `/auth`. `get_related_objects` omits dependents whose schema is outside the list. A business SQL tool that names a library outside the list stops the server at startup. `search_tables` and `search_columns` only read libraries in the list, and reject a `schema` argument outside it.
 
 `QUERY_PARSE_CHECK` controls the `QSYS2.PARSE_STATEMENT` check inside `execute_query` and inside business SQL tools. It is on unless set to `false` or `0`. A statement that does not parse, or that is not a query, is rejected. If the function is not installed, the query is rejected until the check is turned off. Business tools cache the parse result after the first call.
 
@@ -268,7 +268,7 @@ The check is one extra round trip before the query. The added time is roughly fi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `QUERY_ALLOWED_SCHEMAS` | - | Comma-separated libraries `execute_query`, the SQL service tools, and business SQL tools may use. Case-insensitive |
+| `QUERY_ALLOWED_SCHEMAS` | - | Comma-separated libraries `execute_query`, the SQL service tools, `search_tables`, `search_columns`, and business SQL tools may use. Case-insensitive |
 | `QUERY_PARSE_CHECK` | on | `false` or `0` skips the `PARSE_STATEMENT` check in `execute_query` and business SQL tools |
 
 ```env
@@ -281,7 +281,8 @@ When the list is set:
 - Catalog libraries such as `QSYS2` and `SYSIBM` are not included automatically. Add them if clients should query the catalog.
 - A query the server cannot parse is rejected. That includes system naming (`LIB/FILE`) and `TABLE(...)` table functions.
 - Names defined in a `WITH` clause are not treated as tables.
-- The schema and table browsing tools (`list_schemas`, `list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`) are not affected. They run fixed catalog queries.
+- `search_tables` and `search_columns` search only the libraries in the list. Without a list, they skip system libraries (`Q*` and `SYS*`) unless `include_system` is true.
+- The other schema and table browsing tools (`list_schemas`, `list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`) are not affected. They run fixed catalog queries.
 
 A view or alias inside an allowed library can still read other libraries. Give the IBM i user profile access only to the libraries in the list. See [Security](security.md#schema-allowlist).
 
