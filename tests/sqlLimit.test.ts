@@ -48,4 +48,28 @@ describe('applySqlRowLimit', () => {
       applySqlRowLimit('SELECT * FROM MYLIB.USERS FETCH FIRST 10 ROWS ONLY', 1000)
     ).toBe('SELECT * FROM MYLIB.USERS FETCH FIRST 10 ROWS ONLY');
   });
+
+  it('puts the cap on its own line after a trailing -- comment', () => {
+    expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS -- open orders', 50)).toBe(
+      'SELECT * FROM MYLIB.ORDERS -- open orders\nFETCH FIRST 50 ROWS ONLY'
+    );
+  });
+
+  it('clamps a trailing FETCH NEXT', () => {
+    expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS FETCH NEXT 5000 ROWS ONLY', 100)).toBe(
+      'SELECT * FROM MYLIB.ORDERS FETCH FIRST 100 ROWS ONLY'
+    );
+  });
+
+  it('treats FETCH FIRST ROW ONLY as one row', () => {
+    expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS FETCH FIRST ROW ONLY', 100)).toBe(
+      'SELECT * FROM MYLIB.ORDERS FETCH FIRST 1 ROWS ONLY'
+    );
+  });
+
+  it('clamps LIMIT and keeps its OFFSET', () => {
+    expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS LIMIT 5000 OFFSET 20', 100)).toBe(
+      'SELECT * FROM MYLIB.ORDERS LIMIT 100 OFFSET 20'
+    );
+  });
 });
