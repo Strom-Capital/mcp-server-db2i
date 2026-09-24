@@ -96,12 +96,13 @@ jobs:
       - name: Publish to MCP Registry
         run: |
           # npm can return 404 for a version that was just published. The registry
-          # treats that as a hard failure, so retry for a couple of minutes.
-          for attempt in 1 2 3 4 5 6; do
+          # treats that as a hard failure, so retry for up to 10 minutes. The job
+          # timeout is 15 minutes and the earlier steps need a few of them.
+          for attempt in $(seq 1 20); do
             if ./mcp-publisher publish; then
               exit 0
             fi
-            echo "Registry publish failed (attempt ${attempt}/6). Waiting 15s for npm."
-            sleep 15
+            echo "Registry publish failed (attempt ${attempt}/20). Waiting 30s for npm."
+            sleep 30
           done
           exit 1
