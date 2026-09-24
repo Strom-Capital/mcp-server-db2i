@@ -18,6 +18,8 @@ import {
   getResponseFormat,
   getAllowedSchemas,
   isQueryParseCheckEnabled,
+  isCustomToolsWatchEnabled,
+  assertCustomToolsWatch,
   getAuthAllowedDbHosts,
   hostnameOf,
   jdbcConnectionSecurity,
@@ -844,6 +846,32 @@ describe('Config Module', () => {
       expect(isQueryParseCheckEnabled()).toBe(true);
       process.env.QUERY_PARSE_CHECK = 'no';
       expect(isQueryParseCheckEnabled()).toBe(true);
+    });
+  });
+
+  describe('isCustomToolsWatchEnabled', () => {
+    it('should be off unless set to true or 1', () => {
+      delete process.env.MCP_CUSTOM_TOOLS_WATCH;
+      expect(isCustomToolsWatchEnabled()).toBe(false);
+      process.env.MCP_CUSTOM_TOOLS_WATCH = 'false';
+      expect(isCustomToolsWatchEnabled()).toBe(false);
+      process.env.MCP_CUSTOM_TOOLS_WATCH = 'true';
+      expect(isCustomToolsWatchEnabled()).toBe(true);
+      process.env.MCP_CUSTOM_TOOLS_WATCH = '1';
+      expect(isCustomToolsWatchEnabled()).toBe(true);
+    });
+
+    it('should reject a watch with nothing to watch', () => {
+      process.env.MCP_CUSTOM_TOOLS_WATCH = 'true';
+      delete process.env.MCP_CUSTOM_TOOLS;
+      expect(() => assertCustomToolsWatch()).toThrow(/MCP_CUSTOM_TOOLS_WATCH is set but MCP_CUSTOM_TOOLS is empty/);
+      process.env.MCP_CUSTOM_TOOLS = '   ';
+      expect(() => assertCustomToolsWatch()).toThrow(/nothing to watch/);
+      process.env.MCP_CUSTOM_TOOLS = 'examples/erp-tools';
+      expect(() => assertCustomToolsWatch()).not.toThrow();
+      delete process.env.MCP_CUSTOM_TOOLS_WATCH;
+      delete process.env.MCP_CUSTOM_TOOLS;
+      expect(() => assertCustomToolsWatch()).not.toThrow();
     });
   });
 });

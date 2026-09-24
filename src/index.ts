@@ -28,11 +28,14 @@ import {
   getEnabledTools,
   getResponseFormat,
   jdbcConnectionSecurity,
+  assertCustomToolsWatch,
+  isCustomToolsWatchEnabled,
 } from './config.js';
 import { initializePool, testConnection, closeGlobalPool } from './db/connection.js';
 import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
-import { createServer, SERVER_NAME, SERVER_VERSION } from './server.js';
+import { createServer, pinStdioServer, SERVER_NAME, SERVER_VERSION } from './server.js';
+import { startCustomToolsWatch, stopCustomToolsWatch } from './customTools/watch.js';
 import { parseCliArgs, runValidateTools } from './cli.js';
 import { loadCustomToolsFromEnv } from './customTools/loader.js';
 import { setCustomTools } from './customTools/registry.js';
@@ -50,6 +53,7 @@ async function main(): Promise<void> {
    */
   async function shutdown(signal: string): Promise<void> {
     logger.info(`Received ${signal}, shutting down...`);
+    stopCustomToolsWatch();
 
     const shutdownPromises: Promise<void>[] = [];
 
@@ -107,6 +111,7 @@ async function main(): Promise<void> {
 
     // Validates tool files and MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
     const customTools = loadCustomToolsFromEnv();
+    assertCustomToolsWatch();
     setCustomTools(customTools);
     const enabledTools = getEnabledTools(customTools.tools);
     if (enabledTools.length === 0) {
@@ -121,6 +126,10 @@ async function main(): Promise<void> {
       },
       'Tool configuration loaded'
     );
+    if (isCustomToolsWatchEnabled()) {
+      startCustomToolsWatch();
+      logger.info('Watching custom tool files for changes');
+    }
 
     // Check which transports are enabled
     const stdioEnabled = isStdioEnabled();
@@ -145,7 +154,16 @@ async function main(): Promise<void> {
       }
 
       // serveStdio pins one server per connection and speaks both 2025 and 2026-07-28
-      stdioServer = serveStdio(() => createServer());
+      stdioServer = serveStdio(() => {
+        const server = createServer();
+        const release = pinStdioServer(server);
+        const close = server.close.bind(server);
+        server.close = () => {
+          release();
+          return close();
+        };
+        return server;
+      });
       logger.info(
         { name: SERVER_NAME, version: SERVER_VERSION },
         'MCP server connected via stdio transport'

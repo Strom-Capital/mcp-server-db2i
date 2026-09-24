@@ -10,7 +10,7 @@
  */
 
 import { createRequire } from 'module';
-import { McpServer } from '@modelcontextprotocol/server';
+import { McpServer, type RegisteredTool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { getEnabledTools, getResponseFormat, type DB2iConfig } from './config.js';
@@ -32,7 +32,9 @@ import {
 } from './tools/sqlServices.js';
 import { getBusinessContextTool } from './customTools/context.js';
 import { executeCustomTool } from './customTools/execute.js';
-import { getCustomTools } from './customTools/registry.js';
+import { getCustomTools, type StoredTool } from './customTools/registry.js';
+import type { LoadedCustomTools } from './customTools/loader.js';
+import { getSessionManager } from './transports/sessionManager.js';
 import { inputSchemaFor } from './customTools/schema.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
@@ -678,30 +680,150 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     );
   }
 
+  const customRegistrations = new Map<string, LiveCustomTool>();
   for (const tool of loadedTools.tools) {
     if (!enabledTools.has(tool.name)) {
       continue;
     }
-
-    server.registerTool(
-      tool.name,
-      {
-        title: tool.title,
-        description: tool.description,
-        annotations: READ_ONLY_ANNOTATIONS,
-        inputSchema: inputSchemaFor(tool.parameters),
-        outputSchema: queryOutputSchema,
-      },
-      withToolHandler(
-        (args, sessionId) => executeCustomTool(tool, args, {
-          sessionId,
-          defaultSchema: getDefaultSchema(),
-        }),
-        'Query failed',
-        sessionContext
-      )
-    );
+    customRegistrations.set(tool.name, registerCustomTool(server, tool, sessionContext, getDefaultSchema));
   }
+  rememberLiveCustomTools({
+    server,
+    tools: customRegistrations,
+    sessionContext,
+    getDefaultSchema,
+  });
 
   return server;
+}
+
+interface LiveCustomTool {
+  registered: RegisteredTool;
+  signature: string;
+}
+
+interface LiveCustomTools {
+  server: McpServer;
+  tools: Map<string, LiveCustomTool>;
+  sessionContext?: SessionContext;
+  getDefaultSchema: () => string | undefined;
+}
+
+const liveCustomTools = new WeakMap<McpServer, LiveCustomTools>();
+const stdioServers = new Set<McpServer>();
+
+function rememberLiveCustomTools(live: LiveCustomTools): void {
+  liveCustomTools.set(live.server, live);
+}
+
+/**
+ * Stdio pins one server for the connection. Drop it when that connection closes.
+ */
+export function pinStdioServer(server: McpServer): () => void {
+  stdioServers.add(server);
+  return () => {
+    stdioServers.delete(server);
+  };
+}
+
+/** Registered custom tool on a live server, for tests. */
+export function liveCustomTool(server: McpServer, name: string): RegisteredTool | undefined {
+  return liveCustomTools.get(server)?.tools.get(name)?.registered;
+}
+
+/**
+ * Apply a validated tool set to servers that outlive a single request.
+ */
+export function syncLiveCustomTools(loaded: LoadedCustomTools, enabled: ReadonlySet<string>): void {
+  const servers = new Set<McpServer>(stdioServers);
+  for (const server of getSessionManager().listServers()) {
+    servers.add(server);
+  }
+  for (const server of servers) {
+    const live = liveCustomTools.get(server);
+    if (!live) {
+      continue;
+    }
+    syncOneServer(live, loaded, enabled);
+    server.sendToolListChanged();
+  }
+}
+
+function syncOneServer(
+  live: LiveCustomTools,
+  loaded: LoadedCustomTools,
+  enabled: ReadonlySet<string>,
+): void {
+  const next = new Map(loaded.tools.filter((tool) => enabled.has(tool.name)).map((tool) => [tool.name, tool]));
+
+  for (const [name, current] of live.tools) {
+    if (!next.has(name)) {
+      current.registered.remove();
+      live.tools.delete(name);
+    }
+  }
+
+  for (const [name, tool] of next) {
+    const signature = toolSignature(tool);
+    const current = live.tools.get(name);
+    if (!current) {
+      live.tools.set(name, registerCustomTool(live.server, tool, live.sessionContext, live.getDefaultSchema));
+      continue;
+    }
+    if (current.signature === signature) {
+      continue;
+    }
+    current.registered.update({
+      title: tool.title,
+      description: tool.description,
+      paramsSchema: inputSchemaFor(tool.parameters),
+      callback: customToolCallback(tool, live.sessionContext, live.getDefaultSchema),
+    });
+    current.signature = signature;
+  }
+}
+
+function registerCustomTool(
+  server: McpServer,
+  tool: StoredTool,
+  sessionContext: SessionContext | undefined,
+  getDefaultSchema: () => string | undefined,
+): LiveCustomTool {
+  const registered = server.registerTool(
+    tool.name,
+    {
+      title: tool.title,
+      description: tool.description,
+      annotations: READ_ONLY_ANNOTATIONS,
+      inputSchema: inputSchemaFor(tool.parameters),
+      outputSchema: queryOutputSchema,
+    },
+    customToolCallback(tool, sessionContext, getDefaultSchema),
+  );
+  return { registered, signature: toolSignature(tool) };
+}
+
+function customToolCallback(
+  tool: StoredTool,
+  sessionContext: SessionContext | undefined,
+  getDefaultSchema: () => string | undefined,
+) {
+  return withToolHandler(
+    (args: unknown, sessionId) => executeCustomTool(tool, args as Record<string, unknown>, {
+      sessionId,
+      defaultSchema: getDefaultSchema(),
+    }),
+    'Query failed',
+    sessionContext,
+  );
+}
+
+function toolSignature(tool: StoredTool): string {
+  return JSON.stringify({
+    title: tool.title,
+    description: tool.description,
+    parameters: tool.parameters,
+    sql: tool.sql,
+    maxRows: tool.maxRows ?? null,
+  });
 }

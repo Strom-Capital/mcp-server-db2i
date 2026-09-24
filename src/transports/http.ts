@@ -48,6 +48,14 @@ const log = createChildLogger({ component: 'http-transport' });
 let mcpHttpHandler: McpHttpHandler | undefined;
 
 /**
+ * Tell HTTP clients that subscribed to tool list changes to drop their cache.
+ * No-op until the HTTP handler exists, and when nobody is listening.
+ */
+export function notifyCustomToolsChanged(): void {
+  mcpHttpHandler?.notify.toolsChanged();
+}
+
+/**
  * Validate auth request body
  */
 function validateAuthRequest(body: unknown): { valid: boolean; request?: AuthRequest; error?: string } {

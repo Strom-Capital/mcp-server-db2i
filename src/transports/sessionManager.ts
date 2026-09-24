@@ -119,6 +119,20 @@ class SessionManager {
   }
 
   /**
+   * MCP servers for sessions that are still open.
+   * A tool-file reload updates these in place.
+   */
+  listServers(): McpServer[] {
+    const servers: McpServer[] = [];
+    for (const session of this.sessions.values()) {
+      if (!session.isClosing) {
+        servers.push(session.server);
+      }
+    }
+    return servers;
+  }
+
+  /**
    * Get a session by ID
    */
   getSession(sessionId: string): McpSession | undefined {
