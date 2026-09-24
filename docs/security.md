@@ -4,7 +4,7 @@ This guide covers security features and best practices for mcp-server-db2i.
 
 ## Security Features
 
-- **Read-only access**: Only SELECT statements are permitted, and the JDBC driver is opened with `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`
+- **Read-only access**: Only SELECT statements are permitted, and the driver connection is opened read only (JDBC `access=read only`, ODBC `CONNTYPE=2`) unless `DB2I_JDBC_OPTIONS` sets `access` or `DB2I_ODBC_OPTIONS` sets `CONNTYPE`
 - **No credentials in code**: All sensitive data via environment variables or file-based secrets
 - **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
 - **Result limiting**: Default limit of 1000 rows, configurable max limit (default: 10000)
@@ -149,7 +149,7 @@ Additional regex patterns block:
 
 Before the keyword scan, string literals, comments, and the quotes around delimited identifiers are removed. A literal or a quoted name earlier in the statement cannot hide a later call. Words that appear only inside a literal or a comment are ignored.
 
-The JDBC connection is a second layer. It uses `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`. An explicit override is logged at startup.
+The driver connection is a second layer. JT400 uses `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`; the ODBC driver uses `CONNTYPE=2` unless `DB2I_ODBC_OPTIONS` sets `CONNTYPE`. An explicit override is logged at startup.
 
 ### Statement parse check
 
@@ -300,9 +300,9 @@ LOG_LEVEL=info
 
 - [ ] Use Docker secrets or external secret management
 - [ ] Enable TLS for HTTP transport
-- [ ] Set `secure=true` in `DB2I_JDBC_OPTIONS` after the IBM i host servers are configured for SSL
+- [ ] Set `secure=true` in `DB2I_JDBC_OPTIONS` (or `SSL=1` in `DB2I_ODBC_OPTIONS`) after the IBM i host servers are configured for SSL
 - [ ] Set `MCP_ALLOWED_HOSTS` to the public hostname when the HTTP server is not loopback-only
-- [ ] Leave `access` unset so the JDBC connection stays `read only`, or treat an explicit `access` as a deliberate override
+- [ ] Leave `access` (JDBC) and `CONNTYPE` (ODBC) unset so the connection stays read only, or treat an explicit value as a deliberate override
 - [ ] Set appropriate rate limits
 - [ ] Configure query limits
 - [ ] Disable tools clients don't need (e.g. `MCP_TOOLS_DISABLED=execute_query`)

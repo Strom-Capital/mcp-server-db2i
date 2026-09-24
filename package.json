@@ -28,6 +28,7 @@
     "iseries",
     "ibm-i",
     "jt400",
+    "odbc",
     "jdbc",
     "http",
     "rest"
@@ -76,5 +77,8 @@
     "dist",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "optionalDependencies": {
+    "odbc": "^2.6.0"
+  }
 }

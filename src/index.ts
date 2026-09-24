@@ -27,7 +27,7 @@ import {
   getHttpConfig,
   getEnabledTools,
   getResponseFormat,
-  jdbcConnectionSecurity,
+  connectionSecurity,
   assertCustomToolsWatch,
   assertExtendedMetadataAllowsMasking,
   isCustomToolsWatchEnabled,
@@ -100,16 +100,17 @@ async function main(): Promise<void> {
     // Initialize rate limiter (logs its own config)
     getRateLimiter();
 
-    const jdbcSecurity = jdbcConnectionSecurity();
-    if (jdbcSecurity.accessOverride !== undefined) {
+    const dbSecurity = connectionSecurity();
+    logger.info({ driver: dbSecurity.driver }, 'Database driver selected');
+    if (dbSecurity.accessOverride !== undefined) {
       logger.warn(
-        { access: jdbcSecurity.accessOverride },
-        'DB2I_JDBC_OPTIONS sets access and overrides the read only default'
+        { access: dbSecurity.accessOverride },
+        `${dbSecurity.optionsVariable} sets ${dbSecurity.driver === 'odbc' ? 'CONNTYPE' : 'access'} and overrides the read only default`
       );
     }
-    if (!jdbcSecurity.secure) {
+    if (!dbSecurity.secure) {
       logger.warn(
-        'Database connection is not using TLS. Set secure=true in DB2I_JDBC_OPTIONS after the IBM i host servers are configured for SSL.'
+        `Database connection is not using TLS. Set ${dbSecurity.secureHint} in ${dbSecurity.optionsVariable} after the IBM i host servers are configured for SSL.`
       );
     }
 

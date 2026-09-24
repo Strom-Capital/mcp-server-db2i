@@ -1,6 +1,11 @@
 /**
  * Configuration module for IBM DB2i MCP Server
- * Handles environment variables and JDBC connection options
+ * Handles environment variables and the JDBC / ODBC connection options
+ *
+ * Database driver:
+ * - DB2I_DRIVER: 'jt400' | 'odbc' (default: 'jt400')
+ * - DB2I_JDBC_OPTIONS: extra JT400 properties, `key=value;key=value`
+ * - DB2I_ODBC_OPTIONS: extra IBM i Access ODBC keywords, `KEY=value;KEY=value`
  *
  * Supports file-based secrets (e.g., Docker secrets) via *_FILE environment variables.
  * File-based secrets take priority over plain environment variables.
@@ -25,6 +30,13 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 
+/**
+ * Database drivers. `jt400` is the JDBC bridge (needs a JRE). `odbc` uses the
+ * npm `odbc` package with the IBM i Access ODBC driver and needs no Java.
+ */
+export const DB_DRIVERS = ['jt400', 'odbc'] as const;
+export type DbDriverName = (typeof DB_DRIVERS)[number];
+
 export interface DB2iConfig {
   hostname: string;
   port: number;
@@ -32,7 +44,30 @@ export interface DB2iConfig {
   password: string;
   database: string;
   schema: string;
+  /** Selected by DB2I_DRIVER. Defaults to jt400. */
+  driver: DbDriverName;
+  /** Extra JT400 properties from DB2I_JDBC_OPTIONS. Used when driver is jt400. */
   jdbcOptions: Record<string, string>;
+  /** Extra ODBC connection keywords from DB2I_ODBC_OPTIONS. Used when driver is odbc. */
+  odbcOptions: Record<string, string>;
+}
+
+/**
+ * Get the database driver from DB2I_DRIVER.
+ * Defaults to jt400 so existing installs keep working.
+ */
+export function getDbDriver(): DbDriverName {
+  const raw = process.env.DB2I_DRIVER?.trim();
+  if (!raw) {
+    return 'jt400';
+  }
+  const value = raw.toLowerCase();
+  if ((DB_DRIVERS as readonly string[]).includes(value)) {
+    return value as DbDriverName;
+  }
+  throw new Error(
+    `Invalid DB2I_DRIVER value: "${raw}". Must be one of: ${DB_DRIVERS.join(', ')}`
+  );
 }
 
 /**
@@ -120,8 +155,9 @@ export function validateHostname(hostname: string): boolean {
 }
 
 /**
- * Parse JDBC options from a semicolon-separated string
- * Format: "key1=value1;key2=value2"
+ * Parse driver options from a semicolon-separated string
+ * Format: "key1=value1;key2=value2". Used for both DB2I_JDBC_OPTIONS and
+ * DB2I_ODBC_OPTIONS.
  */
 function parseJdbcOptions(optionsString: string | undefined): Record<string, string> {
   if (!optionsString) {
@@ -155,6 +191,31 @@ function jdbcOption(options: Record<string, string>, name: string): string | und
 }
 
 /**
+ * IBM i Access ODBC keywords have a short form and a long alias
+ * (NAM / Naming, CONNTYPE / ConnectionType, ...). Both are case-insensitive.
+ */
+const ODBC_KEYWORD_ALIASES: Record<string, readonly string[]> = {
+  driver: ['driver'],
+  dsn: ['dsn'],
+  nam: ['nam', 'naming'],
+  dft: ['dft', 'dateformat'],
+  conntype: ['conntype', 'connectiontype'],
+  dbq: ['dbq', 'defaultlibraries'],
+  trimchar: ['trimchar', 'trimcharfields'],
+  ssl: ['ssl'],
+};
+
+/**
+ * Look up an ODBC keyword by its canonical short name, accepting the long
+ * alias and ignoring case.
+ */
+function odbcOption(options: Record<string, string>, name: string): string | undefined {
+  const names = ODBC_KEYWORD_ALIASES[name] ?? [name];
+  const key = Object.keys(options).find((candidate) => names.includes(candidate.toLowerCase()));
+  return key === undefined ? undefined : options[key];
+}
+
+/**
  * Security-relevant JDBC settings derived from DB2I_JDBC_OPTIONS.
  * `access` is unset when the driver default of read only should apply.
  */
@@ -170,11 +231,61 @@ export function jdbcConnectionSecurity(
 }
 
 /**
+ * Security-relevant ODBC settings derived from DB2I_ODBC_OPTIONS.
+ * `CONNTYPE` is unset when the default of read only (CONNTYPE=2) applies.
+ * `SSL=1` encrypts the whole connection; the driver default encrypts only the password.
+ */
+export function odbcConnectionSecurity(
+  options: Record<string, string> = parseJdbcOptions(process.env.DB2I_ODBC_OPTIONS)
+): { accessOverride?: string; secure: boolean } {
+  return {
+    accessOverride: odbcOption(options, 'conntype'),
+    secure: odbcOption(options, 'ssl')?.trim() === '1',
+  };
+}
+
+export interface ConnectionSecurity {
+  driver: DbDriverName;
+  /** The variable that carries driver options, for log messages. */
+  optionsVariable: 'DB2I_JDBC_OPTIONS' | 'DB2I_ODBC_OPTIONS';
+  /** The operator's explicit access setting, when it overrides the read-only default. */
+  accessOverride?: string;
+  /** Whether the database connection is encrypted. */
+  secure: boolean;
+  /** What to set to turn encryption on, for log messages. */
+  secureHint: string;
+}
+
+/**
+ * Security-relevant settings of the selected driver, for the startup warnings.
+ */
+export function connectionSecurity(driver: DbDriverName = getDbDriver()): ConnectionSecurity {
+  if (driver === 'odbc') {
+    return {
+      driver,
+      optionsVariable: 'DB2I_ODBC_OPTIONS',
+      ...odbcConnectionSecurity(),
+      secureHint: 'SSL=1',
+    };
+  }
+  return {
+    driver,
+    optionsVariable: 'DB2I_JDBC_OPTIONS',
+    ...jdbcConnectionSecurity(),
+    secureHint: 'secure=true',
+  };
+}
+
+/**
  * JT400 `extended metadata=true` replaces column names with LABEL ON text.
  * Masking matches result keys, so that option would let a value through.
+ * The ODBC driver reports column names, so the check only applies to jt400.
  */
-export function assertExtendedMetadataAllowsMasking(maskingLoaded: boolean): void {
-  if (!maskingLoaded) {
+export function assertExtendedMetadataAllowsMasking(
+  maskingLoaded: boolean,
+  driver: DbDriverName = getDbDriver()
+): void {
+  if (!maskingLoaded || driver !== 'jt400') {
     return;
   }
   const value = jdbcOption(parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS), 'extended metadata');
@@ -225,7 +336,9 @@ export function loadConfig(): DB2iConfig {
     password,
     database: process.env.DB2I_DATABASE || '*LOCAL',
     schema: process.env.DB2I_SCHEMA || '',
+    driver: getDbDriver(),
     jdbcOptions: parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS),
+    odbcOptions: parseJdbcOptions(process.env.DB2I_ODBC_OPTIONS),
   };
 }
 
@@ -296,6 +409,86 @@ export function buildConnectionConfig(config: DB2iConfig, options?: BuildConnect
   }
 
   return connectionConfig;
+}
+
+/**
+ * Build the IBM i Access ODBC connection keywords for the `odbc` package.
+ * Mirrors buildConnectionConfig: the same defaults, the same override rules.
+ *
+ * DB2I_PORT and DB2I_DATABASE are not applied, matching the JDBC builder. The
+ * ODBC driver talks to the host servers, not the DRDA port.
+ */
+export function buildOdbcConnectionConfig(
+  config: DB2iConfig,
+  options?: BuildConnectionOptions
+): Record<string, string> {
+  const keywords: Record<string, string> = {};
+  const extra = config.odbcOptions;
+
+  // The operator may point at a DSN or another driver name instead.
+  if (odbcOption(extra, 'driver') === undefined && odbcOption(extra, 'dsn') === undefined) {
+    keywords['DRIVER'] = 'IBM i Access ODBC Driver';
+  }
+  keywords['SYSTEM'] = config.hostname;
+  keywords['UID'] = config.username;
+  keywords['PWD'] = config.password;
+
+  // System naming: `/` stays the library separator, like naming=system on JDBC.
+  if (odbcOption(extra, 'nam') === undefined) {
+    keywords['NAM'] = '1';
+  }
+  // ISO dates, like `date format=iso` on JDBC.
+  if (odbcOption(extra, 'dft') === undefined) {
+    keywords['DFT'] = '5';
+  }
+  // JT400 trims CHAR padding by default; the ODBC driver does not.
+  if (odbcOption(extra, 'trimchar') === undefined) {
+    keywords['TRIMCHAR'] = '1';
+  }
+
+  const readOnly = options?.readOnly !== false;
+
+  // Read-only at the driver (CONNTYPE=2, SELECT only) unless the operator set
+  // CONNTYPE explicitly. The GENERATE_SQL connection passes readOnly: false
+  // and drops CONNTYPE, so the driver default (read/write) applies there.
+  if (readOnly && odbcOption(extra, 'conntype') === undefined) {
+    keywords['CONNTYPE'] = '2';
+  }
+
+  // Unqualified names resolve to the configured schema unless the operator
+  // already set a library list.
+  if (config.schema && odbcOption(extra, 'dbq') === undefined) {
+    keywords['DBQ'] = config.schema;
+  }
+
+  // Merge DB2I_ODBC_OPTIONS last so the operator's keywords win.
+  for (const [key, value] of Object.entries(extra)) {
+    if (!readOnly && ODBC_KEYWORD_ALIASES['conntype'].includes(key.toLowerCase())) {
+      continue;
+    }
+    keywords[key] = value;
+  }
+
+  return keywords;
+}
+
+/**
+ * Serialize ODBC keywords into a connection string.
+ * A value containing `;`, `=`, `{` or surrounding spaces is wrapped in braces.
+ * unixODBC cannot escape `}` inside a braced value, so such values are rejected.
+ */
+export function serializeOdbcConnectionString(keywords: Record<string, string>): string {
+  return Object.entries(keywords)
+    .map(([key, value]) => {
+      if (value.includes('}')) {
+        throw new Error(
+          `ODBC connection keyword ${key} contains "}", which cannot be escaped in a connection string`
+        );
+      }
+      const needsBraces = /[;={]/.test(value) || value !== value.trim();
+      return `${key}=${needsBraces ? `{${value}}` : value}`;
+    })
+    .join(';');
 }
 
 /**
@@ -1013,7 +1206,9 @@ export function loadPartialConfig(overrides: {
     password,
     database,
     schema,
+    driver: getDbDriver(),
     jdbcOptions: parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS),
+    odbcOptions: parseJdbcOptions(process.env.DB2I_ODBC_OPTIONS),
   };
 }
 
