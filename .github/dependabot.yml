@@ -20,7 +20,7 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: ci
+      prefix: chore
     groups:
       actions:
         patterns: ["*"]
