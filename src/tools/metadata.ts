@@ -23,6 +23,7 @@ import { applyQueryLimit, getAllowedSchemas, getDefaultSchema, loadConfig } from
 import { annotationFor } from '../customTools/context.js';
 import type { StoredRelation } from '../customTools/loader.js';
 import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
+import { schemaDenied } from './sqlServices.js';
 
 /**
  * Standard success/error result type for metadata tools
@@ -61,6 +62,18 @@ function resolveSchema(inputSchema?: string): string {
   return defaultSchema;
 }
 
+/**
+ * Resolved schema, rejected before any query when it is outside QUERY_ALLOWED_SCHEMAS.
+ */
+function allowedSchema(inputSchema?: string): string {
+  const schema = resolveSchema(inputSchema);
+  const allowed = getAllowedSchemas();
+  if (allowed && !isSchemaAllowed(schema, allowed)) {
+    throw new Error(schemaDenied(schema, allowed));
+  }
+  return schema;
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error occurred';
 }
@@ -73,7 +86,11 @@ export function listSchemasTool(input: { filter?: string; sessionId?: string }):
   schema_name: string;
   schema_text: string | null;
 }>> {
-  return withErrorHandling(() => listSchemas(input.filter, input.sessionId));
+  return withErrorHandling(async () => {
+    const rows = await listSchemas(input.filter, input.sessionId);
+    const allowed = getAllowedSchemas();
+    return allowed ? rows.filter((row) => isSchemaAllowed(row.schema_name, allowed)) : rows;
+  });
 }
 
 // ============================================================================
@@ -87,7 +104,7 @@ export async function listTablesTool(input: { schema?: string; filter?: string; 
   business_description?: string;
 }>> {
   try {
-    const schema = resolveSchema(input.schema);
+    const schema = allowedSchema(input.schema);
     const result = await withErrorHandling(() => listTables(schema, input.filter, input.sessionId));
     if (!result.success) {
       return result;
@@ -131,7 +148,7 @@ export async function describeTableTool(input: { schema?: string; table: string;
   | { success: false; error: string }
 > {
   try {
-    const schema = resolveSchema(input.schema);
+    const schema = allowedSchema(input.schema);
     const result = await withErrorHandling(() => describeTable(schema, input.table, input.sessionId));
     if (!result.success) {
       return result;
@@ -164,7 +181,7 @@ export function listViewsTool(input: { schema?: string; filter?: string; session
   view_text: string | null;
 }>> {
   return withErrorHandling(() => {
-    const schema = resolveSchema(input.schema);
+    const schema = allowedSchema(input.schema);
     return listViews(schema, input.filter, input.sessionId);
   });
 }
@@ -180,7 +197,7 @@ export function listIndexesTool(input: { schema?: string; table: string; session
   column_names: string;
 }>> {
   return withErrorHandling(() => {
-    const schema = resolveSchema(input.schema);
+    const schema = allowedSchema(input.schema);
     return listIndexes(schema, input.table, input.sessionId);
   });
 }
@@ -199,7 +216,7 @@ export function getTableConstraintsTool(input: { schema?: string; table: string;
   referenced_column_name: string | null;
 }>> {
   return withErrorHandling(() => {
-    const schema = resolveSchema(input.schema);
+    const schema = allowedSchema(input.schema);
     return getTableConstraints(schema, input.table, input.sessionId);
   });
 }
@@ -219,10 +236,6 @@ export interface CatalogSearchInput {
 type SearchResult<T> =
   | { success: true; data: T[]; count: number; truncated: boolean }
   | { success: false; error: string };
-
-function schemaDenied(schema: string, allowed: string[]): string {
-  return `Schema ${schema.trim().toUpperCase()} is not in QUERY_ALLOWED_SCHEMAS (${allowed.join(', ')}).`;
-}
 
 /**
  * A filter of only * and % would match the whole catalog.

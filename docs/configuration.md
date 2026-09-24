@@ -266,7 +266,7 @@ Without a default schema, metadata tools require a `schema` argument, and an unq
 
 ## Schema Allowlist
 
-`QUERY_ALLOWED_SCHEMAS` limits which libraries `execute_query`, `validate_query`, `get_object_ddl`, `get_related_objects`, `get_journal_info`, `profile_table`, `search_tables`, `search_columns`, and business SQL tools may reference. It is off when unset or empty. It is read from the server environment only, so a client cannot widen it by choosing a different schema at `/auth`. `get_related_objects` omits dependents whose schema is outside the list. A business SQL tool that names a library outside the list stops the server at startup. `search_tables` and `search_columns` only read libraries in the list, and reject a `schema` argument outside it.
+`QUERY_ALLOWED_SCHEMAS` limits which libraries the built-in tools, business SQL tools, resources, and prompts may query or describe on IBM i. `get_business_context` and `db2i://business-context` only return YAML annotations, which the list does not filter. It is off when unset or empty. It is read from the server environment only, so a client cannot widen it by choosing a different schema at `/auth`. `get_related_objects` omits dependents whose schema is outside the list. A business SQL tool that names a library outside the list stops the server at startup. `search_tables` and `search_columns` only read libraries in the list, and reject a `schema` argument outside it.
 
 `QUERY_PARSE_CHECK` controls the `QSYS2.PARSE_STATEMENT` check inside `execute_query` and inside business SQL tools. It is on unless set to `false` or `0`. A statement that does not parse, or that is not a query, is rejected. If the function is not installed, the query is rejected until the check is turned off. Business tools cache the parse result after the first call.
 
@@ -274,7 +274,7 @@ The check is one extra round trip before the query. The added time is roughly fi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `QUERY_ALLOWED_SCHEMAS` | - | Comma-separated libraries `execute_query`, the SQL service tools, `profile_table`, `search_tables`, `search_columns`, and business SQL tools may use. Case-insensitive |
+| `QUERY_ALLOWED_SCHEMAS` | - | Comma-separated libraries that the tools, business SQL tools, resources, and prompts may use. Case-insensitive |
 | `QUERY_PARSE_CHECK` | on | `false` or `0` skips the `PARSE_STATEMENT` check in `execute_query` and business SQL tools |
 
 ```env
@@ -289,7 +289,7 @@ When the list is set:
 - Names defined in a `WITH` clause are not treated as tables.
 - `search_tables` and `search_columns` search only the libraries in the list. Without a list, they skip system libraries (`Q*` and `SYS*`) unless `include_system` is true.
 - `get_journal_info` and `profile_table` reject a library outside the list. They read `QSYS2` catalog views themselves, so `QSYS2` does not have to be in the list for them.
-- The other schema and table browsing tools (`list_schemas`, `list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`) are not affected. They run fixed catalog queries.
+- `list_tables`, `describe_table`, `list_views`, `list_indexes`, and `get_table_constraints` reject a library outside the list before querying. `list_schemas` returns only the libraries in the list. Keys and indexes of an allowed table are still reported when they reference another library.
 
 A view or alias inside an allowed library can still read other libraries. Give the IBM i user profile access only to the libraries in the list. See [Security](security.md#schema-allowlist).
 
