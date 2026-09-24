@@ -40,6 +40,10 @@
           "placeholder": "MYLIB"
         },
         {
+          "name": "DB2I_PROFILES",
+          "description": "Path to a YAML file of IBM i systems. When set, it replaces the DB2I_* connection variables"
+        },
+        {
           "name": "QUERY_ALLOWED_SCHEMAS",
           "description": "Comma-separated schemas the server may read. Empty disables the check.",
           "placeholder": "MYLIB,OTHERLIB"

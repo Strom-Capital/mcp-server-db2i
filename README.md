@@ -199,7 +199,6 @@ Once connected, you can ask the AI assistant:
 
 | Guide | Description |
 |-------|-------------|
-| [Use cases](docs/use-cases.md) | REST APIs, BI pipelines, journal replication, and ad-hoc ERP analysis |
 | [HTTP Transport](docs/http-transport.md) | HTTP API, auth, and protocol versions |
 | [Configuration](docs/configuration.md) | All environment variables and JDBC options |
 | [Security](docs/security.md) | Credentials, rate limiting, query validation |

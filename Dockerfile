@@ -47,7 +47,7 @@ COPY src ./src
 RUN npm run build
 
 # Prune dev dependencies for smaller production image
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # Shared runtime layer: application files, user and env placeholders.
 # The driver-specific stages below add their native runtime and set USER.
