@@ -447,6 +447,13 @@ export function buildMapepireJdbcOptions(
     config,
     options
   );
+  // mapepire-js joins these as `key=value;...` with no escaping, so a `;`
+  // would add a property, and an `=` in a key would split it.
+  for (const [key, value] of Object.entries(jdbc)) {
+    if (key.includes(';') || key.includes('=') || value.includes(';')) {
+      throw new Error(`JDBC option "${key}" cannot contain ';' (or '=' in the name) with the mapepire driver`);
+    }
+  }
   return jdbc;
 }
 

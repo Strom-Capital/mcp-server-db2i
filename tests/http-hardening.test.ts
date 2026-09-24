@@ -262,6 +262,30 @@ describe('HTTP /auth database host allowlist', () => {
       await closeServer(server);
     }
   });
+
+  it('rejects a schema that is not a library name before opening a connection', async () => {
+    const { pool } = await import('node-jt400');
+    vi.mocked(pool).mockClear();
+
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      const res = await fetch(`${baseUrl}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'user',
+          password: 'pass',
+          schema: 'MYLIB;access=all;extended metadata=true',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json() as { error_description: string };
+      expect(body.error_description).toBe('schema must be an IBM i library name if provided');
+      expect(pool).not.toHaveBeenCalled();
+    } finally {
+      await closeServer(server);
+    }
+  });
 });
 
 describe('HTTP /auth rate limiting', () => {

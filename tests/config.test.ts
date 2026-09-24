@@ -749,6 +749,12 @@ describe('Config Module', () => {
       const options = buildMapepireJdbcOptions({ ...config, jdbcOptions: { access: 'all' } }, { readOnly: false });
       expect(options).not.toHaveProperty('access');
     });
+
+    it('should refuse a value with a semicolon, which would add a property', () => {
+      expect(() => buildMapepireJdbcOptions({ ...config, schema: 'MYLIB;access=all' })).toThrow(
+        `JDBC option "libraries" cannot contain ';'`
+      );
+    });
   });
 
   describe('mapepire connection security and key login', () => {

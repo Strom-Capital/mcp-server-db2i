@@ -479,7 +479,7 @@ The `DB2I_SCHEMA` variable sets a default schema for the metadata tools and for 
 - You can still override it per-call by providing a `schema` parameter
 - `execute_query` uses it as the library list: JDBC `libraries` unless `DB2I_JDBC_OPTIONS` already sets `libraries`, or ODBC `DBQ` unless `DB2I_ODBC_OPTIONS` already sets `DBQ`. With SQL naming, the first library is the default schema, so `FROM CUSTOMERS` resolves to `MYLIB.CUSTOMERS`. An explicit option always wins.
 
-In HTTP `required` mode, the schema sent to `/auth` is used for that session and falls back to `DB2I_SCHEMA` when the client omits it.
+In HTTP `required` mode, the schema sent to `/auth` is used for that session and falls back to `DB2I_SCHEMA` when the client omits it. It must be a single library name (up to 10 characters: letters, digits, `_`, `$`, `#`, `@`, not starting with a digit or `_`). Anything else is rejected with a 400.
 
 ```env
 # Set default schema
