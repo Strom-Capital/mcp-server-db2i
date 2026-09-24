@@ -290,6 +290,24 @@ describe('MCP resources and prompts', () => {
       expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining("DATABASE_OBJECT_TYPE => 'VIEW'"), []);
     });
 
+    it('generates a DDS logical file as a view', async () => {
+      mockQuery
+        .mockResolvedValueOnce([{ TABLE_NAME: 'ORDERSL1', TABLE_TYPE: 'L', TABLE_TEXT: null }])
+        .mockResolvedValueOnce([{ SRCSEQ: 1, SRCDTA: 'CREATE VIEW MYLIB.ORDERSL1 AS SELECT ORDERNO FROM MYLIB.ORDERS;' }]);
+
+      await client.readResource({ uri: 'db2i://MYLIB/ORDERSL1/ddl' });
+      expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining("DATABASE_OBJECT_TYPE => 'VIEW'"), []);
+    });
+
+    it('generates a physical file as a table', async () => {
+      mockQuery
+        .mockResolvedValueOnce([{ TABLE_NAME: 'ORDERS', TABLE_TYPE: 'P', TABLE_TEXT: null }])
+        .mockResolvedValueOnce([{ SRCSEQ: 1, SRCDTA: 'CREATE TABLE MYLIB.ORDERS (ORDERNO DECIMAL(9, 0));' }]);
+
+      await client.readResource({ uri: 'db2i://MYLIB/ORDERS/ddl' });
+      expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining("DATABASE_OBJECT_TYPE => 'TABLE'"), []);
+    });
+
     it('reports a missing table as not found', async () => {
       mockQuery.mockResolvedValueOnce([{ TABLE_NAME: 'ORDERS_OLD', TABLE_TYPE: 'T', TABLE_TEXT: null }]);
       await expect(client.readResource({ uri: 'db2i://MYLIB/ORDERS/ddl' })).rejects.toThrow('MYLIB.ORDERS was not found');

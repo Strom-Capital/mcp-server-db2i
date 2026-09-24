@@ -189,9 +189,10 @@ async function readTable(uri: URL, schema: string, table: string, caller: Caller
   };
 }
 
-/** GENERATE_SQL needs the object type, and a view or alias is not a TABLE. */
+/** GENERATE_SQL needs the object type. A view, DDS logical file, or alias is not a TABLE. */
 const DDL_TYPE_BY_TABLE_TYPE: Record<string, string> = {
   V: 'VIEW',
+  L: 'VIEW',
   A: 'ALIAS',
 };
 
