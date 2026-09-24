@@ -7,7 +7,17 @@ updates:
     commit-message:
       prefix: deps
       prefix-development: chore
+    ignore:
+      # Majors are chosen by hand to stay close to the Node runtime in .nvmrc
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
+      # Packages that must move in lockstep, including majors.
+      # Dependabot assigns each dependency to the first group it matches.
+      eslint:
+        patterns: ["eslint", "@eslint/*"]
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
       production:
         dependency-type: production
         update-types: [minor, patch]
