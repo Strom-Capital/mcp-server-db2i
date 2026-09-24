@@ -94,4 +94,14 @@ jobs:
         run: ./mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry
-        run: ./mcp-publisher publish
+        run: |
+          # npm can return 404 for a version that was just published. The registry
+          # treats that as a hard failure, so retry for a couple of minutes.
+          for attempt in 1 2 3 4 5 6; do
+            if ./mcp-publisher publish; then
+              exit 0
+            fi
+            echo "Registry publish failed (attempt ${attempt}/6). Waiting 15s for npm."
+            sleep 15
+          done
+          exit 1
