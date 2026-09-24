@@ -380,12 +380,12 @@ export function buildConnectionConfig(config: DB2iConfig, options?: BuildConnect
   };
 
   // Add default naming convention (system naming uses / for library separator)
-  if (!config.jdbcOptions['naming']) {
+  if (jdbcOption(config.jdbcOptions, 'naming') === undefined) {
     connectionConfig['naming'] = 'system';
   }
 
   // Add date format if not specified
-  if (!config.jdbcOptions['date format']) {
+  if (jdbcOption(config.jdbcOptions, 'date format') === undefined) {
     connectionConfig['date format'] = 'iso';
   }
 

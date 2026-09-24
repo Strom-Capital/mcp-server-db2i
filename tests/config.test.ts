@@ -496,6 +496,12 @@ describe('Config Module', () => {
       expect(connConfig['date format']).toBe('iso');
     });
 
+    it('should not add a default naming when the option uses other casing', () => {
+      const connConfig = buildConnectionConfig({ ...baseConfig, jdbcOptions: { Naming: 'sql' } });
+      expect(connConfig['naming']).toBeUndefined();
+      expect(connConfig['Naming']).toBe('sql');
+    });
+
     it('should default the driver access mode to read only', () => {
       const connConfig = buildConnectionConfig(baseConfig);
       expect(connConfig['access']).toBe('read only');

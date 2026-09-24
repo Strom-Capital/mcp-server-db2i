@@ -4,15 +4,13 @@
  * Pools are owned by a caller (`stdio`, or an HTTP session key) and kept per
  * IBM i system, so one caller can hold a pool on each configured system.
  *
- * The driver (JT400 over JDBC, or ODBC) is selected by DB2I_DRIVER and loaded
- * on first use, so pools are created lazily by the first query. Registering a
+ * The driver (JT400 over JDBC, or ODBC) comes from each system's config and is
+ * loaded on first use, so pools are created lazily by the first query. Registering a
  * pool is synchronous; nothing connects until a statement runs.
  */
 
 import type { DB2iConfig } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
-
-export { STDIO_POOL_KEY };
 import type { DbPool } from './driver.js';
 import { loadDriver, toParams } from './driver.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -21,15 +19,6 @@ const log = createChildLogger({ component: 'database' });
 
 export interface QueryResult {
   rows: Record<string, unknown>[];
-  metadata?: {
-    columnCount: number;
-    columns: Array<{
-      name: string;
-      type: string;
-      precision: number;
-      scale: number;
-    }>;
-  };
 }
 
 /** One pool. `pool` is set by the first query and cleared on failure. */
@@ -67,7 +56,8 @@ function logContext(target: DbTarget): Record<string, unknown> {
 
 /**
  * Initialize the stdio pools, and make `system` the target for calls that
- * pass none. Safe to call more than once; the latest config wins.
+ * pass none. Safe to call more than once; a new config applies to pools that
+ * have not connected yet.
  */
 export function initializePool(config: DB2iConfig, system: string = DEFAULT_SYSTEM_NAME): void {
   registerOwner(STDIO_POOL_KEY, 'Global');
@@ -256,7 +246,7 @@ function getSlot(target: DbTarget, procedure: boolean): PoolSlot {
 }
 
 /**
- * Execute a query and return results
+ * Execute a SQL query on the read-only pool.
  *
  * @param sql - SQL query to execute
  * @param params - Query parameters
@@ -267,24 +257,7 @@ export async function executeQuery(
   params: unknown[] = [],
   target?: DbTarget
 ): Promise<QueryResult> {
-  const resolved = resolve(target);
-  const slot = getSlot(resolved, false);
-
-  try {
-    log.debug(
-      { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
-      'Executing query'
-    );
-    const db = await acquire(slot, resolved);
-    const rows = await db.query(sql, toParams(params));
-    log.debug({ rowCount: rows.length }, 'Query completed');
-
-    return { rows };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown database error';
-    log.debug({ err: error, sql: sql.substring(0, 200) }, 'Database query failed');
-    throw new Error(`Database query failed: ${message}`, { cause: error });
-  }
+  return run(sql, params, target, false);
 }
 
 /**
@@ -300,21 +273,31 @@ export async function executeProcedure(
   params: unknown[] = [],
   target?: DbTarget
 ): Promise<QueryResult> {
+  return run(sql, params, target, true);
+}
+
+async function run(
+  sql: string,
+  params: unknown[],
+  target: DbTarget | undefined,
+  procedure: boolean
+): Promise<QueryResult> {
   const resolved = resolve(target);
-  const slot = getSlot(resolved, true);
+  const slot = getSlot(resolved, procedure);
+  const kind = procedure ? 'Procedure' : 'Query';
 
   try {
     log.debug(
       { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
-      'Executing procedure'
+      procedure ? 'Executing procedure' : 'Executing query'
     );
     const db = await acquire(slot, resolved);
     const rows = await db.query(sql, toParams(params));
-    log.debug({ rowCount: rows.length }, 'Procedure completed');
+    log.debug({ rowCount: rows.length }, `${kind} completed`);
     return { rows };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown database error';
-    log.debug({ err: error, sql: sql.substring(0, 200) }, 'Procedure call failed');
+    log.debug({ err: error, sql: sql.substring(0, 200) }, procedure ? 'Procedure call failed' : 'Database query failed');
     throw new Error(`Database query failed: ${message}`, { cause: error });
   }
 }

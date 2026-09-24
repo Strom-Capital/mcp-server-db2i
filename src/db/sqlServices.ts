@@ -144,7 +144,9 @@ export async function parseStatement(sql: string, target?: DbTarget): Promise<Pa
 export async function hasRoutine(schema: string, name: string, target?: DbTarget): Promise<boolean> {
   const routineSchema = schema.trim().toUpperCase();
   const routineName = name.trim().toUpperCase();
-  const key = `${target?.poolKey ?? 'global'}|${target?.system ?? ''}|${routineSchema}|${routineName}`;
+  // Catalog rows depend on the user's authority, so cache per system and user.
+  // Not per pool key: in required auth mode that is the bearer token.
+  const key = `${target?.system ?? ''}|${target?.config.username ?? ''}|${routineSchema}|${routineName}`;
   const cached = routineCache.get(key);
   if (cached !== undefined) {
     return cached;

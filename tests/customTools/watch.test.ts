@@ -58,7 +58,8 @@ tools:
 }
 
 async function waitFor(check: () => boolean): Promise<void> {
-  const deadline = Date.now() + 2000;
+  // fs.watch events can lag when the whole suite runs in parallel
+  const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     if (check()) {
       return;

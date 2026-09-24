@@ -3,7 +3,7 @@
  */
 
 import { executeQuery } from '../db/connection.js';
-import { validateQuery } from '../db/queries.js';
+import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
 import { createChildLogger } from '../utils/logger.js';
 import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';

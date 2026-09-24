@@ -130,6 +130,22 @@ const ALL_DANGEROUS_OPERATIONS = [
   ...IBM_I_DANGEROUS_OPERATIONS,
 ] as const;
 
+/** Regex checks built once: [pattern, violation message]. */
+const REGEX_CHECKS: ReadonlyArray<readonly [RegExp, string]> = [
+  ...ALL_DANGEROUS_OPERATIONS.map((operation) =>
+    [new RegExp(`\\b${operation}\\b`, 'i'), `Dangerous operation detected: ${operation}`] as const),
+  ...DANGEROUS_FUNCTIONS.map((func) =>
+    [new RegExp(`\\b${func}\\s*\\(`, 'i'), `Dangerous function call detected: ${func}`] as const),
+  ...SIDE_EFFECT_FUNCTION_PREFIXES.map((prefix) =>
+    [new RegExp(`\\b(?:\\w+\\.)?${prefix}\\w*\\s*\\(`, 'i'), `Dangerous function call detected: ${prefix}`] as const),
+];
+
+/** The operation or function a violation names, for de-duplicating AST and regex findings. */
+function violationSubject(violation: string): string {
+  const colon = violation.lastIndexOf(': ');
+  return (colon >= 0 ? violation.slice(colon + 2) : violation).toUpperCase();
+}
+
 /**
  * SQL Security Validator class
  * 
@@ -170,9 +186,11 @@ export class SqlSecurityValidator {
       // Combine violations from both methods
       violations.push(...astResult.violations);
       
-      // Add regex violations that weren't caught by AST
+      // Add regex violations about an operation or function the AST did not already report
+      const reported = new Set(violations.map(violationSubject));
       for (const violation of regexResult.violations) {
-        if (!violations.some(v => v.includes(violation.split(' ')[0]))) {
+        if (!reported.has(violationSubject(violation))) {
+          reported.add(violationSubject(violation));
           violations.push(violation);
         }
       }
@@ -221,10 +239,11 @@ export class SqlSecurityValidator {
           violations.push(`Dangerous function detected: ${func}`);
         }
 
-        // Check for multiple statements (potential injection)
-        if (statements.length > 1) {
-          violations.push('Multiple statements detected - potential SQL injection');
-        }
+      }
+
+      // Check for multiple statements (potential injection)
+      if (statements.length > 1) {
+        violations.push('Multiple statements detected - potential SQL injection');
       }
 
       return {
@@ -250,24 +269,9 @@ export class SqlSecurityValidator {
     const violations: string[] = [];
 
     // query is already normalized: literals and comments are gone, delimited names are unquoted
-    for (const operation of ALL_DANGEROUS_OPERATIONS) {
-      const pattern = new RegExp(`\\b${operation}\\b`, 'i');
+    for (const [pattern, message] of REGEX_CHECKS) {
       if (pattern.test(query)) {
-        violations.push(`Dangerous operation detected: ${operation}`);
-      }
-    }
-
-    for (const func of DANGEROUS_FUNCTIONS) {
-      const pattern = new RegExp(`\\b${func}\\s*\\(`, 'i');
-      if (pattern.test(query)) {
-        violations.push(`Dangerous function call detected: ${func}`);
-      }
-    }
-
-    for (const prefix of SIDE_EFFECT_FUNCTION_PREFIXES) {
-      const pattern = new RegExp(`\\b(?:\\w+\\.)?${prefix}\\w*\\s*\\(`, 'i');
-      if (pattern.test(query)) {
-        violations.push(`Dangerous function call detected: ${prefix}`);
+        violations.push(message);
       }
     }
 

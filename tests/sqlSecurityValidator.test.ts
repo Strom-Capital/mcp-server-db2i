@@ -154,6 +154,21 @@ describe('SqlSecurityValidator', () => {
       expect(result.violations.some(v => v.includes('DELETE'))).toBe(true);
     });
 
+    it('should report every dangerous call, not just the statement type', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        "DELETE FROM MYLIB.ORDERS WHERE ORDERNO = HTTP_GET('https://ibmi.example.com')"
+      );
+      expect(result.violations.filter(v => v.includes('DELETE'))).toHaveLength(1);
+      expect(result.violations.some(v => v.includes('HTTP_'))).toBe(true);
+    });
+
+    it('should report multiple statements once', () => {
+      const result = SqlSecurityValidator.validateQuery(
+        'SELECT 1 FROM SYSIBM.SYSDUMMY1; SELECT 2 FROM SYSIBM.SYSDUMMY1; SELECT 3 FROM SYSIBM.SYSDUMMY1'
+      );
+      expect(result.violations.filter(v => v.startsWith('Multiple statements'))).toHaveLength(1);
+    });
+
     it('should block DROP TABLE', () => {
       const result = SqlSecurityValidator.validateQuery('DROP TABLE users');
       expect(result.isValid).toBe(false);

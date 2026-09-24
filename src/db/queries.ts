@@ -4,15 +4,6 @@
 
 import { executeQuery } from './connection.js';
 import type { DbTarget } from '../systems.js';
-import {
-  SqlSecurityValidator,
-  validateQuery as validateSqlQuery,
-  type SecurityValidationResult,
-  type SecurityConfig,
-} from '../utils/security/sqlSecurityValidator.js';
-
-// Re-export for backwards compatibility and convenience
-export { SqlSecurityValidator, validateSqlQuery, type SecurityValidationResult, type SecurityConfig };
 
 /**
  * Convert a filter pattern to SQL LIKE pattern
@@ -39,31 +30,6 @@ export function filterToLikePattern(filter: string | undefined): string {
 
   // Default: contains search
   return `%${filter.toUpperCase()}%`;
-}
-
-/**
- * Validate that a query is read-only (SELECT only)
- * 
- * Uses the enhanced SqlSecurityValidator with AST parsing and regex fallback
- * for comprehensive security validation.
- * 
- * @param sql - SQL query to validate
- * @returns true if the query is safe to execute, false otherwise
- */
-export function isReadOnlyQuery(sql: string): boolean {
-  const result = SqlSecurityValidator.validateQuery(sql);
-  return result.isValid;
-  }
-
-/**
- * Validate a query and return detailed results including any violations
- * 
- * @param sql - SQL query to validate
- * @param config - Optional security configuration
- * @returns Detailed validation result with violations
- */
-export function validateQuery(sql: string, config?: SecurityConfig): SecurityValidationResult {
-  return SqlSecurityValidator.validateQuery(sql, config);
 }
 
 /**

@@ -24,7 +24,7 @@ import {
   type RelatedObject,
   type StatementInspection,
 } from '../db/sqlServices.js';
-import { validateQuery } from '../db/queries.js';
+import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { checkQuerySchemas, isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
 
 const RELATED_OBJECTS_UNAVAILABLE =
