@@ -65,6 +65,7 @@ graph LR
 - **Column masking** - Redact sensitive columns, or show only their last four characters, in query results. See [Column masking](docs/security.md#column-masking)
 - **Audit log** - Record every tool call as one JSON line, with the SQL hashed by default. See [Audit log](docs/security.md#audit-log)
 - **Tool reload** - Reload YAML tool files when they change, with `MCP_CUSTOM_TOOLS_WATCH=true`
+- **Resources and prompts** - Read table columns and DDL as MCP resources, and start from prompts that explore a library, explain a table, or write a query. See [Resources and prompts](#resources-and-prompts)
 
 ## Quick Start
 
