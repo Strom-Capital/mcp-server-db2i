@@ -26,6 +26,13 @@ const ROUTINE_NAME_TYPES = new Set(['FUNCTION', 'PROCEDURE']);
 const UNQUOTED_NAME = /^[A-Z0-9_@#$]{1,128}$/;
 const LOOKUP_CHUNK = 40;
 
+/** Release requirement shared by validate_query and the validate-tools --connect check. */
+export const PARSE_STATEMENT_REQUIREMENT =
+  'It requires IBM i 7.3 with Db2 PTF group SF99703 level 3, or IBM i 7.4 or later.';
+
+export const PARSE_STATEMENT_UNAVAILABLE =
+  `QSYS2.PARSE_STATEMENT is not available on this system. ${PARSE_STATEMENT_REQUIREMENT}`;
+
 const PARSE_SQL = `
   SELECT NAME_TYPE, SCHEMA, NAME, COLUMN_NAME, SQL_STATEMENT_TYPE
   FROM TABLE(QSYS2.PARSE_STATEMENT(CAST(? AS CLOB(2M)))) X

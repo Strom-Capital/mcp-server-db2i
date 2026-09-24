@@ -33,6 +33,7 @@ import { initializePool, testConnection, closeGlobalPool } from './db/connection
 import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { createServer, SERVER_NAME, SERVER_VERSION } from './server.js';
+import { parseCliArgs, runValidateTools } from './cli.js';
 import { loadCustomToolsFromEnv } from './customTools/loader.js';
 import { setCustomTools } from './customTools/registry.js';
 import { startHttpServer, shutdownHttpServer } from './transports/http.js';
@@ -204,9 +205,24 @@ async function main(): Promise<void> {
   }
 }
 
-// Run the server
-main().catch((error) => {
-  logger.fatal({ err: error }, 'Fatal error during server startup');
+const command = parseCliArgs(process.argv.slice(2));
+if (command.kind === 'serve') {
+  main().catch((error) => {
+    logger.fatal({ err: error }, 'Fatal error during server startup');
+    flushLogger();
+    process.exit(1);
+  });
+} else if (command.kind === 'usage') {
+  process.stderr.write(`${command.message}\n`);
   flushLogger();
   process.exit(1);
-});
+} else {
+  runValidateTools(command).then((code) => {
+    flushLogger();
+    process.exit(code);
+  }).catch((error) => {
+    logger.fatal({ err: error }, 'validate-tools failed');
+    flushLogger();
+    process.exit(1);
+  });
+}
