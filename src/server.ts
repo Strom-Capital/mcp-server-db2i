@@ -363,18 +363,18 @@ interface ToolAudit<TArgs> {
  * @param errorMessage - Error message to use on failure
  * @param sessionContext - Optional session context for HTTP transport
  * @param audit - Tool name and how to read SQL or arguments for the audit log
- * @param fixedSystem - System the tool always runs on, ignoring any `system` argument
+ * @param systemOf - Reads the requested system from the arguments. Defaults to the `system` argument.
  */
 export function withToolHandler<TArgs, TResult extends ToolResult>(
   handler: (args: TArgs, target: DbTarget) => Promise<TResult>,
   errorMessage: string,
   sessionContext?: SessionContext,
   audit?: ToolAudit<TArgs>,
-  fixedSystem?: string,
+  systemOf: (args: TArgs) => string | undefined = systemArgOf,
 ): (args: TArgs) => Promise<McpToolResponse> {
   return async (args: TArgs): Promise<McpToolResponse> => {
     const facts = audit?.audit?.(args) ?? {};
-    const requested = fixedSystem ?? systemArgOf(args);
+    const requested = systemOf(args);
 
     let target: DbTarget | undefined;
     let targetError: string | undefined;
@@ -545,7 +545,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
           ...system,
           sql: z.string().describe('SQL SELECT query to execute'),
           params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
-          limit: z.number().int().positive().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
+          limit: z.number().int().positive().optional().describe('Maximum number of rows to return (default: QUERY_DEFAULT_LIMIT, max: QUERY_MAX_LIMIT)'),
         }),
         outputSchema: queryOutputSchema,
       },
@@ -1127,8 +1127,19 @@ function customToolCallback(
         return { sql: tool.sql, params: bound.ok ? bound.params : [] };
       },
     },
-    tool.system,
+    (args) => customToolSystem(tool, args),
   );
+}
+
+/**
+ * The system a custom tool runs on: its pinned system, or the caller's
+ * `system` argument unless that name is one of the tool's SQL parameters.
+ */
+function customToolSystem(tool: StoredTool, args: unknown): string | undefined {
+  if (tool.system) {
+    return tool.system;
+  }
+  return 'system' in tool.parameters ? undefined : systemArgOf(args);
 }
 
 /** Tool arguments without the `system` argument, which is not a SQL parameter. */

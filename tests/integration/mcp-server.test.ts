@@ -284,6 +284,21 @@ describe('MCP Server Integration', () => {
     });
   });
 
+  describe('Row limit', () => {
+    it('uses QUERY_DEFAULT_LIMIT when the call passes no limit', async () => {
+      process.env.QUERY_DEFAULT_LIMIT = '5';
+      mockQuery.mockResolvedValueOnce([{ ID: 1 }]);
+
+      await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM MYLIB.ORDERS' },
+      });
+
+      const [sql] = mockQuery.mock.calls[0] as [string];
+      expect(sql).toContain('FETCH FIRST 5 ROWS ONLY');
+    });
+  });
+
   describe('Response Format', () => {
     it('should render row results as a markdown table when MCP_RESPONSE_FORMAT=markdown', async () => {
       process.env.MCP_RESPONSE_FORMAT = 'markdown';

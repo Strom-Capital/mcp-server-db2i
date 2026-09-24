@@ -3,6 +3,9 @@
  * Database calls go through the mocked JT400 pool.
  */
 
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 
@@ -212,5 +215,42 @@ describe('Custom ERP tools', () => {
     await filteredClient.close();
     await filteredClientTransport.close();
     await filteredServerTransport.close();
+  });
+
+  it('binds a parameter named system as SQL, not as the target system', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'db2i-tools-'));
+    try {
+      writeFileSync(path.join(dir, 'tools.yaml'), [
+        'version: 1',
+        'tools:',
+        '  - name: orders_by_system',
+        '    title: Orders by source system',
+        '    description: Orders entered on one source system',
+        '    parameters:',
+        '      system:',
+        '        type: string',
+        '        description: Source system code',
+        '    sql: SELECT ORDERNO FROM MYLIB.ORDERS WHERE SRCSYS = :system',
+        '',
+      ].join('\n'));
+      setCustomTools(loadCustomTools([dir], { allowedSchemas: ['MYLIB'], defaultSchema: 'MYLIB' }));
+      const [linkedClient, linkedServer] = InMemoryTransport.createLinkedPair();
+      await createServer().connect(linkedServer);
+      const other = new Client({ name: 'custom-tools-system-test', version: '1.0.0' });
+      await other.connect(linkedClient);
+      mockQuery.mockResolvedValueOnce([{ ORDERNO: 1001 }]);
+
+      const result = await other.callTool({
+        name: 'orders_by_system',
+        arguments: { system: 'WEB' },
+      }) as CallToolResult;
+      await other.close();
+
+      expect(result.isError).toBeUndefined();
+      const [, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+      expect(params).toEqual(['WEB']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
