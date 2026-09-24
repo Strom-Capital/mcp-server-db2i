@@ -55,12 +55,12 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@modelcontextprotocol/client": "^2.1.0",
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.8",
     "@vitest/coverage-v8": "^4.1.11",
-    "eslint": "^9.39.5",
+    "eslint": "^10.11.0",
     "knip": "^5.88.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

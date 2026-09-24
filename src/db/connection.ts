@@ -289,7 +289,7 @@ export async function executeQuery(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown database error';
     log.debug({ err: error, sql: sql.substring(0, 200) }, 'Database query failed');
-    throw new Error(`Database query failed: ${message}`);
+    throw new Error(`Database query failed: ${message}`, { cause: error });
   }
 }
 
@@ -320,7 +320,7 @@ export async function executeProcedure(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown database error';
     log.debug({ err: error, sql: sql.substring(0, 200) }, 'Procedure call failed');
-    throw new Error(`Database query failed: ${message}`);
+    throw new Error(`Database query failed: ${message}`, { cause: error });
   }
 }
 
