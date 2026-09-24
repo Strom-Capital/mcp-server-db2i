@@ -7,7 +7,7 @@
 
 import crypto from 'node:crypto';
 import type { DB2iConfig } from '../config.js';
-import { getHttpConfig } from '../config.js';
+import { DEFAULT_SYSTEM_NAME, getHttpConfig } from '../config.js';
 import { createChildLogger } from '../utils/logger.js';
 import type {
   TokenSession,
@@ -60,11 +60,13 @@ class TokenManager {
    * 
    * @param config - DB2i configuration for this session
    * @param durationSeconds - Optional custom token duration
+   * @param system - System the credentials were checked on
    * @returns The generated token and session info
    */
   createSession(
     config: DB2iConfig,
-    durationSeconds?: number
+    durationSeconds?: number,
+    system: string = DEFAULT_SYSTEM_NAME
   ): { token: string; expiresAt: Date; expiresIn: number } {
     const httpConfig = getHttpConfig();
     
@@ -83,6 +85,7 @@ class TokenManager {
     const session: TokenSession = {
       token,
       config,
+      system,
       createdAt: now,
       expiresAt,
       lastUsedAt: now,
@@ -95,6 +98,7 @@ class TokenManager {
         sessionCount: this.sessions.size,
         expiresIn,
         host: config.hostname,
+        system,
         // Note: username intentionally omitted for PII compliance
       },
       'Token session created'

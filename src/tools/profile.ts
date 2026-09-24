@@ -4,7 +4,7 @@
  * when compute is set. Masked columns keep their counts and lose their values.
  */
 
-import { getAllowedSchemas } from '../config.js';
+import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import { getCustomTools } from '../customTools/registry.js';
 import type { MaskRule } from '../customTools/masking.js';
 import {
@@ -97,18 +97,18 @@ export async function profileTableTool(input: {
   table: string;
   compute?: boolean;
   columns?: string[];
-  sessionId?: string;
+  target?: DbTarget;
   defaultSchema?: string;
 }): Promise<ProfileTableResult> {
   try {
     const schema = requireSchema(input.schema, input.defaultSchema).trim().toUpperCase();
     const table = input.table.trim().toUpperCase();
-    const allowed = getAllowedSchemas();
+    const allowed = allowedSchemasFor(input.target);
     if (allowed && !isSchemaAllowed(schema, allowed)) {
       return { success: false, error: schemaDenied(schema, allowed) };
     }
 
-    const catalog = await readColumns(schema, table, input.sessionId);
+    const catalog = await readColumns(schema, table, input.target);
     if (catalog.length === 0) {
       return { success: false, error: `Table ${schema}.${table} was not found.` };
     }
@@ -119,10 +119,10 @@ export async function profileTableTool(input: {
     }
 
     const masks = getCustomTools().masking.get(`${schema}.${table}`) ?? new Map<string, MaskRule>();
-    const tableStats = await readTableStats(schema, table, input.sessionId);
+    const tableStats = await readTableStats(schema, table, input.target);
 
     if (!input.compute) {
-      const stored = await readStoredColumnStats(schema, table, input.sessionId);
+      const stored = await readStoredColumnStats(schema, table, input.target);
       const data = selected.columns.map((column) => {
         const name = column.column_name.toUpperCase();
         return profileOf(column, stored.get(name), 'stored', masks.get(name));
@@ -140,7 +140,7 @@ export async function profileTableTool(input: {
     }
 
     const scanned = selected.columns.slice(0, MAX_COMPUTED_COLUMNS);
-    const computed = await computeColumnStats(schema, table, scanned, new Set(masks.keys()), input.sessionId);
+    const computed = await computeColumnStats(schema, table, scanned, new Set(masks.keys()), input.target);
     const data = scanned.map((column) => {
       const name = column.column_name.toUpperCase();
       return profileOf(column, computed.columns.get(name), 'computed', masks.get(name));

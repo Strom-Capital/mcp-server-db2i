@@ -36,18 +36,26 @@ graph LR
         stdio["stdio"]
         http["HTTP + Auth"]
         tools[["MCP Tools"]]
+        profiles{{"System profiles"}}
         jdbc["JT400 JDBC"]
+        odbc["IBM i Access ODBC"]
     end
 
-    subgraph ibmi ["IBM i"]
-        db2[("DB2 for i")]
+    subgraph prod ["IBM i: prod"]
+        db2prod[("DB2 for i")]
+    end
+
+    subgraph test ["IBM i: test"]
+        db2test[("DB2 for i")]
     end
 
     claude & cursor -->|MCP Protocol| stdio
     agents -->|REST API| http
     stdio & http --> tools
-    tools --> jdbc
-    jdbc -->|JDBC| db2
+    tools --> profiles
+    profiles --> jdbc & odbc
+    jdbc -->|JDBC| db2prod
+    odbc -->|ODBC| db2test
 ```
 
 ## Available Tools

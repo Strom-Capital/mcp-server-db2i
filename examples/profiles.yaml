@@ -1,0 +1,24 @@
+# Connection profiles for several IBM i systems.
+#
+# Point DB2I_PROFILES at this file. The first profile is the default: tool
+# calls that name no `system` run there. Passwords never go in this file:
+# use a quoted "${ENV_VAR}" reference or passwordFile (for example a Docker
+# secret). Quote references; YAML reads a bare ${...} inside { } as a map.
+
+profiles:
+  - name: prod
+    host: ibmi.example.com
+    driver: jt400
+    username: "${DB2I_PROD_USERNAME}"
+    password: "${DB2I_PROD_PASSWORD}"
+    schema: SALES
+    allowedSchemas: [SALES, QSYS2]
+    jdbcOptions: "secure=true"
+
+  - name: test
+    host: ibmi-test.example.com
+    driver: odbc
+    username: MCPREAD
+    passwordFile: /run/secrets/db2i_test_password
+    schema: SALESTEST
+    odbcOptions: "SSL=1"
