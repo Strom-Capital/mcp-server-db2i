@@ -417,7 +417,7 @@ Releases are automated via GitHub Actions using [Release Please](https://github.
 
 1. Squash-merged conventional commits on `main` are analyzed
 2. A release PR is automatically created/updated with the version bump and `CHANGELOG.md`
-3. Merging the release PR tags `vX.Y.Z`, creates the GitHub release, and publishes `mcp-server-db2i` to npm via OIDC trusted publishing
+3. Merging the release PR tags `vX.Y.Z`, creates the GitHub release, runs CI on the tagged commit, and publishes `mcp-server-db2i` to npm via OIDC trusted publishing. Other pushes to `main` only update the release PR: branch protection has already built and tested them
 4. CI and npm publish both run on Node 22. Publish installs the latest npm so trusted publishing works. The registry publish retries up to 20 times, 30 seconds apart (about 10 minutes), because a just-published npm version can still 404.
 
 To retry publishing an already-tagged release (for example after an npm outage), run the **Release** workflow with `workflow_dispatch` and set `tag` to `vX.Y.Z`. That path skips Release Please and republishes the existing tag.

@@ -21,13 +21,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-    with:
-      ref: ${{ inputs.tag }}
-
   release-please:
-    needs: ci
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -42,8 +36,23 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # Branch protection already requires an up-to-date branch and a passing build
+  # before merge, so a plain push to main was tested. Run CI again only as the
+  # gate before publishing: when a release was just cut, or on a manual re-publish.
+  ci:
+    needs: release-please
+    if: >-
+      always() &&
+      (
+        needs.release-please.outputs.release_created == 'true' ||
+        (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+      )
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ inputs.tag }}
+
   publish:
-    needs: [ci, release-please]
+    needs: [release-please, ci]
     if: >-
       always() &&
       needs.ci.result == 'success' &&
