@@ -89,32 +89,72 @@ export async function guarded<T>(
   }
 }
 
+/** Clients ask for completions on every keystroke, and each catalog query counts against the rate limit. */
+const COMPLETION_TTL_MS = 60_000;
+const MAX_CACHED_LISTS = 500;
+const completionCache = new Map<string, { expires: number; names: string[] }>();
+
+export function clearCompletionCache(): void {
+  completionCache.clear();
+}
+
+/**
+ * The full name list for one caller, from the cache or one catalog query.
+ * Undefined when the caller is rate limited or the query fails.
+ */
+async function cachedNames(caller: Caller, key: string, load: () => Promise<string[]>): Promise<string[] | undefined> {
+  const cacheKey = `${caller.sessionId ?? 'stdio'}|${key}`;
+  const now = Date.now();
+  const hit = completionCache.get(cacheKey);
+  if (hit && hit.expires > now) {
+    return hit.names;
+  }
+  completionCache.delete(cacheKey);
+
+  if (!getRateLimiter().checkLimit(caller.sessionId ?? 'stdio').allowed) {
+    return undefined;
+  }
+  let names: string[];
+  try {
+    names = await load();
+  } catch {
+    return undefined;
+  }
+  if (completionCache.size >= MAX_CACHED_LISTS) {
+    const oldest = completionCache.keys().next().value;
+    if (oldest !== undefined) {
+      completionCache.delete(oldest);
+    }
+  }
+  completionCache.set(cacheKey, { expires: now + COMPLETION_TTL_MS, names });
+  return names;
+}
+
+function startingWith(names: readonly string[] | undefined, value: string): string[] {
+  const prefix = value.trim().toUpperCase();
+  return (names ?? []).filter((name) => name.startsWith(prefix)).slice(0, MAX_COMPLETIONS);
+}
+
 /**
  * Library names starting with value. Limited to QUERY_ALLOWED_SCHEMAS when that
  * list is set, which also avoids a catalog query.
  */
 export async function completeSchemas(value: string, caller: Caller): Promise<string[]> {
-  const prefix = value.trim().toUpperCase();
   const allowed = getAllowedSchemas();
   if (allowed) {
-    return allowed.filter((name) => name.startsWith(prefix)).slice(0, MAX_COMPLETIONS);
+    return startingWith(allowed, value);
   }
-  if (!getRateLimiter().checkLimit(caller.sessionId ?? 'stdio').allowed) {
-    return [];
-  }
-  try {
-    const rows = await listSchemas(`${prefix}*`, caller.sessionId);
-    return rows.map((row) => row.schema_name).slice(0, MAX_COMPLETIONS);
-  } catch {
-    return [];
-  }
+  const names = await cachedNames(caller, 'schemas', async () =>
+    (await listSchemas(undefined, caller.sessionId)).map((row) => row.schema_name),
+  );
+  return startingWith(names, value);
 }
 
 /**
  * Table names in schema starting with value. Empty when schema is missing or not allowed.
  */
 export async function completeTables(schema: string | undefined, value: string, caller: Caller): Promise<string[]> {
-  const library = schema?.trim();
+  const library = schema?.trim().toUpperCase();
   if (!library) {
     return [];
   }
@@ -122,15 +162,10 @@ export async function completeTables(schema: string | undefined, value: string, 
   if (allowed && !isSchemaAllowed(library, allowed)) {
     return [];
   }
-  if (!getRateLimiter().checkLimit(caller.sessionId ?? 'stdio').allowed) {
-    return [];
-  }
-  try {
-    const rows = await listTables(library, `${value.trim().toUpperCase()}*`, caller.sessionId);
-    return rows.map((row) => row.table_name).slice(0, MAX_COMPLETIONS);
-  } catch {
-    return [];
-  }
+  const names = await cachedNames(caller, `tables:${library}`, async () =>
+    (await listTables(library, undefined, caller.sessionId)).map((row) => row.table_name),
+  );
+  return startingWith(names, value);
 }
 
 export function tableUri(schema: string, table: string): string {

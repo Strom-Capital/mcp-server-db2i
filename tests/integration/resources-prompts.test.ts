@@ -31,6 +31,7 @@ vi.mock('../../src/utils/rateLimiter.js', async (importOriginal) => {
 
 import { resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
 import { initializePool } from '../../src/db/connection.js';
+import { clearCompletionCache } from '../../src/resources.js';
 import { createServer } from '../../src/server.js';
 import { closeAuditLog, initAuditLog } from '../../src/utils/auditLog.js';
 
@@ -108,6 +109,7 @@ describe('MCP resources and prompts', () => {
     vi.clearAllMocks();
     mockQuery.mockReset();
     checkLimit.mockImplementation(() => ({ allowed: true, remaining: 99 }));
+    clearCompletionCache();
     process.env = {
       ...originalEnv,
       DB2I_HOSTNAME: 'ibmi.example.com',
@@ -343,24 +345,58 @@ describe('MCP resources and prompts', () => {
     });
 
     it('completes schemas from the catalog when no allowlist is set', async () => {
-      mockQuery.mockResolvedValueOnce([{ SCHEMA_NAME: 'MYLIB', SCHEMA_TEXT: null }]);
+      mockQuery.mockResolvedValueOnce([
+        { SCHEMA_NAME: 'MYLIB', SCHEMA_TEXT: null },
+        { SCHEMA_NAME: 'OTHERLIB', SCHEMA_TEXT: null },
+      ]);
       const result = await client.complete({
         ref: { type: 'ref/resource', uri: 'db2i://{schema}/{table}' },
         argument: { name: 'schema', value: 'MY' },
       });
       expect(result.completion.values).toEqual(['MYLIB']);
-      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('SYSSCHEMAS'), ['MY%']);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('SYSSCHEMAS'), ['%']);
     });
 
     it('completes tables in the schema already chosen', async () => {
-      mockQuery.mockResolvedValueOnce([{ TABLE_NAME: 'ORDERS', TABLE_TYPE: 'T', TABLE_TEXT: null }]);
+      mockQuery.mockResolvedValueOnce([
+        { TABLE_NAME: 'CUSTOMERS', TABLE_TYPE: 'T', TABLE_TEXT: null },
+        { TABLE_NAME: 'ORDERS', TABLE_TYPE: 'T', TABLE_TEXT: null },
+      ]);
       const result = await client.complete({
         ref: { type: 'ref/prompt', name: 'explain_table' },
         argument: { name: 'table', value: 'ord' },
-        context: { arguments: { schema: 'MYLIB' } },
+        context: { arguments: { schema: 'mylib' } },
       });
       expect(result.completion.values).toEqual(['ORDERS']);
-      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('SYSTABLES'), ['MYLIB', 'ORD%']);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('SYSTABLES'), ['MYLIB', '%']);
+    });
+
+    it('answers later keystrokes from the cache', async () => {
+      mockQuery.mockResolvedValueOnce([
+        { TABLE_NAME: 'ORDERHDR', TABLE_TYPE: 'T', TABLE_TEXT: null },
+        { TABLE_NAME: 'ORDERS', TABLE_TYPE: 'T', TABLE_TEXT: null },
+      ]);
+      const ask = (value: string) =>
+        client.complete({
+          ref: { type: 'ref/resource', uri: 'db2i://{schema}/{table}' },
+          argument: { name: 'table', value },
+          context: { arguments: { schema: 'MYLIB' } },
+        });
+
+      expect((await ask('O')).completion.values).toEqual(['ORDERHDR', 'ORDERS']);
+      expect((await ask('ORDERS')).completion.values).toEqual(['ORDERS']);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(checkLimit).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers nothing when the rate limit is used up', async () => {
+      checkLimit.mockImplementation(() => ({ allowed: false, remaining: 0 }));
+      const result = await client.complete({
+        ref: { type: 'ref/resource', uri: 'db2i://{schema}/{table}' },
+        argument: { name: 'schema', value: 'MY' },
+      });
+      expect(result.completion.values).toEqual([]);
+      expect(mockQuery).not.toHaveBeenCalled();
     });
 
     it('offers no tables for a library outside QUERY_ALLOWED_SCHEMAS', async () => {
