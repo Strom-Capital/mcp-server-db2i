@@ -9,6 +9,7 @@
 import type { DB2iConfig } from '../../config.js';
 import { buildOdbcConnectionConfig, serializeOdbcConnectionString } from '../../config.js';
 import type { CreatePoolOptions, DbDriver, DbPool, QueryParam } from '../driver.js';
+import { toDb2Timestamp } from '../driver.js';
 
 /** One diagnostic record from the ODBC driver manager. */
 interface OdbcDiagnostic {
@@ -38,14 +39,6 @@ function loadOdbc(): Promise<OdbcModule> {
     odbcModule = pending;
   }
   return odbcModule;
-}
-
-/**
- * Db2 for i accepts `YYYY-MM-DD HH:MM:SS.ffffff` for a timestamp parameter.
- * The value is rendered in UTC, the same instant a Date represents.
- */
-function toDb2Timestamp(date: Date): string {
-  return `${date.toISOString().slice(0, 23).replace('T', ' ')}000`;
 }
 
 /**

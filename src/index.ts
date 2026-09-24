@@ -242,7 +242,9 @@ function warnConnectionSecurity(system: SystemProfile, profiles: boolean): void 
   const security = profiles
     ? connectionSecurity(
         system.config.driver,
-        system.config.driver === 'odbc' ? system.config.odbcOptions : system.config.jdbcOptions
+        system.config.driver === 'odbc' ? system.config.odbcOptions : system.config.jdbcOptions,
+        system.config.mapepireOptions,
+        `Profile ${system.name} mapepireOptions`
       )
     : connectionSecurity();
   const optionsVariable = profiles
@@ -250,7 +252,20 @@ function warnConnectionSecurity(system: SystemProfile, profiles: boolean): void 
     : security.optionsVariable;
   const context = profiles ? { system: system.name } : {};
 
-  logger.info({ ...context, driver: security.driver }, 'Database driver selected');
+  logger.info(
+    {
+      ...context,
+      driver: security.driver,
+      ...(security.hostKeyCheck ? { hostKeyCheck: security.hostKeyCheck } : {}),
+    },
+    'Database driver selected'
+  );
+  if (security.hostKeyCheck === 'off') {
+    logger.warn(
+      context,
+      'insecureHostKey=true: the SSH host key is not checked, so a spoofed host could receive the IBM i password. Pin hostKey or use known_hosts.'
+    );
+  }
   if (security.accessOverride !== undefined) {
     logger.warn(
       { ...context, access: security.accessOverride },

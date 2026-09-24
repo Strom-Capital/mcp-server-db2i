@@ -30,6 +30,9 @@ import {
   buildOdbcConnectionConfig,
   serializeOdbcConnectionString,
   assertExtendedMetadataAllowsMasking,
+  resolveMapepireSettings,
+  buildMapepireJdbcOptions,
+  defaultKnownHostsFile,
   TOOL_NAMES,
   type DB2iConfig,
   type QueryLimitConfig,
@@ -616,9 +619,15 @@ describe('Config Module', () => {
       delete process.env.DB2I_DRIVER;
     });
 
+    it('should accept mapepire in any case', () => {
+      process.env.DB2I_DRIVER = 'Mapepire';
+      expect(getDbDriver()).toBe('mapepire');
+      delete process.env.DB2I_DRIVER;
+    });
+
     it('should reject an unknown driver', () => {
-      process.env.DB2I_DRIVER = 'mapepire';
-      expect(() => getDbDriver()).toThrow('Invalid DB2I_DRIVER value: "mapepire"');
+      process.env.DB2I_DRIVER = 'db2cli';
+      expect(() => getDbDriver()).toThrow('Invalid DB2I_DRIVER value: "db2cli". Must be one of: jt400, odbc, mapepire');
       delete process.env.DB2I_DRIVER;
     });
 
@@ -633,6 +642,140 @@ describe('Config Module', () => {
       expect(config.odbcOptions).toEqual({ SSL: '1', DBQ: ',LIB1,LIB2' });
       delete process.env.DB2I_DRIVER;
       delete process.env.DB2I_ODBC_OPTIONS;
+    });
+  });
+
+  describe('resolveMapepireSettings', () => {
+    const FINGERPRINT = 'SHA256:' + 'A'.repeat(43);
+
+    it('should default to ssh with a known_hosts check', () => {
+      expect(resolveMapepireSettings({})).toEqual({
+        transport: 'ssh',
+        startupTimeout: 60_000,
+        maxJobs: 2,
+        idleTimeout: 600_000,
+        requestTimeout: 120_000,
+        sshPort: 22,
+        hostKey: undefined,
+        knownHostsFile: defaultKnownHostsFile(),
+        hostKeyCheck: 'known_hosts',
+        privateKeyFile: undefined,
+        javaPath: undefined,
+        serverPath: undefined,
+      });
+    });
+
+    it('should read DB2I_MAPEPIRE_OPTIONS with keys in any case', () => {
+      process.env.DB2I_MAPEPIRE_OPTIONS = `HOSTKEY=${FINGERPRINT}; sshport=2222; maxJobs=3; javaPath=/QOpenSys/QIBM/ProdData/JavaVM/jdk11/64bit/bin/java`;
+      const settings = resolveMapepireSettings();
+      expect(settings).toMatchObject({
+        sshPort: 2222,
+        maxJobs: 3,
+        hostKey: FINGERPRINT,
+        hostKeyCheck: 'pinned',
+        javaPath: '/QOpenSys/QIBM/ProdData/JavaVM/jdk11/64bit/bin/java',
+      });
+      delete process.env.DB2I_MAPEPIRE_OPTIONS;
+    });
+
+    it('should accept a fingerprint with its base64 padding', () => {
+      expect(resolveMapepireSettings({ hostKey: `${FINGERPRINT}=` }).hostKey).toBe(FINGERPRINT);
+    });
+
+    it('should turn the host key check off only when asked', () => {
+      expect(resolveMapepireSettings({ insecureHostKey: 'TRUE' }).hostKeyCheck).toBe('off');
+      expect(resolveMapepireSettings({ insecureHostKey: 'false' }).hostKeyCheck).toBe('known_hosts');
+    });
+
+    it('should reject transport=daemon until it is implemented', () => {
+      expect(() => resolveMapepireSettings({ transport: 'daemon' })).toThrow(
+        'transport=daemon is not supported yet'
+      );
+    });
+
+    it('should reject an unknown transport, key or bad value', () => {
+      expect(() => resolveMapepireSettings({ transport: 'telnet' })).toThrow(
+        'transport must be one of: ssh, daemon'
+      );
+      expect(() => resolveMapepireSettings({ hostkey2: 'x' }, 'Profile prod mapepireOptions')).toThrow(
+        'Profile prod mapepireOptions: unknown option "hostkey2"'
+      );
+      expect(() => resolveMapepireSettings({ maxJobs: '0' })).toThrow('maxJobs must be a whole number of at least 1');
+      expect(() => resolveMapepireSettings({ sshPort: '22x' })).toThrow('sshPort must be a whole number');
+      expect(() => resolveMapepireSettings({ insecureHostKey: 'yes' })).toThrow('insecureHostKey must be true or false');
+      expect(() => resolveMapepireSettings({ hostKey: 'MD5:aa:bb' })).toThrow('hostKey must be an OpenSSH SHA256 fingerprint');
+    });
+
+    it('should reject a pinned key together with insecureHostKey', () => {
+      expect(() => resolveMapepireSettings({ hostKey: FINGERPRINT, insecureHostKey: 'true' })).toThrow(
+        'set either hostKey or insecureHostKey=true, not both'
+      );
+    });
+  });
+
+  describe('buildMapepireJdbcOptions', () => {
+    const config: DB2iConfig = {
+      hostname: 'ibmi.example.com',
+      port: 446,
+      username: 'TESTUSER',
+      password: 'secret',
+      database: '*LOCAL',
+      schema: 'MYLIB',
+      driver: 'mapepire',
+      jdbcOptions: {},
+      odbcOptions: {},
+    };
+
+    it('should use the JT400 defaults without host or credentials', () => {
+      expect(buildMapepireJdbcOptions(config)).toEqual({
+        naming: 'system',
+        'date format': 'iso',
+        access: 'read only',
+        libraries: 'MYLIB',
+      });
+    });
+
+    it('should drop access for the GENERATE_SQL connection', () => {
+      const options = buildMapepireJdbcOptions({ ...config, jdbcOptions: { access: 'all' } }, { readOnly: false });
+      expect(options).not.toHaveProperty('access');
+    });
+  });
+
+  describe('mapepire connection security and key login', () => {
+    it('should describe the mapepire driver', () => {
+      const security = connectionSecurity('mapepire', { access: 'all' }, { insecureHostKey: 'true' });
+      expect(security).toMatchObject({
+        driver: 'mapepire',
+        optionsVariable: 'DB2I_JDBC_OPTIONS',
+        accessOverride: 'all',
+        secure: true,
+        hostKeyCheck: 'off',
+      });
+    });
+
+    it('should not need a password when mapepire logs in with an SSH key', () => {
+      process.env.DB2I_HOSTNAME = 'ibmi.example.com';
+      process.env.DB2I_USERNAME = 'user';
+      delete process.env.DB2I_PASSWORD;
+      process.env.DB2I_DRIVER = 'mapepire';
+      process.env.DB2I_MAPEPIRE_OPTIONS = 'privateKeyFile=/home/user/.ssh/id_ed25519';
+      const config = loadConfig();
+      expect(config.password).toBe('');
+      expect(config.mapepireOptions).toEqual({ privateKeyFile: '/home/user/.ssh/id_ed25519' });
+
+      process.env.DB2I_DRIVER = 'odbc';
+      expect(() => loadConfig()).toThrow('DB2I_PASSWORD environment variable is required');
+      delete process.env.DB2I_DRIVER;
+      delete process.env.DB2I_MAPEPIRE_OPTIONS;
+    });
+
+    it('should apply the extended metadata check to mapepire', () => {
+      expect(() =>
+        assertExtendedMetadataAllowsMasking(true, 'mapepire', { 'extended metadata': 'true' })
+      ).toThrow('extended metadata=true');
+      expect(() =>
+        assertExtendedMetadataAllowsMasking(true, 'odbc', { 'extended metadata': 'true' })
+      ).not.toThrow();
     });
   });
 

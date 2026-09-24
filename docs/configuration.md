@@ -32,15 +32,16 @@ DB2I_PASSWORD=your-password
 |----------|----------|---------|-------------|
 | `DB2I_HOSTNAME` | Yes | - | IBM i hostname or IP address |
 | `DB2I_USERNAME` | Yes* | - | IBM i user profile |
-| `DB2I_PASSWORD` | Yes* | - | User password |
+| `DB2I_PASSWORD` | Yes* | - | User password. Not needed with `DB2I_DRIVER=mapepire` and `privateKeyFile` in `DB2I_MAPEPIRE_OPTIONS` |
 | `DB2I_USERNAME_FILE` | No | - | Path to file containing username (overrides `DB2I_USERNAME`) |
 | `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
-| `DB2I_PORT` | No | `446` | Not used. Both drivers connect to the IBM i host servers (8471, or 9471 with TLS), not the DRDA port |
+| `DB2I_PORT` | No | `446` | Not used. The `odbc` and `jt400` drivers connect to the IBM i host servers (8471, or 9471 with TLS), not the DRDA port. `mapepire` uses SSH (`sshPort` in `DB2I_MAPEPIRE_OPTIONS`) |
 | `DB2I_DATABASE` | No | `*LOCAL` | Not used. To reach an independent ASP, set the driver option (`database name` for jt400, `DATABASE` for ODBC) |
 | `DB2I_SCHEMA` | No | - | Default schema/library. Also the library list for `execute_query` (JDBC `libraries`, ODBC `DBQ`) when the option is not set |
-| `DB2I_DRIVER` | No | `odbc` | Database driver: `odbc` (IBM i Access ODBC driver, no Java) or `jt400` (JDBC via the optional node-jt400 package, needs Java). See [Database Drivers](#database-drivers) |
-| `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated). `jt400` driver only |
+| `DB2I_DRIVER` | No | `odbc` | Database driver: `odbc` (IBM i Access ODBC driver, no Java), `jt400` (JDBC via the optional node-jt400 package, needs Java) or `mapepire` (Mapepire over SSH, needs Java on the IBM i only). See [Database Drivers](#database-drivers) |
+| `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated). `jt400` and `mapepire` drivers |
 | `DB2I_ODBC_OPTIONS` | No | - | Additional ODBC connection keywords (semicolon-separated). `odbc` driver only |
+| `DB2I_MAPEPIRE_OPTIONS` | No | - | SSH and Mapepire settings (semicolon-separated). `mapepire` driver only. See [Using the Mapepire driver](#using-the-mapepire-driver-ssh) |
 | `DB2I_PROFILES` | No | - | Path to a YAML file of IBM i systems. When set, it replaces the other variables in this table, except `DB2I_DRIVER`, which becomes the default driver for profiles. See [Multiple Systems](#multiple-systems) |
 
 *Either the environment variable or the corresponding `*_FILE` variable must be set. File-based secrets take priority when both are provided.
@@ -219,14 +220,17 @@ NODE_ENV=production
 
 ## Database Drivers
 
-`DB2I_DRIVER` picks how the server talks to Db2 for i. Both drivers run the same tools and apply the same defaults: system naming, ISO dates, a read-only query connection, `DB2I_SCHEMA` as the library list, and a second connection without the read-only setting for `QSYS2.GENERATE_SQL` (`get_object_ddl`). Each driver is loaded on first use, so the default `odbc` driver never starts Java.
+`DB2I_DRIVER` picks how the server talks to Db2 for i. All drivers run the same tools and apply the same defaults: system naming, ISO dates, a read-only query connection, `DB2I_SCHEMA` as the library list, and a second connection without the read-only setting for `QSYS2.GENERATE_SQL` (`get_object_ddl`). Each driver is loaded on first use, so the default `odbc` driver never starts Java.
+
+Pick by what the network allows: `odbc` and `jt400` need the database host server ports (8471 and friends) open to the MCP server. `mapepire` needs only SSH (port 22).
 
 | Driver | Package | Needs | Options variable |
 |--------|---------|-------|------------------|
 | `odbc` (default) | [odbc](https://www.npmjs.com/package/odbc) (IBM/node-odbc) | unixODBC and the IBM i Access ODBC Driver | `DB2I_ODBC_OPTIONS` |
 | `jt400` | [node-jt400](https://www.npmjs.com/package/node-jt400) | A JDK when running `npm install`, and a Java Runtime Environment 11 or later at runtime | `DB2I_JDBC_OPTIONS` |
+| `mapepire` | [@ibm/mapepire-js](https://www.npmjs.com/package/@ibm/mapepire-js) and [ssh2](https://www.npmjs.com/package/ssh2) | SSH access to the IBM i, and Java 8 or later on the IBM i. Nothing on the MCP server side | `DB2I_MAPEPIRE_OPTIONS`, plus `DB2I_JDBC_OPTIONS` |
 
-Both packages are optional dependencies, so `npm install` succeeds when one of them cannot build. If the `odbc` prebuilt binary is missing for your platform, `npm install` builds it from source and needs the unixODBC headers (`unixodbc-dev` on Debian and Ubuntu, `unixODBC-devel` on RHEL and SUSE).
+All driver packages are optional dependencies, so `npm install` succeeds when one of them cannot build. If the `odbc` prebuilt binary is missing for your platform, `npm install` builds it from source and needs the unixODBC headers (`unixodbc-dev` on Debian and Ubuntu, `unixODBC-devel` on RHEL and SUSE).
 
 ### Using the JT400 driver
 
@@ -237,6 +241,62 @@ Both packages are optional dependencies, so `npm install` succeeds when one of t
 3. Set `DB2I_DRIVER=jt400`, or `driver: jt400` on a profile.
 
 If the package is missing, the first query fails with an error that names `node-jt400`. The server itself still starts.
+
+### Using the Mapepire driver (SSH)
+
+The `mapepire` driver reaches Db2 for i through [Mapepire](https://mapepire-ibmi.github.io/) over SSH. It logs in with SSH as the configured user and starts the Mapepire server inside that session. No Mapepire daemon runs on the IBM i, no port besides SSH is used, and no administrator install is needed.
+
+On the first connection, mapepire-js uploads its bundled server JAR (about 10 MB) to `$HOME/.mapepire` in the user's home directory. Later connections reuse it. A JAR that Code for i already installed in `$HOME/.vscode` is reused too. To use an installed server instead, for example the `mapepire-server` RPM, set `serverPath`.
+
+Requirements on the IBM i:
+
+- The SSH daemon running, and the user allowed to log in with SSH.
+- A home directory for the user, which must exist and be writable.
+- Java 8 or later. mapepire-js uses `/QOpenSys/QIBM/ProdData/JavaVM/jdk80/64bit/bin/java` by default. Set `javaPath` to use another JDK.
+
+Each Mapepire job is a JVM on the IBM i. Starting one takes a few seconds, and the first start takes longer because of the upload. The pool starts jobs when queries need them, up to `maxJobs`, keeps the first one running, and closes the others after `idleTimeout`. Over HTTP with `MCP_AUTH_MODE=required`, every `/auth` login starts a job to check the credentials, so a login takes several seconds.
+
+The JDBC connection runs on the IBM i with the JT400 driver, so `DB2I_JDBC_OPTIONS` applies as it does for `jt400`. That includes the read-only default (`access=read only`) and `libraries`. The session is encrypted by SSH, so `secure=true` is not needed.
+
+#### Host key check
+
+Before sending the password, the driver checks the IBM i's SSH host key. The key must match either:
+
+- a fingerprint pinned with `hostKey=SHA256:...`, or
+- an entry for the host in `~/.ssh/known_hosts` (or `knownHostsFile`). Plain and hashed entries are supported, and `[host]:port` entries off port 22.
+
+If neither matches, the connection is refused and the error shows the key's fingerprint. The simplest setup is to connect once with `ssh user@host` from the same machine and account, check the fingerprint, and accept it. To pin a key instead, get its fingerprint from the IBM i administrator (`ssh-keygen -lf` on the host key `.pub` file in the sshd configuration directory), and set `hostKey` to it. The connection error also shows the fingerprint the host presented, but check it through another channel before pinning it.
+
+`insecureHostKey=true` turns the check off, and startup logs a warning. Use it only on a network you trust: a spoofed host would receive the password.
+
+#### Options
+
+`DB2I_MAPEPIRE_OPTIONS` takes semicolon-separated `key=value` pairs. Keys are case-insensitive, and an unknown key stops startup.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `transport` | `ssh` | How to reach Mapepire. Only `ssh` is supported. `daemon` (a running Mapepire server) is reserved for a later release |
+| `sshPort` | `22` | SSH port on the IBM i |
+| `hostKey` | - | Pinned host key fingerprint, `SHA256:` plus 43 base64 characters |
+| `knownHostsFile` | `~/.ssh/known_hosts` | known_hosts file to check the host key against when `hostKey` is not set |
+| `insecureHostKey` | `false` | `true` skips the host key check |
+| `privateKeyFile` | - | Private key for SSH login. When set, SSH does not use the password, and `DB2I_PASSWORD` can be left unset. The key must not have a passphrase |
+| `javaPath` | mapepire-js default (`jdk80`) | Java binary on the IBM i |
+| `serverPath` | - | Path of an installed Mapepire server JAR. When set, the bundled JAR is not uploaded |
+| `maxJobs` | `2` | Most Mapepire jobs (JVMs) one pool runs at a time |
+| `idleTimeout` | `600000` | Milliseconds before an idle job beyond the first is closed |
+| `startupTimeout` | `60000` | Milliseconds to wait for a job to start |
+| `requestTimeout` | `120000` | Milliseconds to wait for one query or fetch to answer |
+
+```env
+DB2I_DRIVER=mapepire
+DB2I_HOSTNAME=ibmi.example.com
+DB2I_USERNAME=MCPREAD
+DB2I_PASSWORD=your-password
+DB2I_MAPEPIRE_OPTIONS=hostKey=SHA256:abc...xyz;maxJobs=2
+```
+
+To remove the private install from the IBM i, delete `$HOME/.mapepire` in the user's home directory.
 
 ### Installing the IBM i Access ODBC Driver
 
@@ -312,7 +372,7 @@ profiles:
 |-------|----------|---------|-------------|
 | `name` | Yes | - | Name tools use in their `system` argument. Letters, digits, `_` and `-` |
 | `host` | Yes | - | IBM i hostname or IPv4 address |
-| `driver` | No | `DB2I_DRIVER`, else `odbc` | `odbc` or `jt400`. Each profile can use a different driver |
+| `driver` | No | `DB2I_DRIVER`, else `odbc` | `odbc`, `jt400` or `mapepire`. Each profile can use a different driver |
 | `schema` | No | - | Default library, like `DB2I_SCHEMA` |
 | `allowedSchemas` | No | `QUERY_ALLOWED_SCHEMAS` | Libraries queries on this system may use |
 | `username` | Yes* | - | User profile, as text or a `"${ENV_VAR}"` reference |
@@ -321,8 +381,9 @@ profiles:
 | `passwordFile` | Yes* | - | Path to a file holding the password, for example a Docker secret |
 | `jdbcOptions` | No | - | Like `DB2I_JDBC_OPTIONS`, for this system |
 | `odbcOptions` | No | - | Like `DB2I_ODBC_OPTIONS`, for this system |
+| `mapepireOptions` | No | - | Like `DB2I_MAPEPIRE_OPTIONS`, for this system |
 
-*Set `username` or `usernameFile`, and `password` or `passwordFile`. A path may itself be a `"${ENV_VAR}"` reference. Quote every reference: inside a `{ }` map YAML reads a bare `${...}` as another map.
+*Set `username` or `usernameFile`, and `password` or `passwordFile`. A `mapepire` profile with `privateKeyFile` in `mapepireOptions` needs no password. A path may itself be a `"${ENV_VAR}"` reference. Quote every reference: inside a `{ }` map YAML reads a bare `${...}` as another map.
 
 How calls pick a system:
 
@@ -337,7 +398,7 @@ The file is read once at startup and a mistake stops the server. Restart it afte
 
 ## JDBC Options
 
-The `DB2I_JDBC_OPTIONS` variable accepts semicolon-separated JDBC options for the JT400/JTOpen driver. It applies when `DB2I_DRIVER` is `jt400` (see [Using the JT400 driver](#using-the-jt400-driver)).
+The `DB2I_JDBC_OPTIONS` variable accepts semicolon-separated JDBC options for the JT400/JTOpen driver. It applies when `DB2I_DRIVER` is `jt400` (see [Using the JT400 driver](#using-the-jt400-driver)) or `mapepire`, whose server uses JT400 on the IBM i.
 
 ### Common Options
 

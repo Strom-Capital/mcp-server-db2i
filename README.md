@@ -12,13 +12,13 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Strom-Capital/mcp-server-db2i/pulls)
 [![GitHub last commit](https://img.shields.io/github/last-commit/Strom-Capital/mcp-server-db2i)](https://github.com/Strom-Capital/mcp-server-db2i/commits/main)
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases through the IBM i Access ODBC driver, or optionally the JT400 JDBC driver.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases through the IBM i Access ODBC driver, or optionally the JT400 JDBC driver or Mapepire over SSH.
 
 Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.Strom-Capital/mcp-server-db2i`.
 
 ## Architecture
 
-AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the IBM i Access ODBC driver (default, no Java) or the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`). One server can reach several IBM i systems through connection profiles, each with its own driver.
+AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the IBM i Access ODBC driver (default, no Java), the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`), or Mapepire over SSH (`DB2I_DRIVER=mapepire`) for systems where only SSH is reachable. One server can reach several IBM i systems through connection profiles, each with its own driver.
 
 ```mermaid
 graph LR
@@ -35,6 +35,7 @@ graph LR
         profiles{{"System profiles"}}
         odbc["IBM i Access ODBC"]
         jdbc["JT400 JDBC (optional)"]
+        mapepire["Mapepire over SSH (optional)"]
     end
 
     subgraph prod ["IBM i: prod"]
@@ -45,13 +46,18 @@ graph LR
         db2test[("DB2 for i")]
     end
 
+    subgraph dev ["IBM i: dev"]
+        db2dev[("DB2 for i")]
+    end
+
     claude & cursor -->|MCP Protocol| stdio
     agents -->|REST API| http
     stdio & http --> tools
     tools --> profiles
-    profiles --> odbc & jdbc
+    profiles --> odbc & jdbc & mapepire
     odbc -->|ODBC| db2prod
     jdbc -->|JDBC| db2test
+    mapepire -->|SSH| db2dev
 ```
 
 ## Features
@@ -66,6 +72,7 @@ graph LR
 - **Current MCP spec** - Speaks [2026-07-28](https://modelcontextprotocol.io/) and still serves stateless 2025-era clients
 - **Dual Transport** - Run stdio and HTTP simultaneously
 - **Multiple systems** - Reach several IBM i systems from one server with `DB2I_PROFILES`, each with its own driver, credentials, and library allowlist. Tools take an optional `system` argument. See [Multiple systems](docs/configuration.md#multiple-systems)
+- **SSH-only systems** - With `DB2I_DRIVER=mapepire`, reach an IBM i where only SSH is open. Mapepire starts inside the SSH session, with no server install and a host key check. See [Using the Mapepire driver](docs/configuration.md#using-the-mapepire-driver-ssh)
 - **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
 - **Business SQL tools** - Load read-only ERP queries and table notes from YAML, and check the files with `mcp-server-db2i validate-tools` before the server starts. See [Business SQL tools](docs/custom-tools.md)
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens
@@ -84,7 +91,7 @@ graph LR
 npm install -g mcp-server-db2i
 ```
 
-The default `odbc` driver needs unixODBC and the IBM i Access ODBC Driver on the machine. No Java is needed. To use the JT400 JDBC driver instead, have a JDK installed when you run `npm install` and set `DB2I_DRIVER=jt400`. See [Database Drivers](docs/configuration.md#database-drivers).
+The default `odbc` driver needs unixODBC and the IBM i Access ODBC Driver on the machine. No Java is needed. To use the JT400 JDBC driver instead, have a JDK installed when you run `npm install` and set `DB2I_DRIVER=jt400`. If only SSH reaches the IBM i, set `DB2I_DRIVER=mapepire`: it needs SSH access and Java on the IBM i, and nothing else. See [Database Drivers](docs/configuration.md#database-drivers).
 
 Or with Docker:
 
@@ -218,12 +225,12 @@ Once connected, you can ask the AI assistant:
 - `get_related_objects` needs IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release
 - `get_journal_info` needs the journal columns of `QSYS2.OBJECT_STATISTICS` (IBM i 7.3 Technology Refresh 2 or later)
 - Node.js 22 or higher
-- unixODBC with the IBM i Access ODBC Driver for the default `odbc` driver, or a JDK at install time and a JRE 11 or higher at runtime for the optional `jt400` driver (see [Database Drivers](docs/configuration.md#database-drivers))
+- unixODBC with the IBM i Access ODBC Driver for the default `odbc` driver, a JDK at install time and a JRE 11 or higher at runtime for the optional `jt400` driver, or SSH access and Java 8 or higher on the IBM i for the optional `mapepire` driver (see [Database Drivers](docs/configuration.md#database-drivers))
 - MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)
 
 ## Related Projects
 
-- **[IBM ibmi-mcp-server](https://github.com/IBM/ibmi-mcp-server)** - IBM's official MCP server for IBM i systems. Offers YAML-based SQL tool definitions and AI agent frameworks. Requires [Mapepire](https://mapepire-ibmi.github.io/).
+- **[IBM ibmi-mcp-server](https://github.com/IBM/ibmi-mcp-server)** - IBM's official MCP server for IBM i systems. Offers YAML-based SQL tool definitions and AI agent frameworks. Requires [Mapepire](https://mapepire-ibmi.github.io/). This project's `mapepire` driver uses Mapepire's SSH mode, which needs no Mapepire server running on the IBM i.
 
 ## Contributing
 
@@ -237,5 +244,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [node-jt400](https://www.npmjs.com/package/node-jt400) - JT400 JDBC driver wrapper for Node.js
 - [node-odbc](https://github.com/IBM/node-odbc) - ODBC bindings for Node.js, maintained by IBM
+- [mapepire-js](https://github.com/Mapepire-IBMi/mapepire-js) - Mapepire client for Node.js, maintained by IBM
 - [Model Context Protocol](https://modelcontextprotocol.io/) - The protocol specification
 - [@modelcontextprotocol/server](https://github.com/modelcontextprotocol/typescript-sdk) - Official TypeScript SDK (spec 2026-07-28, with stateless 2025-era clients)

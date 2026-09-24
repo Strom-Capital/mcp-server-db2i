@@ -23,3 +23,13 @@ profiles:
     passwordFile: /run/secrets/db2i_test_password
     schema: SALESTEST
     odbcOptions: "SSL=1"
+
+  # A system reachable only over SSH: Mapepire runs inside the SSH session.
+  # The host key must match ~/.ssh/known_hosts, or pin it with hostKey=SHA256:...
+  # - name: dev
+  #   host: ibmi-dev.example.com
+  #   driver: mapepire
+  #   username: MCPREAD
+  #   password: "${DB2I_DEV_PASSWORD}"
+  #   schema: SALESDEV
+  #   mapepireOptions: "maxJobs=1"

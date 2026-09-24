@@ -22,7 +22,10 @@ interface FakePool {
 const created = vi.hoisted(() => ({
   jt400: [] as Array<{ config: Record<string, string>; pool: FakePool }>,
   odbc: [] as Array<{ connectionString: string; options: Record<string, unknown>; pool: FakePool }>,
-  failNext: { jt400: false, odbc: false },
+  // mapepire: one entry per started job, which is what a query runs on.
+  mapepire: [] as Array<{ jdbcOptions: Record<string, string>; pool: FakePool }>,
+  sshClients: [] as Array<{ config: Record<string, unknown>; end: Mock<() => void> }>,
+  failNext: { jt400: false, odbc: false, mapepire: false },
   rows: [] as Record<string, unknown>[],
 }));
 
@@ -74,6 +77,61 @@ vi.mock('odbc', () => ({
   }),
 }));
 
+vi.mock('ssh2', async () => {
+  const { EventEmitter } = await import('node:events');
+  class Client extends EventEmitter {
+    end = vi.fn(() => {
+      setImmediate(() => this.emit('close'));
+    });
+    connect(config: Record<string, unknown>) {
+      created.sshClients.push({ config, end: this.end });
+      setImmediate(() => this.emit('ready'));
+      return this;
+    }
+  }
+  return { Client };
+});
+
+vi.mock('@ibm/mapepire-js', () => ({
+  createSSH2Connection: vi.fn(() => ({ exec: vi.fn(), upload: vi.fn() })),
+  SQLJob: {
+    withConfig: vi.fn((_config: unknown, jdbcOptions: Record<string, string>) => {
+      const pool = makeFakePool();
+      let status = 'notStarted';
+      return {
+        async connect() {
+          if (created.failNext.mapepire) {
+            created.failNext.mapepire = false;
+            throw new Error('mapepire job failed to start');
+          }
+          status = 'ready';
+          created.mapepire.push({ jdbcOptions, pool });
+          return { success: true };
+        },
+        getStatus: () => status,
+        query(sql: string, opts: { parameters?: unknown[] }) {
+          return {
+            async execute() {
+              const rows = await pool.query(sql, opts.parameters ?? []);
+              return { data: rows, is_done: true };
+            },
+            async fetchMore() {
+              return { data: [], is_done: true };
+            },
+            async close() {
+              return { success: true };
+            },
+          };
+        },
+        async close() {
+          status = 'ended';
+          await pool.close();
+        },
+      };
+    }),
+  },
+}));
+
 type Connection = typeof import('../../src/db/connection.js');
 
 function target(poolKey: string, system: string, config: DB2iConfig): DbTarget {
@@ -91,6 +149,8 @@ function baseConfig(driver: DbDriverName): DB2iConfig {
     driver,
     jdbcOptions: {},
     odbcOptions: {},
+    // The fake ssh2 client never presents a key; skip reading known_hosts.
+    mapepireOptions: driver === 'mapepire' ? { insecureHostKey: 'true' } : {},
   };
 }
 
@@ -119,6 +179,14 @@ const probes: DriverProbe[] = [
       created.failNext.odbc = true;
     },
   },
+  {
+    name: 'mapepire',
+    pools: () => created.mapepire.map((c) => c.pool),
+    isReadOnly: (i) => created.mapepire[i].jdbcOptions['access'] === 'read only',
+    failNext: () => {
+      created.failNext.mapepire = true;
+    },
+  },
 ];
 
 describe.each(probes)('driver contract: $name', (probe) => {
@@ -127,8 +195,11 @@ describe.each(probes)('driver contract: $name', (probe) => {
   beforeEach(async () => {
     created.jt400.length = 0;
     created.odbc.length = 0;
+    created.mapepire.length = 0;
+    created.sshClients.length = 0;
     created.failNext.jt400 = false;
     created.failNext.odbc = false;
+    created.failNext.mapepire = false;
     created.rows = [{ SCHEMA_NAME: 'MYLIB', N: 1 }];
     // connection.ts keeps module state, so each test gets a fresh copy.
     vi.resetModules();
@@ -357,6 +428,105 @@ describe('driver contract: loading', () => {
     connection.initializePool(baseConfig('odbc'));
     await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
     expect(odbc.pool).toHaveBeenCalledTimes(1);
+    expect(jt400.pool).not.toHaveBeenCalled();
+    await connection.closeGlobalPool();
+  });
+});
+
+describe('driver contract: mapepire specifics', () => {
+  let connection: Connection;
+
+  beforeEach(async () => {
+    created.mapepire.length = 0;
+    created.sshClients.length = 0;
+    created.failNext.mapepire = false;
+    created.rows = [{ N: 1 }];
+    vi.resetModules();
+    connection = await import('../../src/db/connection.js');
+  });
+
+  afterEach(async () => {
+    await connection.closeGlobalPool();
+  });
+
+  it('opens one SSH session with the configured user, port and host key check', async () => {
+    connection.initializePool({
+      ...baseConfig('mapepire'),
+      mapepireOptions: { insecureHostKey: 'true', sshPort: '2222' },
+    });
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    await connection.executeQuery('SELECT 2 FROM SYSIBM.SYSDUMMY1');
+    expect(created.sshClients).toHaveLength(1);
+    const { config } = created.sshClients[0];
+    expect(config).toMatchObject({
+      host: 'ibmi.example.com',
+      port: 2222,
+      username: 'TESTUSER',
+      password: 'secret',
+    });
+    expect(typeof config.hostVerifier).toBe('function');
+  });
+
+  it('passes the JT400 defaults, without host or credentials, to the Mapepire server', async () => {
+    connection.initializePool({ ...baseConfig('mapepire'), jdbcOptions: { naming: 'sql' } });
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    expect(created.mapepire[0].jdbcOptions).toEqual({
+      naming: 'sql',
+      'date format': 'iso',
+      access: 'read only',
+      libraries: 'MYLIB',
+    });
+  });
+
+  it('binds Date parameters as Db2 timestamps', async () => {
+    connection.initializePool(baseConfig('mapepire'));
+    const when = new Date(Date.UTC(2026, 8, 24, 13, 45, 30, 123));
+    await connection.executeQuery('SELECT ? FROM SYSIBM.SYSDUMMY1', [when]);
+    const [, params] = created.mapepire[0].pool.query.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual(['2026-09-24 13:45:30.123000']);
+  });
+
+  it('rewrites a Mapepire error as [SQLSTATE] message', async () => {
+    connection.initializePool(baseConfig('mapepire'));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    created.mapepire[0].pool.query.mockRejectedValueOnce(
+      new Error('[SQL0204] NOPE in MYLIB type *FILE not found., 42704, -204')
+    );
+    await expect(connection.executeQuery('SELECT * FROM NOPE')).rejects.toThrow(
+      'Database query failed: [42704] [SQL0204] NOPE in MYLIB type *FILE not found.'
+    );
+  });
+
+  it('ends the SSH session on shutdown', async () => {
+    connection.initializePool(baseConfig('mapepire'));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    await connection.closeGlobalPool();
+    expect(created.sshClients[0].end).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses unknown DB2I_MAPEPIRE_OPTIONS keys', async () => {
+    connection.initializePool({ ...baseConfig('mapepire'), mapepireOptions: { hostkey2: 'x' } });
+    await expect(connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1')).rejects.toThrow(
+      /unknown option "hostkey2"/
+    );
+  });
+});
+
+describe('driver contract: mapepire loading', () => {
+  it('does not load the ODBC or JT400 packages', async () => {
+    vi.resetModules();
+    const jt400 = await import('node-jt400');
+    const odbc = await import('odbc');
+    vi.mocked(jt400.pool).mockClear();
+    vi.mocked(odbc.pool).mockClear();
+    created.mapepire.length = 0;
+    created.rows = [];
+
+    const connection = await import('../../src/db/connection.js');
+    connection.initializePool(baseConfig('mapepire'));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    expect(created.mapepire).toHaveLength(1);
+    expect(odbc.pool).not.toHaveBeenCalled();
     expect(jt400.pool).not.toHaveBeenCalled();
     await connection.closeGlobalPool();
   });
