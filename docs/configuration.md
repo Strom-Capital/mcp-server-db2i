@@ -103,6 +103,7 @@ Disabled tools are not listed by `tools/list` and cannot be called. The setting 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MCP_CUSTOM_TOOLS` | - | Comma-separated YAML files or directories. Each file defines read-only SQL tools, table annotations, or both. |
+| `MCP_CUSTOM_TOOLS_WATCH` | off | `true` or `1` re-reads those files when they change. A valid set replaces the running tools and the server sends `notifications/tools/list_changed`. An invalid set is logged and the last good set keeps serving. Watching with an empty `MCP_CUSTOM_TOOLS` stops startup. |
 
 The server reads these files before it accepts connections. A statement that is not a query, or that names a library outside `QUERY_ALLOWED_SCHEMAS`, stops startup. See [Business SQL tools](custom-tools.md) for the file format, parameter binding, and the example ERP pack.
 

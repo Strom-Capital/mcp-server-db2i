@@ -188,6 +188,8 @@ When `QUERY_PARSE_CHECK` is on, the first call of each tool asks `QSYS2.PARSE_ST
 
 `mcp-server-db2i validate-tools <path...>` runs those startup checks and exits, without a database. Add `--connect` to run the `PARSE_STATEMENT` check as well. That needs credentials and a reachable host. See [Validating tool files](development.md#validating-tool-files).
 
+`MCP_CUSTOM_TOOLS_WATCH=true` runs the same checks again when a watched file changes. A valid set replaces the registry and clients are told to refresh `tools/list`. A bad save is logged and does not replace the tools that are already running. The default is off. Watching with an empty `MCP_CUSTOM_TOOLS` stops startup.
+
 `MCP_TOOLS_ENABLED` and `MCP_TOOLS_DISABLED` accept a custom tool name or `toolset:<name>`, as well as the built-in names. A toolset selector does not match built-in tools. An unknown name or toolset stops startup.
 
 ```env

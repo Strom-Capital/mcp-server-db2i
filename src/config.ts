@@ -546,6 +546,33 @@ export function isQueryParseCheckEnabled(): boolean {
   return value !== 'false' && value !== '0';
 }
 
+/**
+ * Whether YAML tool files are re-read when they change.
+ *
+ * Environment variable:
+ * - MCP_CUSTOM_TOOLS_WATCH: `true` or `1` turns watching on. Anything else, including unset, leaves it off.
+ */
+export function isCustomToolsWatchEnabled(): boolean {
+  const value = process.env.MCP_CUSTOM_TOOLS_WATCH?.trim().toLowerCase();
+  return value === 'true' || value === '1';
+}
+
+/**
+ * Watching with no files is a startup error. A blank MCP_CUSTOM_TOOLS would
+ * otherwise look like a successful watch of nothing.
+ */
+export function assertCustomToolsWatch(): void {
+  if (!isCustomToolsWatchEnabled()) {
+    return;
+  }
+  const raw = process.env.MCP_CUSTOM_TOOLS;
+  if (raw === undefined || raw.trim() === '') {
+    throw new Error(
+      'MCP_CUSTOM_TOOLS_WATCH is set but MCP_CUSTOM_TOOLS is empty. There is nothing to watch.'
+    );
+  }
+}
+
 // ============================================================================
 // HTTP Transport Configuration
 // ============================================================================
