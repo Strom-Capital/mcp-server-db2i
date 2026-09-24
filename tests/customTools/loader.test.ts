@@ -122,6 +122,54 @@ describe('loadCustomTools', () => {
     expect(loaded.annotations.some((annotation) => annotation.entity === 'gl_account')).toBe(true);
   });
 
+  it('loads a masking-only file and rejects a duplicate rule', () => {
+    const loaded = loadCustomTools([writeYaml(`
+version: 1
+masking:
+  MYLIB.CUSTOMERS:
+    EMAIL: redact
+    PHONE: last4
+`)]);
+    expect(loaded.tools).toEqual([]);
+    expect(loaded.masking.get('MYLIB.CUSTOMERS')?.get('EMAIL')).toBe('redact');
+    expect(loaded.masking.get('MYLIB.CUSTOMERS')?.get('PHONE')).toBe('last4');
+
+    const dir = mkdtempSync(path.join(tmpdir(), 'db2i-tools-'));
+    dirs.push(dir);
+    const rule = 'version: 1\nmasking:\n  MYLIB.CUSTOMERS:\n    EMAIL: redact\n';
+    writeFileSync(path.join(dir, 'a.yaml'), rule);
+    writeFileSync(path.join(dir, 'b.yaml'), rule);
+    expect(() => loadCustomTools([dir])).toThrow(/Masking rule MYLIB\.CUSTOMERS\.EMAIL is defined in both/);
+  });
+
+  it('rejects a YAML tool that filters on a masked column, including a rule from another file', () => {
+    const tool = `
+version: 1
+tools:
+  - name: find_customer
+    title: Find customer
+    description: Customer by email.
+    parameters:
+      email: { type: string, required: true }
+    sql: |
+      SELECT CUSTNO FROM MYLIB.CUSTOMERS WHERE EMAIL = :email
+`;
+    const rules = `
+version: 1
+masking:
+  MYLIB.CUSTOMERS:
+    EMAIL: redact
+`;
+    expect(() => loadCustomTools([writeYaml(`${tool}masking:\n  MYLIB.CUSTOMERS:\n    EMAIL: redact\n`)]))
+      .toThrow(/Masked column EMAIL must be a plain selected column/);
+
+    const dir = mkdtempSync(path.join(tmpdir(), 'db2i-tools-'));
+    dirs.push(dir);
+    writeFileSync(path.join(dir, 'a.yaml'), tool);
+    writeFileSync(path.join(dir, 'b.yaml'), rules);
+    expect(() => loadCustomTools([dir])).toThrow(/Masked column EMAIL must be a plain selected column/);
+  });
+
   it('reads MCP_CUSTOM_TOOLS', () => {
     const previousTools = process.env.MCP_CUSTOM_TOOLS;
     const previousSchemas = process.env.QUERY_ALLOWED_SCHEMAS;

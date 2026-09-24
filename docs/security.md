@@ -244,6 +244,18 @@ Control concurrent sessions to prevent resource exhaustion:
 MCP_MAX_SESSIONS=100  # Maximum concurrent sessions
 ```
 
+## Column masking
+
+Db2 row and column access control (RCAC) is the control that actually holds. A mask in this server only changes what an agent receives from `execute_query` and from YAML tools. It does not change what the database user can read with another client.
+
+Rules live in the YAML `masking` section described in [Business SQL tools](custom-tools.md#masking). `redact` replaces a value. `last4` keeps the last four characters.
+
+The server rejects a statement that uses a masked column as anything other than a plain selected column, so an alias or `UPPER(EMAIL)` cannot carry the value out under another name. That check needs `QSYS2.PARSE_STATEMENT` for `execute_query`. When masking is loaded and `QUERY_PARSE_CHECK` is off, `execute_query` refuses to run. A mask the server cannot enforce would be worse than no mask. YAML tools are checked from the statement text at load time and do not depend on that setting.
+
+`extended metadata=true` in `DB2I_JDBC_OPTIONS` makes JT400 label result keys with `LABEL ON` text instead of the column name. Masking would miss those keys, so the server refuses to start when that option is set and a masking rule is loaded.
+
+A view, an alias, or a table function that reads a masked table is not covered unless the view itself is listed in `masking`.
+
 ## Audit log
 
 `MCP_AUDIT_LOG` writes one JSON line for every tool call: who ran it, which tool, a hash of the SQL (or the text when `MCP_AUDIT_SQL=full`), how many parameters were bound, the row count, how long it took, and whether it succeeded, failed, or was rate limited. HTTP calls record the IBM i username. Stdio calls record `stdio`.

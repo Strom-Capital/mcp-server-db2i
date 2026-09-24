@@ -1,0 +1,5 @@
+version: 1
+masking:
+  MYLIB.CUSTOMERS:
+    EMAIL: redact
+    PHONE: last4

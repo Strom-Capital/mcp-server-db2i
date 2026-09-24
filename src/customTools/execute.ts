@@ -10,6 +10,7 @@ import { createChildLogger } from '../utils/logger.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import type { StoredTool } from './loader.js';
 import { cacheParse, cachedParse } from './registry.js';
+import { maskRows } from './masking.js';
 import { formatSchemaIssues, inputSchemaFor, type ParameterDef } from './schema.js';
 
 const log = createChildLogger({ component: 'custom-tools' });
@@ -94,12 +95,16 @@ export async function executeCustomTool(
 
   try {
     const result = await executeQuery(limitedSql, values, options.sessionId);
-    const rows = result.rows.slice(0, effectiveLimit);
-    log.info({ tool: tool.name, rowCount: rows.length, effectiveLimit }, 'Custom tool executed');
+    const limited = result.rows.slice(0, effectiveLimit);
+    const masked = maskRows(limited, new Map(Object.entries(tool.maskedColumns)));
+    if (!masked.ok) {
+      return { success: false, error: masked.error };
+    }
+    log.info({ tool: tool.name, rowCount: masked.rows.length, effectiveLimit }, 'Custom tool executed');
     return {
       success: true,
-      data: rows,
-      rowCount: rows.length,
+      data: masked.rows,
+      rowCount: masked.rows.length,
       limitApplied: effectiveLimit,
     };
   } catch (error) {

@@ -14,10 +14,12 @@ import { getAllowedSchemas, TOOL_NAMES } from '../config.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { PlaceholderError, rewriteNamedPlaceholders } from './params.js';
+import { checkMaskedColumns, columnsForTables, maskedTablesInSql, type MaskingMap } from './masking.js';
 import {
   customToolsFileSchema,
   formatSchemaIssues,
   type AnnotationDef,
+  type MaskRule,
   type ParameterDef,
   type RelationDef,
   type ToolDef,
@@ -57,11 +59,14 @@ export interface StoredTool {
   /** Placeholder names in bind order. */
   placeholderNames: string[];
   source: string;
+  /** Plainly selected masked columns. Empty when this statement does not return one. */
+  maskedColumns: Record<string, MaskRule>;
 }
 
 export interface LoadedCustomTools {
   tools: StoredTool[];
   annotations: StoredAnnotation[];
+  masking: MaskingMap;
 }
 
 export interface FileValidationResult {
@@ -85,7 +90,7 @@ export interface LoadCustomToolsOptions {
   defaultSchema?: string;
 }
 
-const EMPTY: LoadedCustomTools = { tools: [], annotations: [] };
+const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map() };
 
 /**
  * Load the files or directories listed in MCP_CUSTOM_TOOLS.
@@ -114,8 +119,10 @@ export function loadCustomTools(
   const files = inputs.flatMap((input) => collectFiles(input));
   const tools: StoredTool[] = [];
   const annotations: StoredAnnotation[] = [];
+  const masking: MaskingMap = new Map();
   const toolSources = new Map<string, string>();
   const annotationSources = new Map<string, string>();
+  const maskingSources = new Map<string, string>();
 
   for (const file of files) {
     const parsed = readFile(file);
@@ -147,9 +154,44 @@ export function loadCustomTools(
       annotationSources.set(stored.table, displayPath(file));
       annotations.push(stored);
     }
+
+    for (const [table, columns] of Object.entries(parsed.masking ?? {})) {
+      const tableKey = table.toUpperCase();
+      for (const [column, rule] of Object.entries(columns)) {
+        const columnKey = column.toUpperCase();
+        const ruleKey = `${tableKey}.${columnKey}`;
+        const previous = maskingSources.get(ruleKey);
+        if (previous) {
+          throw new CustomToolsError(
+            `Masking rule ${ruleKey} is defined in both ${previous} and ${displayPath(file)}.`
+          );
+        }
+        maskingSources.set(ruleKey, displayPath(file));
+        const tableRules = masking.get(tableKey) ?? new Map();
+        tableRules.set(columnKey, rule);
+        masking.set(tableKey, tableRules);
+      }
+    }
   }
 
-  return { tools, annotations };
+  for (const tool of tools) {
+    const tables = maskedTablesInSql(tool.sql, masking);
+    const rules = columnsForTables(masking, tables);
+    const check = checkMaskedColumns(tool.sql, new Set(rules.keys()));
+    if (check.violations.length > 0) {
+      throw new CustomToolsError(`${tool.source}: tool ${tool.name}: ${check.violations.join('; ')}`);
+    }
+    const selected: Record<string, MaskRule> = {};
+    for (const column of check.selected) {
+      const rule = rules.get(column);
+      if (rule) {
+        selected[column] = rule;
+      }
+    }
+    tool.maskedColumns = selected;
+  }
+
+  return { tools, annotations, masking };
 }
 
 /**
@@ -285,6 +327,7 @@ function checkTool(tool: ToolDef, file: string, options: LoadCustomToolsOptions)
     sql: rewritten.sql,
     placeholderNames: rewritten.names,
     source: displayPath(file),
+    maskedColumns: {},
   };
 }
 

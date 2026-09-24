@@ -39,7 +39,7 @@ annotations:
         description: Order lines
 ```
 
-`version` must be `1`. A file needs at least one tool or one annotation.
+`version` must be `1`. A file needs at least one tool, one annotation, or one masking rule.
 
 ### Tools
 
@@ -83,6 +83,31 @@ Keys are `SCHEMA.TABLE`. Names are folded to uppercase.
 A relation names the other `SCHEMA.TABLE`, a `join` map of local column to remote column, an optional `cardinality` (`one-to-one`, `one-to-many`, `many-to-one`, `many-to-many`), and an optional description.
 
 `get_business_context` returns these notes. Filter with `entity`, `table` (`ORDERHDR` or `MYLIB.ORDERHDR`), or omit both to list every annotation. `describe_table` adds `business_description` and `relations` when the table is annotated, and a `business_description` on columns that have one. `list_tables` adds `business_description` on annotated tables.
+
+### Masking
+
+A `masking` section names columns the agent should not see in full. Keys are `SCHEMA.TABLE`. Column names are unquoted SQL names. Both are folded to uppercase. The same table and column in two files is rejected.
+
+| Rule | Result |
+|------|--------|
+| `redact` | The value is replaced with `****` |
+| `last4` | The last four characters are kept and the rest become `*`. A value of four characters or fewer is replaced with `****` |
+
+```yaml
+version: 1
+masking:
+  MYLIB.CUSTOMERS:
+    EMAIL: redact
+    PHONE: last4
+```
+
+`execute_query` and YAML tools may select a masked column only as a plain item in the outer select list: `EMAIL`, `C.EMAIL`, or `MYLIB.CUSTOMERS.EMAIL`. `SELECT *` is allowed, and the matching result keys are masked. An alias, an expression, a predicate, a join, `GROUP BY`, `ORDER BY`, a subquery, and `UNION`, `EXCEPT`, or `INTERSECT` are rejected. An `ORDER BY` position (`ORDER BY 2`) is rejected too, because it can point at the masked column.
+
+An unqualified `EMAIL` counts as the masked column whenever `MYLIB.CUSTOMERS` is in the statement, even when another table also has a column of that name. A view, an alias object, or a table function over a masked table is not masked unless that object is listed itself.
+
+YAML tools are checked when the files load, including a rule that lives in a different file from the tool. `execute_query` uses `QSYS2.PARSE_STATEMENT` to see which tables the statement touches, so it refuses to run when masking is loaded and `QUERY_PARSE_CHECK` is off. `extended metadata=true` in `DB2I_JDBC_OPTIONS` renames result columns, and the server refuses to start with that option while masking is loaded.
+
+See [Security](security.md#column-masking) for why this is a backstop and not a database control.
 
 ## Common patterns
 

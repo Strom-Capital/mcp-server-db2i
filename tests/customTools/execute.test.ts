@@ -29,6 +29,7 @@ const tool: StoredTool = {
   sql: 'SELECT H.ORDERNO FROM MYLIB.ORDERHDR H WHERE H.CUSTNO = ? AND H.STATUS = ? AND (? = 1 OR H.STATUS = ?)',
   placeholderNames: ['customer', 'status', 'include_closed', 'status'],
   source: 'tools.yaml',
+  maskedColumns: {},
 };
 
 describe('executeCustomTool', () => {
@@ -57,6 +58,24 @@ describe('executeCustomTool', () => {
     expect(sql).toContain('FETCH FIRST 25 ROWS ONLY');
     expect(params).toEqual(['1001', 'O', null, 'O']);
     expect(parseStatement).not.toHaveBeenCalled();
+  });
+
+  it('masks a plainly selected column on a YAML tool', async () => {
+    vi.mocked(executeQuery).mockResolvedValueOnce({
+      rows: [{ EMAIL: 'ada@example.com', PHONE: '555-0100' }],
+    });
+    const masked = {
+      ...tool,
+      sql: 'SELECT EMAIL, PHONE FROM MYLIB.CUSTOMERS',
+      parameters: {},
+      placeholderNames: [],
+      maskedColumns: { EMAIL: 'redact' as const, PHONE: 'last4' as const },
+    };
+
+    const result = await executeCustomTool(masked, {});
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual([{ EMAIL: '****', PHONE: '****0100' }]);
   });
 
   it('rejects a missing required parameter before querying', async () => {
