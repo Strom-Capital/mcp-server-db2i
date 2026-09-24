@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.5.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.4.0...v2.5.0) (2026-09-24)
+
+
+### Features
+
+* add get_journal_info and profile_table ([#76](https://github.com/Strom-Capital/mcp-server-db2i/issues/76)) ([0a5d694](https://github.com/Strom-Capital/mcp-server-db2i/commit/0a5d6945aa321d8a16ddc06aad966c91250b22cb)), closes [#74](https://github.com/Strom-Capital/mcp-server-db2i/issues/74) [#75](https://github.com/Strom-Capital/mcp-server-db2i/issues/75)
+* apply QUERY_ALLOWED_SCHEMAS to the catalog browsing tools ([98383d5](https://github.com/Strom-Capital/mcp-server-db2i/commit/98383d54f4b6a92c6e8c000e56bf0428b7cdf994))
+* expose MCP resources and prompts ([#80](https://github.com/Strom-Capital/mcp-server-db2i/issues/80)) ([98383d5](https://github.com/Strom-Capital/mcp-server-db2i/commit/98383d54f4b6a92c6e8c000e56bf0428b7cdf994))
+
+
+### Bug Fixes
+
+* report a missing library from get_journal_info ([#78](https://github.com/Strom-Capital/mcp-server-db2i/issues/78)) ([27af26f](https://github.com/Strom-Capital/mcp-server-db2i/commit/27af26f4fc338eb46536f6e09dea096baf4f5c91))
+
+
+### CI/CD
+
+* wait up to 10 minutes for npm before registry publish ([#72](https://github.com/Strom-Capital/mcp-server-db2i/issues/72)) ([17164e7](https://github.com/Strom-Capital/mcp-server-db2i/commit/17164e7e395608b2ce5a7b05ca528d01e9edb369))
+
 ## [2.4.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.3.0...v2.4.0) (2026-09-24)
 
 
