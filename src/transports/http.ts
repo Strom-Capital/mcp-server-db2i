@@ -30,7 +30,6 @@ import {
   getTokenManager,
   authMiddleware,
   authRateLimitMiddleware,
-  recordFailedAuthAttempt,
   clearAuthRateLimit,
   type AuthenticatedRequest,
   type AuthRequest,
@@ -407,11 +406,14 @@ export function createHttpApp(): Express {
   app.use((req: Request, res: Response, next: express.NextFunction) => {
     const origin = req.headers.origin;
     const allowedOrigins = httpConfig.corsOrigins;
+    const allowsAnyOrigin = allowedOrigins.includes('*');
+
+    if (!allowsAnyOrigin) {
+      res.vary('Origin');
+    }
 
     if (origin) {
-      const isConfiguredOrigin =
-        allowedOrigins.includes('*') ||
-        allowedOrigins.includes(origin);
+      const isConfiguredOrigin = allowsAnyOrigin || allowedOrigins.includes(origin);
       const isSameOrigin = isSameOriginRequest(origin, req);
       const isAllowed = isConfiguredOrigin || isSameOrigin;
 
@@ -424,10 +426,9 @@ export function createHttpApp(): Express {
       }
 
       if (isConfiguredOrigin) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        if (!allowedOrigins.includes('*')) {
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-        }
+        // Bearer tokens travel in the Authorization header, not cookies, so
+        // Access-Control-Allow-Credentials is never needed.
+        res.setHeader('Access-Control-Allow-Origin', allowsAnyOrigin ? '*' : origin);
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
         res.setHeader(
           'Access-Control-Allow-Headers',
@@ -494,7 +495,6 @@ export function createHttpApp(): Express {
       // Validate request
       const validation = validateAuthRequest(req.body);
       if (!validation.valid || !validation.request) {
-        recordFailedAuthAttempt(req);
         res.status(400).json({
           error: 'invalid_request',
           error_description: validation.error,
@@ -516,7 +516,6 @@ export function createHttpApp(): Express {
           schema: authReq.schema,
         });
       } catch (err) {
-        recordFailedAuthAttempt(req);
         const message = err instanceof Error ? err.message : 'Configuration error';
         res.status(400).json({
           error: 'invalid_request',
@@ -528,7 +527,6 @@ export function createHttpApp(): Express {
       const allowedDbHosts = httpConfig.authAllowedDbHosts;
       const requestedHost = dbConfig.hostname.trim().replace(/\.$/, '').toLowerCase();
       if (allowedDbHosts && !allowedDbHosts.includes(requestedHost)) {
-        recordFailedAuthAttempt(req);
         res.status(400).json({
           error: 'invalid_request',
           error_description: 'Host is not allowed',
@@ -547,7 +545,6 @@ export function createHttpApp(): Express {
         await closeSessionPool(testPoolId);
 
         if (!connected) {
-          recordFailedAuthAttempt(req);
           res.status(401).json({
             error: 'invalid_credentials',
             error_description: 'Authentication failed: unable to connect to database',
@@ -556,7 +553,6 @@ export function createHttpApp(): Express {
         }
       } catch (err) {
         await closeSessionPool(testPoolId);
-        recordFailedAuthAttempt(req);
         const message = err instanceof Error ? err.message : 'Connection failed';
         res.status(401).json({
           error: 'invalid_credentials',
