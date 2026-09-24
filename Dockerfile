@@ -8,7 +8,7 @@
 # via -e flags, --env-file, or Docker secrets. The BuildKit warning is suppressed above.
 
 # Build stage
-FROM node:20-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 # Install build dependencies (Python, make, g++ for node-gyp, Java for node-jt400)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -43,7 +43,7 @@ RUN npm run build
 RUN npm prune --production
 
 # Production stage
-FROM node:20-slim
+FROM node:22-bookworm-slim
 
 # Install OpenJDK for JDBC (required by node-jt400 at runtime)
 RUN apt-get update && apt-get install -y --no-install-recommends \

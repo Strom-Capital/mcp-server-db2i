@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/MCP-2026--07--28-green?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
 [![IBM i](https://img.shields.io/badge/IBM%20i-V7R3+-green?logo=ibm&logoColor=white)](https://www.ibm.com/products/ibm-i)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-≥20.6-green?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-≥22-green?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-supported-blue?logo=docker&logoColor=white)](docs/docker.md)
 [![npm downloads](https://img.shields.io/npm/dm/mcp-server-db2i)](https://www.npmjs.com/package/mcp-server-db2i)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Strom-Capital/mcp-server-db2i/pulls)
@@ -161,7 +161,7 @@ Once connected, you can ask the AI assistant:
 - IBM i V7R3 and later (V7R5 recommended)
 - `validate_query` and the `execute_query` parse check need `QSYS2.PARSE_STATEMENT` (IBM i 7.3 with Db2 PTF group SF99703 level 3, or 7.4 and later)
 - `get_related_objects` needs IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release
-- Node.js 20.6 or higher
+- Node.js 22 or higher
 - Java Runtime Environment (JRE) 11 or higher
 - MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)
 

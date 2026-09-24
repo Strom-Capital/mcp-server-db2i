@@ -81,7 +81,7 @@ The list tools support pattern matching:
 ## Compatibility
 
 - IBM i V7R3 and later (V7R5 recommended)
-- Node.js 20.6 or higher
+- Node.js 22 or higher
 - Java Runtime Environment (JRE) 11 or higher (for JDBC)
 - MCP spec 2026-07-28, plus stateless 2025-era clients (through 2025-11-25)
 
