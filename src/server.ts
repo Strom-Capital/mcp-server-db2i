@@ -5,15 +5,19 @@
  * Extracted from index.ts for testability.
  * 
  * Supports two modes:
- * - Stdio mode: Uses global connection pool (no sessionConfig)
- * - HTTP mode: Uses session-specific connection pool (with sessionConfig)
+ * - Stdio mode: pools owned by `stdio` (no session context)
+ * - HTTP mode: pools owned by the caller's session key
+ *
+ * Each call runs on one IBM i system. When the caller can reach more than one,
+ * the tools take an optional `system` argument.
  */
 
 import { createRequire } from 'module';
 import { McpServer, type RegisteredTool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
-import { getEnabledTools, getResponseFormat, type DB2iConfig } from './config.js';
+import { getEnabledTools, getResponseFormat } from './config.js';
+import { resolveTarget, STDIO_POOL_KEY, systemNames, type DbTarget, type SystemBinding } from './systems.js';
 import { executeQueryTool } from './tools/query.js';
 import {
   listSchemasTool,
@@ -58,10 +62,35 @@ export const SERVER_VERSION = packageJson.version;
  * Contains the session-specific configuration
  */
 export interface SessionContext {
-  /** Session/token ID for looking up the connection pool */
+  /** Session/token ID that owns the connection pools */
   sessionId: string;
-  /** DB2i configuration for this session */
-  config: DB2iConfig;
+  /**
+   * Set for a session that logged in at /auth. Its credentials were checked on
+   * one system, so every call runs there.
+   */
+  binding?: SystemBinding;
+}
+
+/** Systems a caller may name in a tool's `system` argument. */
+export function reachableSystems(sessionContext?: SessionContext): string[] {
+  return sessionContext?.binding ? [sessionContext.binding.system] : systemNames();
+}
+
+/**
+ * The optional `system` argument, when the caller can reach more than one
+ * system. Typed as empty so the tool argument types stay as they were; the
+ * handler reads the value through withToolHandler.
+ */
+function systemShape(sessionContext?: SessionContext): Record<never, never> {
+  const names = reachableSystems(sessionContext);
+  if (names.length < 2) {
+    return {};
+  }
+  return {
+    system: z.enum(names as [string, ...string[]]).optional().describe(
+      `IBM i system to run on. Defaults to ${names[0]}.`
+    ),
+  };
 }
 
 /**
@@ -334,16 +363,31 @@ interface ToolAudit<TArgs> {
  * @param errorMessage - Error message to use on failure
  * @param sessionContext - Optional session context for HTTP transport
  * @param audit - Tool name and how to read SQL or arguments for the audit log
+ * @param fixedSystem - System the tool always runs on, ignoring any `system` argument
  */
 export function withToolHandler<TArgs, TResult extends ToolResult>(
-  handler: (args: TArgs, sessionId?: string) => Promise<TResult>,
+  handler: (args: TArgs, target: DbTarget) => Promise<TResult>,
   errorMessage: string,
   sessionContext?: SessionContext,
   audit?: ToolAudit<TArgs>,
+  fixedSystem?: string,
 ): (args: TArgs) => Promise<McpToolResponse> {
   return async (args: TArgs): Promise<McpToolResponse> => {
     const facts = audit?.audit?.(args) ?? {};
-    const identity = sessionContext?.config.username || 'stdio';
+    const requested = fixedSystem ?? systemArgOf(args);
+
+    let target: DbTarget | undefined;
+    let targetError: string | undefined;
+    try {
+      target = resolveTarget(sessionContext?.sessionId ?? STDIO_POOL_KEY, requested, sessionContext?.binding);
+    } catch (error) {
+      // An unknown system, or connection settings that cannot be read
+      targetError = error instanceof Error ? error.message : errorMessage;
+    }
+    const system = target?.system ?? requested;
+    const identity = !sessionContext
+      ? 'stdio'
+      : target?.config.username ?? sessionContext.binding?.config.username ?? 'unknown';
 
     // Check rate limit
     const rateLimiter = getRateLimiter();
@@ -351,7 +395,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
 
     if (!rateResult.allowed) {
       const error = rateLimiter.formatError(rateResult);
-      recordAudit(audit?.tool, identity, facts, { outcome: 'rate_limited', error: error.error });
+      recordAudit(audit?.tool, identity, system, facts, { outcome: 'rate_limited', error: error.error });
       const structured = { success: false, error: error.error };
       return {
         content: [{ type: 'text', text: formatToolText(error, getResponseFormat()) }],
@@ -360,13 +404,23 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       };
     }
 
+    if (!target) {
+      const message = targetError ?? errorMessage;
+      recordAudit(audit?.tool, identity, system, facts, { outcome: 'error', error: message });
+      return {
+        content: [{ type: 'text', text: message }],
+        structuredContent: { success: false, error: message },
+        isError: true,
+      };
+    }
+
     const started = Date.now();
     let result: TResult;
     try {
-      result = await handler(args, sessionContext?.sessionId);
+      result = await handler(args, target);
     } catch (error) {
       const message = error instanceof Error ? error.message : errorMessage;
-      recordAudit(audit?.tool, identity, facts, {
+      recordAudit(audit?.tool, identity, system, facts, {
         outcome: 'error',
         error: message,
         durationMs: Date.now() - started,
@@ -377,7 +431,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
     const durationMs = Date.now() - started;
     if (!result.success) {
       const message = result.error ?? errorMessage;
-      recordAudit(audit?.tool, identity, facts, {
+      recordAudit(audit?.tool, identity, system, facts, {
         outcome: 'error',
         error: message,
         durationMs,
@@ -398,7 +452,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
     }
 
     const builtSql = audit?.resultSql?.(result);
-    recordAudit(audit?.tool, identity, builtSql ? { ...facts, sql: builtSql } : facts, {
+    recordAudit(audit?.tool, identity, system, builtSql ? { ...facts, sql: builtSql } : facts, {
       outcome: 'success',
       durationMs,
       rowCount: rowCountOf(result),
@@ -410,16 +464,25 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
   };
 }
 
+function systemArgOf(args: unknown): string | undefined {
+  if (typeof args !== 'object' || args === null) {
+    return undefined;
+  }
+  const value = (args as { system?: unknown }).system;
+  return typeof value === 'string' ? value : undefined;
+}
+
 function recordAudit(
   tool: string | undefined,
   identity: string,
+  system: string | undefined,
   facts: Pick<AuditCall, 'sql' | 'params' | 'args'>,
   outcome: Pick<AuditCall, 'outcome' | 'error' | 'durationMs' | 'rowCount'>,
 ): void {
   if (!tool) {
     return;
   }
-  writeAudit({ tool, identity, ...facts, ...outcome });
+  writeAudit({ tool, identity, ...(system ? { system } : {}), ...facts, ...outcome });
 }
 
 function rowCountOf(result: ToolResult): number | undefined {
@@ -447,7 +510,9 @@ function argsAudit<T extends Record<string, unknown>>(tool: string): ToolAudit<T
     tool,
     audit: (args) => ({
       sql: null,
-      args: Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined)),
+      args: Object.fromEntries(
+        Object.entries(args).filter(([key, value]) => value !== undefined && key !== 'system')
+      ),
     }),
   };
 }
@@ -455,32 +520,16 @@ function argsAudit<T extends Record<string, unknown>>(tool: string): ToolAudit<T
 /**
  * Create and configure the MCP server with all tools registered.
  *
- * @param sessionConfig - Optional session config for HTTP transport.
- *                        When provided, tools use session-specific connection pool.
- *                        When omitted, tools use global connection pool (stdio mode).
- * @param sessionId - Optional session ID (auth token) for HTTP transport.
- *                    Used to look up the session-specific connection pool.
+ * @param sessionContext - HTTP session that owns the pools. Omit for stdio.
  * @returns Configured McpServer instance ready to connect to a transport
  */
-export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): McpServer {
+export function createServer(sessionContext?: SessionContext): McpServer {
   const server = new McpServer({
     name: SERVER_NAME,
     version: SERVER_VERSION,
   });
 
-  // Create session context if sessionConfig provided
-  const sessionContext: SessionContext | undefined = sessionConfig && sessionId ? {
-    sessionId,
-    config: sessionConfig,
-  } : undefined;
-
-  // Helper to get effective default schema
-  const getDefaultSchema = (): string | undefined => {
-    if (sessionConfig?.schema) {
-      return sessionConfig.schema;
-    }
-    return process.env.DB2I_SCHEMA || undefined;
-  };
+  const system = systemShape(sessionContext);
 
   const loadedTools = getCustomTools();
   const enabledTools = new Set(getEnabledTools(loadedTools.tools));
@@ -493,6 +542,7 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: 'Execute a read-only SQL SELECT query against the IBM DB2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
+          ...system,
           sql: z.string().describe('SQL SELECT query to execute'),
           params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
           limit: z.number().int().positive().optional().default(1000).describe('Maximum number of rows to return (default: 1000, max: configured via QUERY_MAX_LIMIT)'),
@@ -500,12 +550,12 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         outputSchema: queryOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => executeQueryTool({
+        (args, target) => executeQueryTool({
           sql: args.sql,
           params: args.params,
           limit: args.limit,
-          sessionId,
-          defaultSchema: getDefaultSchema(),
+          target,
+          defaultSchema: target.defaultSchema,
         }),
         'Query failed',
         sessionContext,
@@ -522,12 +572,13 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: 'List all schemas (libraries) in the IBM DB2i database. Optionally filter by name pattern using * as wildcard.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
+          ...system,
           filter: z.string().optional().describe('Filter pattern for schema names. Use * as wildcard. Example: "QSYS*" matches schemas starting with QSYS'),
         }),
         outputSchema: listSchemasOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => listSchemasTool({ filter: args.filter, sessionId }),
+        (args, target) => listSchemasTool({ filter: args.filter, target }),
         'Failed to list schemas',
         sessionContext,
         argsAudit('list_schemas'),
@@ -540,19 +591,20 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       'list_tables',
       {
         title: 'List Tables',
-        description: `List all tables in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
+        description: `List all tables in a schema (library). ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) name to list tables from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) name to list tables from. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "CUST*" matches tables starting with CUST'),
         }),
         outputSchema: listTablesOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => listTablesTool({ 
-          schema: args.schema ?? getDefaultSchema(), 
+        (args, target) => listTablesTool({ 
+          schema: args.schema ?? target.defaultSchema, 
           filter: args.filter,
-          sessionId,
+          target,
         }),
         'Failed to list tables',
         sessionContext,
@@ -569,6 +621,7 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: 'Find tables by name or description text across libraries. Matches TABLE_NAME, SYSTEM_TABLE_NAME, and TABLE_TEXT. Use * as a wildcard. When QUERY_ALLOWED_SCHEMAS is set, only those libraries are searched. Otherwise system libraries (Q* and SYS*) are skipped unless include_system is true.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
+          ...system,
           filter: z.string().describe('Name or text to match. Use * as a wildcard. Example: "ORDER*" matches tables starting with ORDER'),
           schema: z.string().optional().describe('Limit the search to one library. Must be in QUERY_ALLOWED_SCHEMAS when that list is set.'),
           include_system: z.boolean().optional().describe('Include Q* and SYS* libraries. Ignored when a schema or QUERY_ALLOWED_SCHEMAS is set.'),
@@ -577,12 +630,12 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         outputSchema: searchTablesOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => searchTablesTool({
+        (args, target) => searchTablesTool({
           filter: args.filter,
           schema: args.schema,
           includeSystem: args.include_system,
           limit: args.limit,
-          sessionId,
+          target,
         }),
         'Failed to search tables',
         sessionContext,
@@ -599,6 +652,7 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: 'Find columns by name or description text across libraries. Matches COLUMN_NAME, SYSTEM_COLUMN_NAME, and COLUMN_TEXT. Use * as a wildcard. When QUERY_ALLOWED_SCHEMAS is set, only those libraries are searched. Otherwise system libraries (Q* and SYS*) are skipped unless include_system is true.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
+          ...system,
           filter: z.string().describe('Name or text to match. Use * as a wildcard. Example: "ITEM*" matches columns starting with ITEM'),
           schema: z.string().optional().describe('Limit the search to one library. Must be in QUERY_ALLOWED_SCHEMAS when that list is set.'),
           include_system: z.boolean().optional().describe('Include Q* and SYS* libraries. Ignored when a schema or QUERY_ALLOWED_SCHEMAS is set.'),
@@ -607,12 +661,12 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         outputSchema: searchColumnsOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => searchColumnsTool({
+        (args, target) => searchColumnsTool({
           filter: args.filter,
           schema: args.schema,
           includeSystem: args.include_system,
           limit: args.limit,
-          sessionId,
+          target,
         }),
         'Failed to search columns',
         sessionContext,
@@ -626,19 +680,20 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       'describe_table',
       {
         title: 'Describe Table',
-        description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        description: `Get detailed column information for a specific table including data types, lengths, nullability, defaults, and CCSID. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           table: z.string().describe('Table name to describe'),
         }),
         outputSchema: describeTableOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => describeTableTool({ 
-          schema: args.schema ?? getDefaultSchema(), 
+        (args, target) => describeTableTool({ 
+          schema: args.schema ?? target.defaultSchema, 
           table: args.table,
-          sessionId,
+          target,
         }),
         'Failed to describe table',
         sessionContext,
@@ -652,19 +707,20 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       'list_views',
       {
         title: 'List Views',
-        description: `List all views in a schema (library). ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
+        description: `List all views in a schema (library). ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'} Optionally filter by name pattern using * as wildcard.`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) name to list views from. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) name to list views from. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           filter: z.string().optional().describe('Filter pattern for view names. Use * as wildcard.'),
         }),
         outputSchema: listViewsOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => listViewsTool({ 
-          schema: args.schema ?? getDefaultSchema(), 
+        (args, target) => listViewsTool({ 
+          schema: args.schema ?? target.defaultSchema, 
           filter: args.filter,
-          sessionId,
+          target,
         }),
         'Failed to list views',
         sessionContext,
@@ -678,19 +734,20 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       'list_indexes',
       {
         title: 'List Indexes',
-        description: `List all indexes for a specific table including uniqueness and column information. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        description: `List all indexes for a specific table including uniqueness and column information. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           table: z.string().describe('Table name to list indexes for'),
         }),
         outputSchema: listIndexesOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => listIndexesTool({ 
-          schema: args.schema ?? getDefaultSchema(), 
+        (args, target) => listIndexesTool({ 
+          schema: args.schema ?? target.defaultSchema, 
           table: args.table,
-          sessionId,
+          target,
         }),
         'Failed to list indexes',
         sessionContext,
@@ -704,19 +761,20 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
       'get_table_constraints',
       {
         title: 'Get Table Constraints',
-        description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
+        description: `Get all constraints (primary keys, foreign keys, unique constraints) for a specific table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if schema not provided.'}`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) name containing the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           table: z.string().describe('Table name to get constraints for'),
         }),
         outputSchema: tableConstraintsOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => getTableConstraintsTool({ 
-          schema: args.schema ?? getDefaultSchema(), 
+        (args, target) => getTableConstraintsTool({ 
+          schema: args.schema ?? target.defaultSchema, 
           table: args.table,
-          sessionId,
+          target,
         }),
         'Failed to get constraints',
         sessionContext,
@@ -733,15 +791,16 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: 'Check a SQL statement without running it. Parses it with QSYS2.PARSE_STATEMENT and checks that referenced tables, columns, and qualified routines exist in the catalog. Also reports read-only and schema-allowlist findings.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
+          ...system,
           sql: z.string().describe('SQL statement to validate. It is not executed.'),
         }),
         outputSchema: validateQueryOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => validateQueryTool({
+        (args, target) => validateQueryTool({
           sql: args.sql,
-          sessionId,
-          defaultSchema: getDefaultSchema(),
+          target,
+          defaultSchema: target.defaultSchema,
         }),
         'Validation failed',
         sessionContext,
@@ -758,19 +817,20 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: 'Return the SQL DDL that recreates a database object, using QSYS2.GENERATE_SQL. Does not run the generated statements. Requires IBM i 7.3 or later.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) that contains the object. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) that contains the object. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           object: z.string().describe('Object name'),
           type: z.enum(SQL_OBJECT_TYPES).describe('Object type: TABLE, VIEW, INDEX, ALIAS, TRIGGER, FUNCTION, PROCEDURE, or SEQUENCE'),
         }),
         outputSchema: objectDdlOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => getObjectDdlTool({
+        (args, target) => getObjectDdlTool({
           schema: args.schema,
           object: args.object,
           type: args.type,
-          sessionId,
-          defaultSchema: getDefaultSchema(),
+          target,
+          defaultSchema: target.defaultSchema,
         }),
         'Failed to generate DDL',
         sessionContext,
@@ -787,17 +847,18 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: 'List views, indexes, triggers, and other objects that depend on a table, using SYSTOOLS.RELATED_OBJECTS. Requires IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) that contains the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) that contains the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           table: z.string().describe('Table name'),
         }),
         outputSchema: relatedObjectsOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => getRelatedObjectsTool({
+        (args, target) => getRelatedObjectsTool({
           schema: args.schema,
           table: args.table,
-          sessionId,
-          defaultSchema: getDefaultSchema(),
+          target,
+          defaultSchema: target.defaultSchema,
         }),
         'Failed to list related objects',
         sessionContext,
@@ -814,19 +875,20 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: 'List the physical data files in a library with their journal, journal library, journal images, omitted entries, and whether they have a primary key, using QSYS2.OBJECT_STATISTICS. needs_attention is true when a table is not journaled, or has no primary key and does not journal both images, which journal-based replication tools need. Requires IBM i 7.3 Technology Refresh 2 or later.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) to inspect. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) to inspect. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           filter: z.string().optional().describe('Filter pattern for table names. Use * as wildcard. Example: "ORDER*" matches tables starting with ORDER'),
           limit: z.number().int().positive().optional().describe('Maximum rows to return. Capped by QUERY_MAX_LIMIT.'),
         }),
         outputSchema: journalInfoOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => getJournalInfoTool({
+        (args, target) => getJournalInfoTool({
           schema: args.schema,
           filter: args.filter,
           limit: args.limit,
-          sessionId,
-          defaultSchema: getDefaultSchema(),
+          target,
+          defaultSchema: target.defaultSchema,
         }),
         'Failed to read journal info',
         sessionContext,
@@ -843,7 +905,8 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         description: `Profile a table for ETL work: row count, deleted rows, size, and last change from QSYS2.SYSTABLESTAT, plus per-column distinct count, null count, and low and high values. By default column numbers come from stored statistics in QSYS2.SYSCOLUMNSTAT (low and high are the second-lowest and second-highest values), and columns without collected statistics report source "none". Set compute to true to scan the table for exact numbers on up to ${MAX_COMPUTED_COLUMNS} columns. Masked columns keep their counts and return no values.`,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
-          schema: z.string().optional().describe(`Schema (library) that contains the table. ${sessionConfig ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) that contains the table. ${sessionContext ? 'Uses session default schema if not provided.' : 'Uses DB2I_SCHEMA env var if not provided.'}`),
           table: z.string().describe('Table name'),
           compute: z.boolean().optional().describe('Scan the table for exact counts, MIN, and MAX. Slower on large tables. Default false.'),
           columns: z.array(z.string()).optional().describe(`Columns to profile. Defaults to every column (the first ${MAX_COMPUTED_COLUMNS} when compute is true).`),
@@ -851,13 +914,13 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
         outputSchema: profileTableOutputSchema,
       },
       withToolHandler(
-        (args, sessionId) => profileTableTool({
+        (args, target) => profileTableTool({
           schema: args.schema,
           table: args.table,
           compute: args.compute,
           columns: args.columns,
-          sessionId,
-          defaultSchema: getDefaultSchema(),
+          target,
+          defaultSchema: target.defaultSchema,
         }),
         'Failed to profile table',
         sessionContext,
@@ -896,16 +959,15 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
 
   const customRegistrations = new Map<string, LiveCustomTool>();
   for (const tool of loadedTools.tools) {
-    if (!enabledTools.has(tool.name)) {
+    if (!enabledTools.has(tool.name) || !customToolReachable(tool, sessionContext)) {
       continue;
     }
-    customRegistrations.set(tool.name, registerCustomTool(server, tool, sessionContext, getDefaultSchema));
+    customRegistrations.set(tool.name, registerCustomTool(server, tool, sessionContext));
   }
   rememberLiveCustomTools({
     server,
     tools: customRegistrations,
     sessionContext,
-    getDefaultSchema,
     listsAnnotatedTables: enabledTools.has('describe_table'),
   });
 
@@ -924,7 +986,6 @@ interface LiveCustomTools {
   server: McpServer;
   tools: Map<string, LiveCustomTool>;
   sessionContext?: SessionContext;
-  getDefaultSchema: () => string | undefined;
   /** resources/list offers the annotated tables, so a reload changes it. */
   listsAnnotatedTables: boolean;
 }
@@ -977,7 +1038,11 @@ function syncOneServer(
   loaded: LoadedCustomTools,
   enabled: ReadonlySet<string>,
 ): void {
-  const next = new Map(loaded.tools.filter((tool) => enabled.has(tool.name)).map((tool) => [tool.name, tool]));
+  const next = new Map(
+    loaded.tools
+      .filter((tool) => enabled.has(tool.name) && customToolReachable(tool, live.sessionContext))
+      .map((tool) => [tool.name, tool])
+  );
 
   for (const [name, current] of live.tools) {
     if (!next.has(name)) {
@@ -990,7 +1055,7 @@ function syncOneServer(
     const signature = toolSignature(tool);
     const current = live.tools.get(name);
     if (!current) {
-      live.tools.set(name, registerCustomTool(live.server, tool, live.sessionContext, live.getDefaultSchema));
+      live.tools.set(name, registerCustomTool(live.server, tool, live.sessionContext));
       continue;
     }
     if (current.signature === signature) {
@@ -999,18 +1064,36 @@ function syncOneServer(
     current.registered.update({
       title: tool.title,
       description: tool.description,
-      paramsSchema: inputSchemaFor(tool.parameters),
-      callback: customToolCallback(tool, live.sessionContext, live.getDefaultSchema),
+      paramsSchema: customToolInputSchema(tool, live.sessionContext),
+      callback: customToolCallback(tool, live.sessionContext),
     });
     current.signature = signature;
   }
+}
+
+/**
+ * A tool fixed to a system is left out of a session bound to another one.
+ */
+function customToolReachable(tool: StoredTool, sessionContext: SessionContext | undefined): boolean {
+  return !tool.system || reachableSystems(sessionContext).includes(tool.system);
+}
+
+/**
+ * The tool's parameters, plus `system` when it is not fixed to one, the caller
+ * can reach several, and no parameter already uses that name.
+ */
+function customToolInputSchema(tool: StoredTool, sessionContext: SessionContext | undefined) {
+  const params = inputSchemaFor(tool.parameters);
+  if (tool.system || 'system' in tool.parameters) {
+    return params;
+  }
+  return params.extend(systemShape(sessionContext));
 }
 
 function registerCustomTool(
   server: McpServer,
   tool: StoredTool,
   sessionContext: SessionContext | undefined,
-  getDefaultSchema: () => string | undefined,
 ): LiveCustomTool {
   const registered = server.registerTool(
     tool.name,
@@ -1018,10 +1101,10 @@ function registerCustomTool(
       title: tool.title,
       description: tool.description,
       annotations: READ_ONLY_ANNOTATIONS,
-      inputSchema: inputSchemaFor(tool.parameters),
+      inputSchema: customToolInputSchema(tool, sessionContext),
       outputSchema: queryOutputSchema,
     },
-    customToolCallback(tool, sessionContext, getDefaultSchema),
+    customToolCallback(tool, sessionContext),
   );
   return { registered, signature: toolSignature(tool) };
 }
@@ -1029,23 +1112,33 @@ function registerCustomTool(
 function customToolCallback(
   tool: StoredTool,
   sessionContext: SessionContext | undefined,
-  getDefaultSchema: () => string | undefined,
 ) {
   return withToolHandler(
-    (args: unknown, sessionId) => executeCustomTool(tool, args as Record<string, unknown>, {
-      sessionId,
-      defaultSchema: getDefaultSchema(),
+    (args: unknown, target) => executeCustomTool(tool, withoutSystemArg(tool, args), {
+      target,
+      defaultSchema: target.defaultSchema,
     }),
     'Query failed',
     sessionContext,
     {
       tool: tool.name,
       audit: (args) => {
-        const bound = bindCustomToolArgs(tool, args as Record<string, unknown>);
+        const bound = bindCustomToolArgs(tool, withoutSystemArg(tool, args));
         return { sql: tool.sql, params: bound.ok ? bound.params : [] };
       },
     },
+    tool.system,
   );
+}
+
+/** Tool arguments without the `system` argument, which is not a SQL parameter. */
+function withoutSystemArg(tool: StoredTool, args: unknown): Record<string, unknown> {
+  const record = args as Record<string, unknown>;
+  if ('system' in tool.parameters || !('system' in record)) {
+    return record;
+  }
+  const { system: _system, ...rest } = record;
+  return rest;
 }
 
 function toolSignature(tool: StoredTool): string {
@@ -1055,5 +1148,6 @@ function toolSignature(tool: StoredTool): string {
     parameters: tool.parameters,
     sql: tool.sql,
     maxRows: tool.maxRows ?? null,
+    system: tool.system ?? null,
   });
 }

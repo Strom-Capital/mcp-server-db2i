@@ -51,6 +51,7 @@ annotations:
 | `toolset` | no | snake_case group. `MCP_TOOLS_ENABLED=toolset:sales` registers only that group. |
 | `parameters` | no | Named arguments. Every parameter must appear as `:name` in the SQL, and every `:name` must be declared. |
 | `maxRows` | no | Row cap for this tool. The server also applies `QUERY_MAX_LIMIT`, and uses the smaller of the two. When `maxRows` is omitted, `QUERY_DEFAULT_LIMIT` is used. |
+| `system` | no | Profile from `DB2I_PROFILES` the tool always runs on. See [Running on one system](#running-on-one-system). |
 | `sql` | yes | One read-only statement. It must start with `SELECT` or `WITH`. |
 
 Parameter types are `string` (optional `maxLength`), `integer`, `number`, `boolean`, `date`, and `enum`. A `string` parameter may also set `enum` to a list of allowed values. `date` values are `YYYY-MM-DD`.
@@ -68,6 +69,24 @@ WHERE (CAST(:customer AS VARCHAR(10)) IS NULL OR H.CUSTNO = :customer)
 ```
 
 Use `CAST(:from_date AS DATE)` when the column is a real DATE. A numeric `YYYYMMDD` column needs the conversion in [Common patterns](#common-patterns). The cast gives the marker a type when the argument is NULL.
+
+### Running on one system
+
+With several systems in [`DB2I_PROFILES`](configuration.md#multiple-systems), set `system:` to pin a tool to one of them:
+
+```yaml
+tools:
+  - name: open_orders_prod
+    title: Open orders (production)
+    description: Open sales orders on the production system.
+    system: prod
+    sql: SELECT ORDERNO, CUSTNO FROM SALES.ORDERHDR WHERE STATUS = 'O'
+```
+
+- A pinned tool has no `system` argument and always runs on its system. An unknown name stops startup.
+- A tool without `system:` gets the same optional `system` argument as the built-in tools, and runs on the default (first) system when the caller names none. A tool that declares its own parameter named `system` gets no extra argument and runs on the default system.
+- At startup a pinned tool is checked against its system's allowlist. Other tools are checked against the default system's list. Every call is checked again against the system it runs on.
+- An HTTP session that logged in to one system does not list tools pinned to another.
 
 ### Annotations
 

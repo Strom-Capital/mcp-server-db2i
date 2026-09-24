@@ -6,7 +6,8 @@ import { executeQuery } from '../db/connection.js';
 import { validateQuery } from '../db/queries.js';
 import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
 import { createChildLogger } from '../utils/logger.js';
-import { applyQueryLimit, getAllowedSchemas, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
+import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
+import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import { getCustomTools } from '../customTools/registry.js';
 import {
@@ -28,7 +29,7 @@ export interface ExecuteQueryInput {
   params?: unknown[];
   limit?: number;
   /** Optional session ID for HTTP transport (uses session-specific pool) */
-  sessionId?: string;
+  target?: DbTarget;
   /**
    * Schema unqualified names resolve to. Session schema when set, otherwise
    * DB2I_SCHEMA. Used by the schema allowlist only.
@@ -39,7 +40,7 @@ export interface ExecuteQueryInput {
 /**
  * Execute a read-only SQL query
  * 
- * @param input - Query input including SQL, params, limit, and optional sessionId
+ * @param input - Query input including SQL, params, limit, and optional target
  */
 export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   success: boolean;
@@ -49,12 +50,12 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   violations?: string[];
   limitApplied?: number;
 }> {
-  const { sql, params = [], sessionId, defaultSchema } = input;
+  const { sql, params = [], target, defaultSchema } = input;
   const queryConfig = getQueryLimitConfig();
   const effectiveLimit = applyQueryLimit(input.limit, queryConfig);
 
   log.debug(
-    { sqlPreview: sql.substring(0, 100), requestedLimit: input.limit, effectiveLimit, sessionId: sessionId?.substring(0, 8) },
+    { sqlPreview: sql.substring(0, 100), requestedLimit: input.limit, effectiveLimit, system: target?.system },
     'Received query request'
   );
 
@@ -69,7 +70,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
     };
   }
 
-  const allowedSchemas = getAllowedSchemas();
+  const allowedSchemas = allowedSchemasFor(target);
   if (allowedSchemas) {
     const schemaResult = checkQuerySchemas(sql, { allowed: allowedSchemas, defaultSchema });
     if (!schemaResult.ok) {
@@ -93,7 +94,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   let maskRules: Map<string, MaskRule> | undefined;
   if (isQueryParseCheckEnabled()) {
     try {
-      const parsed = await parseStatement(sql, sessionId);
+      const parsed = await parseStatement(sql, target);
       const types = [
         ...new Set(parsed.map((row) => row.statementType).filter((type): type is string => Boolean(type))),
       ];
@@ -137,7 +138,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
 
   try {
     const limitedSql = applySqlRowLimit(sql, effectiveLimit);
-    const result = await executeQuery(limitedSql, params as unknown[], sessionId);
+    const result = await executeQuery(limitedSql, params as unknown[], target);
     const limited = result.rows.slice(0, effectiveLimit);
     const masked = maskRows(limited, maskRules ?? new Map());
     if (!masked.ok) {

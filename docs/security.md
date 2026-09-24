@@ -16,6 +16,8 @@ This guide covers security features and best practices for mcp-server-db2i.
 
 The server supports multiple methods for providing credentials, listed from most to least secure.
 
+A [`DB2I_PROFILES`](configuration.md#multiple-systems) file never holds a password. Each profile's `password` must be a `"${ENV_VAR}"` reference, or `passwordFile` must point at a file such as a Docker secret. The server refuses to start if a profile has a literal password.
+
 ### Option 1: Docker Secrets (Recommended for Production)
 
 Docker secrets provide the most secure credential management. Secrets are mounted as files and never exposed in environment variables or process listings.
@@ -186,6 +188,7 @@ The tool is then never registered, so validation bypasses cannot reach it. Busin
 
 - Unqualified names resolve to the session schema, or to `DB2I_SCHEMA` when the session has none. If that schema is missing or not in the list, the query is rejected.
 - The list comes from the server environment. A schema chosen at `/auth` changes where unqualified names resolve. It does not add libraries to the list.
+- With [`DB2I_PROFILES`](configuration.md#multiple-systems), each profile can set its own `allowedSchemas`. A profile without one uses `QUERY_ALLOWED_SCHEMAS`. Every call is checked against the list of the system it runs on.
 - Queries that cannot be parsed are rejected while the list is set. System naming (`LIB/FILE`) and `TABLE(...)` table functions fall into that group.
 - `QSYS2` and `SYSIBM` are allowed only when you add them.
 
@@ -262,7 +265,7 @@ A view, an alias, or a table function that reads a masked table is not covered u
 
 ## Audit log
 
-`MCP_AUDIT_LOG` writes one JSON line for every tool call: who ran it, which tool, a hash of the SQL (or the text when `MCP_AUDIT_SQL=full`), how many parameters were bound, the row count, how long it took, and whether it succeeded, failed, or was rate limited. HTTP calls record the IBM i username. Stdio calls record `stdio`.
+`MCP_AUDIT_LOG` writes one JSON line for every tool call: who ran it, which tool, a hash of the SQL (or the text when `MCP_AUDIT_SQL=full`), how many parameters were bound, the row count, how long it took, and whether it succeeded, failed, or was rate limited. HTTP calls record the IBM i username. Stdio calls record `stdio`. Each line also records the `system` the call ran on (`default` when `DB2I_PROFILES` is unset), and its `args` leave out the `system` argument.
 
 Resource reads and the `write_query` prompt query the catalog too, so they are recorded the same way. Their `tool` is `resource:table`, `resource:table_ddl`, or `prompt:write_query`, and `args` holds the schema and table. Reading `db2i://business-context` and completing names are not recorded.
 

@@ -22,6 +22,7 @@ import type { DB2iConfig } from '../config.js';
  * - database: Database name (falls back to DB2I_DATABASE, default: *LOCAL)
  * - schema: Default schema (falls back to DB2I_SCHEMA)
  * - duration: Token lifetime in seconds (falls back to MCP_TOKEN_EXPIRY, default: 3600)
+ * - system: Profile from DB2I_PROFILES (default: the first). Replaces host, port, and database.
  */
 export interface AuthRequest {
   /** IBM i username (required) */
@@ -38,6 +39,8 @@ export interface AuthRequest {
   schema?: string;
   /** Token lifetime in seconds (optional, default: 3600) */
   duration?: number;
+  /** Profile name from DB2I_PROFILES (optional, default: the first profile) */
+  system?: string;
 }
 
 /**
@@ -74,6 +77,8 @@ export interface TokenSession {
   token: string;
   /** DB2i configuration for this session */
   config: DB2iConfig;
+  /** System the credentials were checked on. Every call from this token runs there. */
+  system: string;
   /** When the token was created */
   createdAt: Date;
   /** When the token expires */

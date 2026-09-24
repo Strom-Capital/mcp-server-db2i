@@ -4,7 +4,8 @@
 
 import { executeQuery } from '../db/connection.js';
 import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
-import { applyQueryLimit, getAllowedSchemas, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
+import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
+import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import { applySqlRowLimit } from '../tools/sqlLimit.js';
 import { createChildLogger } from '../utils/logger.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
@@ -59,14 +60,14 @@ export interface CustomToolQueryResult {
 export async function executeCustomTool(
   tool: StoredTool,
   args: Record<string, unknown>,
-  options: { sessionId?: string; defaultSchema?: string } = {},
+  options: { target?: DbTarget; defaultSchema?: string } = {},
 ): Promise<CustomToolQueryResult> {
   const bound = bindCustomToolArgs(tool, args);
   if (!bound.ok) {
     return { success: false, error: bound.error };
   }
   const values = bound.params;
-  const allowedSchemas = getAllowedSchemas();
+  const allowedSchemas = allowedSchemasFor(options.target);
   if (allowedSchemas) {
     const schemaResult = checkQuerySchemas(tool.sql, {
       allowed: allowedSchemas,
@@ -81,7 +82,7 @@ export async function executeCustomTool(
     }
   }
 
-  const parsedOk = await ensureParsed(tool, options.sessionId);
+  const parsedOk = await ensureParsed(tool, options.target);
   if (!parsedOk.ok) {
     return {
       success: false,
@@ -94,7 +95,7 @@ export async function executeCustomTool(
   const limitedSql = applySqlRowLimit(tool.sql, effectiveLimit);
 
   try {
-    const result = await executeQuery(limitedSql, values, options.sessionId);
+    const result = await executeQuery(limitedSql, values, options.target);
     const limited = result.rows.slice(0, effectiveLimit);
     const masked = maskRows(limited, new Map(Object.entries(tool.maskedColumns)));
     if (!masked.ok) {
@@ -161,7 +162,7 @@ function bindValue(value: unknown): unknown {
   return value;
 }
 
-async function ensureParsed(tool: StoredTool, sessionId?: string): Promise<ParseOutcome> {
+async function ensureParsed(tool: StoredTool, target?: DbTarget): Promise<ParseOutcome> {
   if (!isQueryParseCheckEnabled()) {
     return { ok: true };
   }
@@ -172,7 +173,7 @@ async function ensureParsed(tool: StoredTool, sessionId?: string): Promise<Parse
   }
 
   try {
-    const parsed = await parseStatement(tool.sql, sessionId);
+    const parsed = await parseStatement(tool.sql, target);
     const outcome = classifyParsedStatement(parsed);
     cacheParse(tool.name, outcome);
     return outcome;

@@ -15,7 +15,7 @@ import {
   type Variables,
 } from '@modelcontextprotocol/server';
 
-import { getAllowedSchemas } from './config.js';
+import { resolveTarget, STDIO_POOL_KEY, type DbTarget } from './systems.js';
 import { annotationFor, filterAnnotations } from './customTools/context.js';
 import { listSchemas, listTables } from './db/queries.js';
 import type { SessionContext } from './server.js';
@@ -34,19 +34,25 @@ export const BUSINESS_CONTEXT_URI = 'db2i://business-context';
 
 export interface Caller {
   sessionId?: string;
+  /** The session's default system. Resolved on each read, so settings changes apply. */
+  target: () => DbTarget;
   identity: string;
 }
 
 export function callerOf(sessionContext?: SessionContext): Caller {
+  const target = () => resolveTarget(sessionContext?.sessionId ?? STDIO_POOL_KEY, undefined, sessionContext?.binding);
   return {
     sessionId: sessionContext?.sessionId,
-    identity: sessionContext?.config.username || 'stdio',
+    target,
+    get identity(): string {
+      return sessionContext ? target().config.username : 'stdio';
+    },
   };
 }
 
-/** Throws the error execute_query reports when a library is outside QUERY_ALLOWED_SCHEMAS. */
-export function assertSchemaAllowed(schema: string): void {
-  const allowed = getAllowedSchemas();
+/** Throws the error execute_query reports when a library is outside the system's allowlist. */
+export function assertSchemaAllowed(schema: string, caller: Caller): void {
+  const allowed = caller.target().allowedSchemas;
   if (allowed && !isSchemaAllowed(schema, allowed)) {
     throw new ProtocolError(ProtocolErrorCode.InvalidParams, schemaDenied(schema, allowed));
   }
@@ -63,7 +69,7 @@ export async function guarded<T>(
   rowCount?: (value: T) => number | undefined,
 ): Promise<T> {
   const audit = (outcome: Pick<AuditCall, 'outcome' | 'error' | 'durationMs' | 'rowCount'>): void => {
-    writeAudit({ tool: name, identity: caller.identity, sql: null, args, ...outcome });
+    writeAudit({ tool: name, identity: caller.identity, system: caller.target().system, sql: null, args, ...outcome });
   };
 
   const limiter = getRateLimiter();
@@ -140,12 +146,12 @@ function startingWith(names: readonly string[] | undefined, value: string): stri
  * list is set, which also avoids a catalog query.
  */
 export async function completeSchemas(value: string, caller: Caller): Promise<string[]> {
-  const allowed = getAllowedSchemas();
+  const allowed = caller.target().allowedSchemas;
   if (allowed) {
     return startingWith(allowed, value);
   }
   const names = await cachedNames(caller, 'schemas', async () =>
-    (await listSchemas(undefined, caller.sessionId)).map((row) => row.schema_name),
+    (await listSchemas(undefined, caller.target())).map((row) => row.schema_name),
   );
   return startingWith(names, value);
 }
@@ -158,12 +164,12 @@ export async function completeTables(schema: string | undefined, value: string, 
   if (!library) {
     return [];
   }
-  const allowed = getAllowedSchemas();
+  const allowed = caller.target().allowedSchemas;
   if (allowed && !isSchemaAllowed(library, allowed)) {
     return [];
   }
   const names = await cachedNames(caller, `tables:${library}`, async () =>
-    (await listTables(library, undefined, caller.sessionId)).map((row) => row.table_name),
+    (await listTables(library, undefined, caller.target())).map((row) => row.table_name),
   );
   return startingWith(names, value);
 }
@@ -196,8 +202,8 @@ function jsonContents(uri: URL, body: unknown) {
 }
 
 /** Annotated tables in allowed libraries. These are the tables resources/list offers. */
-function annotatedTables() {
-  const allowed = getAllowedSchemas();
+function annotatedTables(caller: Caller) {
+  const allowed = caller.target().allowedSchemas;
   return filterAnnotations({}).filter((annotation) => {
     const schema = annotation.table.split('.')[0];
     return !allowed || isSchemaAllowed(schema, allowed);
@@ -205,8 +211,8 @@ function annotatedTables() {
 }
 
 async function readTable(uri: URL, schema: string, table: string, caller: Caller) {
-  assertSchemaAllowed(schema);
-  const result = await describeTableTool({ schema, table, sessionId: caller.sessionId });
+  assertSchemaAllowed(schema, caller);
+  const result = await describeTableTool({ schema, table, target: caller.target() });
   if (!result.success) {
     throw new ProtocolError(ProtocolErrorCode.InternalError, result.error);
   }
@@ -232,14 +238,15 @@ const DDL_TYPE_BY_TABLE_TYPE: Record<string, string> = {
 };
 
 async function readTableDdl(uri: URL, schema: string, table: string, caller: Caller) {
-  assertSchemaAllowed(schema);
-  const rows = await listTables(schema, table, caller.sessionId);
+  const target = caller.target();
+  assertSchemaAllowed(schema, caller);
+  const rows = await listTables(schema, table, target);
   const match = rows.find((row) => row.table_name.toUpperCase() === table);
   if (!match) {
     throw new ResourceNotFoundError(uri.href, `Table ${schema}.${table} was not found.`);
   }
   const type = DDL_TYPE_BY_TABLE_TYPE[match.table_type] ?? 'TABLE';
-  const result = await getObjectDdlTool({ schema, object: table, type, sessionId: caller.sessionId });
+  const result = await getObjectDdlTool({ schema, object: table, type, target });
   if (!result.success || result.ddl === undefined) {
     throw new ProtocolError(ProtocolErrorCode.InternalError, result.error ?? 'Failed to generate DDL');
   }
@@ -263,7 +270,7 @@ export function registerResources(
       'table',
       new ResourceTemplate(TABLE_URI_TEMPLATE, {
         list: () => ({
-          resources: annotatedTables().map((annotation) => {
+          resources: annotatedTables(caller).map((annotation) => {
             const [schema, table] = annotation.table.split('.');
             return {
               uri: tableUri(schema, table),

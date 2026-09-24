@@ -3,7 +3,8 @@
  * IBM DB2i MCP Server
  *
  * A Model Context Protocol server for querying and inspecting
- * IBM DB2 for i (DB2i) databases using the JT400 JDBC driver.
+ * IBM DB2 for i (DB2i) databases through JT400 (JDBC) or IBM i Access ODBC,
+ * on one or more IBM i systems (DB2I_PROFILES).
  * 
  * Supports two transport modes:
  * - stdio (default): For CLI/IDE integration
@@ -20,7 +21,6 @@ import type http from 'node:http';
 import type https from 'node:https';
 
 import {
-  loadConfig,
   isHttpEnabled,
   isStdioEnabled,
   getTransportMode,
@@ -34,6 +34,7 @@ import {
   isQueryParseCheckEnabled,
 } from './config.js';
 import { initializePool, testConnection, closeGlobalPool } from './db/connection.js';
+import { defaultSystem, getSystems, isProfilesFileConfigured, type SystemProfile } from './systems.js';
 import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { createServer, pinStdioServer, SERVER_NAME, SERVER_VERSION } from './server.js';
@@ -100,24 +101,34 @@ async function main(): Promise<void> {
     // Initialize rate limiter (logs its own config)
     getRateLimiter();
 
-    const dbSecurity = connectionSecurity();
-    logger.info({ driver: dbSecurity.driver }, 'Database driver selected');
-    if (dbSecurity.accessOverride !== undefined) {
-      logger.warn(
-        { access: dbSecurity.accessOverride },
-        `${dbSecurity.optionsVariable} sets ${dbSecurity.driver === 'odbc' ? 'CONNTYPE' : 'access'} and overrides the read only default`
+    // Reads and checks DB2I_PROFILES, so a bad file stops startup
+    const systems = getSystems();
+    const profiles = isProfilesFileConfigured();
+    if (profiles) {
+      logger.info(
+        { systems: systems.map((system) => ({ name: system.name, host: system.config.hostname, driver: system.config.driver })) },
+        'IBM i systems loaded from DB2I_PROFILES'
       );
     }
-    if (!dbSecurity.secure) {
-      logger.warn(
-        `Database connection is not using TLS. Set ${dbSecurity.secureHint} in ${dbSecurity.optionsVariable} after the IBM i host servers are configured for SSL.`
-      );
+    for (const system of systems) {
+      warnConnectionSecurity(system, profiles);
     }
 
     // Validates tool files and MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
     const customTools = loadCustomToolsFromEnv();
     assertCustomToolsWatch();
-    assertExtendedMetadataAllowsMasking(customTools.masking.size > 0);
+    if (profiles) {
+      for (const system of systems) {
+        assertExtendedMetadataAllowsMasking(
+          customTools.masking.size > 0,
+          system.config.driver,
+          system.config.jdbcOptions,
+          `Profile ${system.name} jdbcOptions`
+        );
+      }
+    } else {
+      assertExtendedMetadataAllowsMasking(customTools.masking.size > 0);
+    }
     if (customTools.masking.size > 0 && !isQueryParseCheckEnabled()) {
       logger.warn(
         'Masking rules are loaded and QUERY_PARSE_CHECK is off. execute_query will refuse to run until the check is on.'
@@ -147,17 +158,17 @@ async function main(): Promise<void> {
     const stdioEnabled = isStdioEnabled();
     const httpEnabled = isHttpEnabled();
 
-    // For stdio mode, we need DB config from environment
+    // For stdio mode, the default system's connection settings are required
     if (stdioEnabled) {
-      // Load configuration from environment variables
-      const config = loadConfig();
-      logger.debug({ hostname: config.hostname, port: config.port }, 'Configuration loaded for stdio');
+      const system = defaultSystem();
+      const { config } = system;
+      logger.debug({ hostname: config.hostname, port: config.port, system: system.name }, 'Configuration loaded for stdio');
 
-      // Initialize global database connection pool for stdio
-      initializePool(config);
+      // Register the stdio pools. Other systems connect on their first query.
+      initializePool(config, system.name);
       logger.debug('Global database connection pool initialized');
 
-      // Test the connection
+      // Test the default system's connection
       const connected = await testConnection();
       if (!connected) {
         logger.warn('Could not verify database connection. The server will start but queries may fail.');
@@ -232,6 +243,36 @@ async function main(): Promise<void> {
     logger.fatal({ err: error }, 'Failed to start MCP server');
     flushLogger();
     process.exit(1);
+  }
+}
+
+/**
+ * Log the driver, and warn when a system's options turn off read only or TLS.
+ */
+function warnConnectionSecurity(system: SystemProfile, profiles: boolean): void {
+  const security = profiles
+    ? connectionSecurity(
+        system.config.driver,
+        system.config.driver === 'odbc' ? system.config.odbcOptions : system.config.jdbcOptions
+      )
+    : connectionSecurity();
+  const optionsVariable = profiles
+    ? `Profile ${system.name} ${security.driver === 'odbc' ? 'odbcOptions' : 'jdbcOptions'}`
+    : security.optionsVariable;
+  const context = profiles ? { system: system.name } : {};
+
+  logger.info({ ...context, driver: security.driver }, 'Database driver selected');
+  if (security.accessOverride !== undefined) {
+    logger.warn(
+      { ...context, access: security.accessOverride },
+      `${optionsVariable} sets ${security.driver === 'odbc' ? 'CONNTYPE' : 'access'} and overrides the read only default`
+    );
+  }
+  if (!security.secure) {
+    logger.warn(
+      context,
+      `Database connection is not using TLS. Set ${security.secureHint} in ${optionsVariable} after the IBM i host servers are configured for SSL.`
+    );
   }
 }
 

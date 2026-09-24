@@ -36,7 +36,7 @@ vi.mock('../../src/utils/rateLimiter.js', async (importOriginal) => {
 // Now import the server after mocks are set up
 import { TOOL_NAMES } from '../../src/config.js';
 import { createServer } from '../../src/server.js';
-import { initializePool } from '../../src/db/connection.js';
+import { closeSessionPool, initializePool, initializeSessionPool } from '../../src/db/connection.js';
 import { getRateLimiter } from '../../src/utils/rateLimiter.js';
 
 describe('MCP Server Integration', () => {
@@ -812,17 +812,24 @@ describe('MCP Server Integration', () => {
       expect(checkLimit).toHaveBeenCalledWith('stdio');
 
       const [sessionClientTransport, sessionServerTransport] = InMemoryTransport.createLinkedPair();
+      initializeSessionPool('session-token-abc');
       const sessionServer = createServer({
-        hostname: 'test-host',
-        port: 446,
-        username: 'test-user',
-        password: 'test-pass',
-        database: '*LOCAL',
-        schema: 'TESTLIB',
-        driver: 'jt400',
-        jdbcOptions: {},
-        odbcOptions: {},
-      }, 'session-token-abc');
+        sessionId: 'session-token-abc',
+        binding: {
+          system: 'default',
+          config: {
+            hostname: 'test-host',
+            port: 446,
+            username: 'test-user',
+            password: 'test-pass',
+            database: '*LOCAL',
+            schema: 'TESTLIB',
+            driver: 'jt400',
+            jdbcOptions: {},
+            odbcOptions: {},
+          },
+        },
+      });
       await sessionServer.connect(sessionServerTransport);
       const sessionClient = new Client({ name: 'session-test', version: '1.0.0' });
       await sessionClient.connect(sessionClientTransport);
@@ -836,6 +843,7 @@ describe('MCP Server Integration', () => {
       await sessionClient.close();
       await sessionClientTransport.close();
       await sessionServerTransport.close();
+      await closeSessionPool('session-token-abc');
 
       mockRateLimiter.mockReset();
       mockRateLimiter.mockImplementation(() => ({

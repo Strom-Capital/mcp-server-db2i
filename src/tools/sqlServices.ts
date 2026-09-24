@@ -7,7 +7,8 @@
  * get_journal_info reports journal state from QSYS2.OBJECT_STATISTICS.
  */
 
-import { applyQueryLimit, getAllowedSchemas } from '../config.js';
+import { applyQueryLimit } from '../config.js';
+import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import {
   generateObjectDdl,
   hasRoutine,
@@ -88,13 +89,13 @@ function messageOf(error: unknown): string {
 
 export async function validateQueryTool(input: {
   sql: string;
-  sessionId?: string;
+  target?: DbTarget;
   defaultSchema?: string;
 }): Promise<ValidateQueryResult> {
   const security = validateQuery(input.sql);
   const violations = security.isValid ? [] : [...security.violations];
 
-  const allowed = getAllowedSchemas();
+  const allowed = allowedSchemasFor(input.target);
   if (allowed) {
     const schemaResult = checkQuerySchemas(input.sql, {
       allowed,
@@ -106,7 +107,7 @@ export async function validateQueryTool(input: {
   let inspection: StatementInspection;
   try {
     inspection = await inspectStatement(input.sql, {
-      sessionId: input.sessionId,
+      target: input.target,
       defaultSchema: input.defaultSchema,
       allowedSchemas: allowed,
     });
@@ -142,12 +143,12 @@ export async function getObjectDdlTool(input: {
   schema?: string;
   object: string;
   type: string;
-  sessionId?: string;
+  target?: DbTarget;
   defaultSchema?: string;
 }): Promise<ObjectDdlResult> {
   try {
     const schema = requireSchema(input.schema, input.defaultSchema);
-    const allowed = getAllowedSchemas();
+    const allowed = allowedSchemasFor(input.target);
     if (allowed && !isSchemaAllowed(schema, allowed)) {
       return { success: false, error: schemaDenied(schema, allowed) };
     }
@@ -156,7 +157,7 @@ export async function getObjectDdlTool(input: {
       schema,
       objectName: input.object,
       objectType: input.type,
-      sessionId: input.sessionId,
+      target: input.target,
     });
 
     return {
@@ -174,22 +175,22 @@ export async function getObjectDdlTool(input: {
 export async function getRelatedObjectsTool(input: {
   schema?: string;
   table: string;
-  sessionId?: string;
+  target?: DbTarget;
   defaultSchema?: string;
 }): Promise<RelatedObjectsResult> {
   try {
     const schema = requireSchema(input.schema, input.defaultSchema);
-    const allowed = getAllowedSchemas();
+    const allowed = allowedSchemasFor(input.target);
     if (allowed && !isSchemaAllowed(schema, allowed)) {
       return { success: false, error: schemaDenied(schema, allowed) };
     }
 
-    const available = await hasRoutine('SYSTOOLS', 'RELATED_OBJECTS', input.sessionId);
+    const available = await hasRoutine('SYSTOOLS', 'RELATED_OBJECTS', input.target);
     if (!available) {
       return { success: false, error: RELATED_OBJECTS_UNAVAILABLE };
     }
 
-    const rows = await listRelatedObjects(schema.trim().toUpperCase(), input.table.trim().toUpperCase(), input.sessionId);
+    const rows = await listRelatedObjects(schema.trim().toUpperCase(), input.table.trim().toUpperCase(), input.target);
     const data = allowed
       ? rows.filter((row) => {
           const library = row.schema_name ?? row.library_name;
@@ -207,19 +208,19 @@ export async function getJournalInfoTool(input: {
   schema?: string;
   filter?: string;
   limit?: number;
-  sessionId?: string;
+  target?: DbTarget;
   defaultSchema?: string;
 }): Promise<JournalInfoResult> {
   try {
     const schema = requireSchema(input.schema, input.defaultSchema);
-    const allowed = getAllowedSchemas();
+    const allowed = allowedSchemasFor(input.target);
     if (allowed && !isSchemaAllowed(schema, allowed)) {
       return { success: false, error: schemaDenied(schema, allowed) };
     }
 
-    const result = await listJournalInfo(schema, input.filter, applyQueryLimit(input.limit), input.sessionId);
+    const result = await listJournalInfo(schema, input.filter, applyQueryLimit(input.limit), input.target);
     // OBJECT_STATISTICS returns no rows for a library that does not exist.
-    if (result.rows.length === 0 && !(await schemaExists(schema, input.sessionId))) {
+    if (result.rows.length === 0 && !(await schemaExists(schema, input.target))) {
       return { success: false, error: `Library ${schema.trim().toUpperCase()} was not found.` };
     }
     return {

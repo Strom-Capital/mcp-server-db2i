@@ -7,6 +7,7 @@
  */
 
 import { executeQuery } from './connection.js';
+import type { DbTarget } from '../systems.js';
 
 /** Most columns one computed profile scans. */
 export const MAX_COMPUTED_COLUMNS = 20;
@@ -65,13 +66,13 @@ export function isCountOnlyType(dataType: string): boolean {
   return COUNT_ONLY_TYPES.has(dataType.trim().toUpperCase());
 }
 
-export async function readColumns(schema: string, table: string, sessionId?: string): Promise<CatalogColumn[]> {
+export async function readColumns(schema: string, table: string, target?: DbTarget): Promise<CatalogColumn[]> {
   const result = await executeQuery(
     `SELECT COLUMN_NAME, DATA_TYPE FROM QSYS2.SYSCOLUMNS
      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
      ORDER BY ORDINAL_POSITION`,
     [schema, table],
-    sessionId
+    target
   );
   return result.rows.map((row) => ({
     column_name: String(row.COLUMN_NAME ?? '').trim(),
@@ -79,13 +80,13 @@ export async function readColumns(schema: string, table: string, sessionId?: str
   }));
 }
 
-export async function readTableStats(schema: string, table: string, sessionId?: string): Promise<TableStats | null> {
+export async function readTableStats(schema: string, table: string, target?: DbTarget): Promise<TableStats | null> {
   const result = await executeQuery(
     `SELECT NUMBER_ROWS, NUMBER_DELETED_ROWS, DATA_SIZE, LAST_CHANGE_TIMESTAMP, LAST_USED_TIMESTAMP
      FROM QSYS2.SYSTABLESTAT
      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
     [schema, table],
-    sessionId
+    target
   );
   const row = result.rows[0];
   if (!row) {
@@ -107,7 +108,7 @@ export async function readTableStats(schema: string, table: string, sessionId?: 
 export async function readStoredColumnStats(
   schema: string,
   table: string,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<Map<string, ColumnStats>> {
   const result = await executeQuery(
     `SELECT COLUMN_NAME, NUMBER_DISTINCT_VALUES, NUMBER_NULLS, LOW2KEY, HIGH2KEY, STATISTIC_LAST_UPDATED
@@ -115,7 +116,7 @@ export async function readStoredColumnStats(
      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND NUMBER_COLUMN_NAMES = 1
      ORDER BY STATISTIC_LAST_UPDATED DESC`,
     [schema, table],
-    sessionId
+    target
   );
 
   const stats = new Map<string, ColumnStats>();
@@ -165,10 +166,10 @@ export async function computeColumnStats(
   table: string,
   columns: readonly CatalogColumn[],
   hideValues: ReadonlySet<string>,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<ComputedProfile> {
   const sql = buildProfileSql(schema, table, columns, hideValues);
-  const result = await executeQuery(sql, [], sessionId);
+  const result = await executeQuery(sql, [], target);
   const row = result.rows[0] ?? {};
 
   const stats = new Map<string, ColumnStats>();

@@ -7,6 +7,7 @@
  */
 
 import { executeProcedure, executeQuery } from './connection.js';
+import type { DbTarget } from '../systems.js';
 import { filterToLikePattern } from './queries.js';
 import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
 
@@ -68,7 +69,7 @@ export interface StatementInspection {
 }
 
 export interface InspectOptions {
-  sessionId?: string;
+  target?: DbTarget;
   /** Schema unqualified names resolve to. */
   defaultSchema?: string;
   /** Uppercased allowlist. Unset means no restriction. */
@@ -129,8 +130,8 @@ export function requireSqlName(value: string, label: string): string {
   return name;
 }
 
-export async function parseStatement(sql: string, sessionId?: string): Promise<ParsedName[]> {
-  const result = await executeQuery(PARSE_SQL, [sql], sessionId);
+export async function parseStatement(sql: string, target?: DbTarget): Promise<ParsedName[]> {
+  const result = await executeQuery(PARSE_SQL, [sql], target);
   return result.rows.map((row) => ({
     nameType: cell(row.NAME_TYPE) ?? '',
     schema: cell(row.SCHEMA),
@@ -140,10 +141,10 @@ export async function parseStatement(sql: string, sessionId?: string): Promise<P
   }));
 }
 
-export async function hasRoutine(schema: string, name: string, sessionId?: string): Promise<boolean> {
+export async function hasRoutine(schema: string, name: string, target?: DbTarget): Promise<boolean> {
   const routineSchema = schema.trim().toUpperCase();
   const routineName = name.trim().toUpperCase();
-  const key = `${sessionId ?? 'global'}|${routineSchema}|${routineName}`;
+  const key = `${target?.poolKey ?? 'global'}|${target?.system ?? ''}|${routineSchema}|${routineName}`;
   const cached = routineCache.get(key);
   if (cached !== undefined) {
     return cached;
@@ -152,7 +153,7 @@ export async function hasRoutine(schema: string, name: string, sessionId?: strin
   const result = await executeQuery(
     `SELECT ROUTINE_NAME FROM QSYS2.SYSROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? FETCH FIRST 1 ROW ONLY`,
     [routineSchema, routineName],
-    sessionId
+    target
   );
   const found = result.rows.length > 0;
   routineCache.set(key, found);
@@ -171,7 +172,7 @@ async function lookupPairs(
   sqlPrefix: string,
   tuples: string[][],
   keyOf: (row: Record<string, unknown>) => string,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<Set<string>> {
   const found = new Set<string>();
   const width = tuples[0]?.length ?? 0;
@@ -182,7 +183,7 @@ async function lookupPairs(
   for (let offset = 0; offset < tuples.length; offset += LOOKUP_CHUNK) {
     const chunk = tuples.slice(offset, offset + LOOKUP_CHUNK);
     const values = chunk.map(() => `(${Array(width).fill('?').join(', ')})`).join(', ');
-    const result = await executeQuery(`${sqlPrefix} (VALUES ${values})`, chunk.flat(), sessionId);
+    const result = await executeQuery(`${sqlPrefix} (VALUES ${values})`, chunk.flat(), target);
     for (const row of result.rows) {
       found.add(keyOf(row));
     }
@@ -196,7 +197,7 @@ async function lookupPairs(
  * Does not run the statement. Throws when PARSE_STATEMENT itself is missing.
  */
 export async function inspectStatement(sql: string, options: InspectOptions = {}): Promise<StatementInspection> {
-  const parsed = await parseStatement(sql, options.sessionId);
+  const parsed = await parseStatement(sql, options.target);
   if (parsed.length === 0) {
     return {
       parsed: false,
@@ -304,7 +305,7 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
       'SELECT TABLE_SCHEMA, TABLE_NAME FROM QSYS2.SYSTABLES WHERE (TABLE_SCHEMA, TABLE_NAME) IN',
       tables.map((table) => [table.schema, table.table]),
       (row) => `${cell(row.TABLE_SCHEMA)}.${cell(row.TABLE_NAME)}`,
-      options.sessionId
+      options.target
     );
     for (const table of tables) {
       const key = `${table.schema}.${table.table}`;
@@ -319,7 +320,7 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
       'SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME FROM QSYS2.SYSCOLUMNS WHERE (TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME) IN',
       specificColumns.map((column) => [column.schema, column.table, column.column]),
       (row) => `${cell(row.TABLE_SCHEMA)}.${cell(row.TABLE_NAME)}.${cell(row.COLUMN_NAME)}`,
-      options.sessionId
+      options.target
     );
     for (const column of specificColumns) {
       const key = `${column.schema}.${column.table}.${column.column}`;
@@ -330,7 +331,7 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
   }
 
   if (looseColumns.size > 0 && tables.length > 0) {
-    const found = await lookupLooseColumns(tables, [...looseColumns], options.sessionId);
+    const found = await lookupLooseColumns(tables, [...looseColumns], options.target);
     for (const column of looseColumns) {
       if (!found.has(column)) {
         missingColumns.push(column);
@@ -343,7 +344,7 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
       'SELECT ROUTINE_SCHEMA, ROUTINE_NAME FROM QSYS2.SYSROUTINES WHERE (ROUTINE_SCHEMA, ROUTINE_NAME) IN',
       routines.map((routine) => [routine.schema, routine.name]),
       (row) => `${cell(row.ROUTINE_SCHEMA)}.${cell(row.ROUTINE_NAME)}`,
-      options.sessionId
+      options.target
     );
     for (const routine of routines) {
       const key = `${routine.schema}.${routine.name}`;
@@ -372,7 +373,7 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
 async function lookupLooseColumns(
   tables: TableRef[],
   columns: string[],
-  sessionId?: string
+  target?: DbTarget
 ): Promise<Set<string>> {
   const found = new Set<string>();
   const tableValues = tables.map(() => '(?, ?)').join(', ');
@@ -384,7 +385,7 @@ async function lookupLooseColumns(
       AND COLUMN_NAME IN (${columnValues})
   `;
   const params = [...tables.flatMap((table) => [table.schema, table.table]), ...columns];
-  const result = await executeQuery(sql, params, sessionId);
+  const result = await executeQuery(sql, params, target);
   for (const row of result.rows) {
     const name = cell(row.COLUMN_NAME);
     if (name) {
@@ -398,7 +399,7 @@ export async function generateObjectDdl(input: {
   schema: string;
   objectName: string;
   objectType: string;
-  sessionId?: string;
+  target?: DbTarget;
 }): Promise<string> {
   const schema = requireSqlName(input.schema, 'Schema');
   const objectName = requireSqlName(input.objectName, 'Object name');
@@ -408,7 +409,7 @@ export async function generateObjectDdl(input: {
   }
 
   const sql = `CALL QSYS2.GENERATE_SQL(DATABASE_OBJECT_NAME => '${objectName}', DATABASE_OBJECT_LIBRARY_NAME => '${schema}', DATABASE_OBJECT_TYPE => '${objectType}')`;
-  const result = await executeProcedure(sql, [], input.sessionId);
+  const result = await executeProcedure(sql, [], input.target);
   const lines = result.rows
     .map((row) => ({
       sequence: Number(row.SRCSEQ ?? 0),
@@ -427,13 +428,13 @@ export async function generateObjectDdl(input: {
 export async function listRelatedObjects(
   schema: string,
   table: string,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<RelatedObject[]> {
   const result = await executeQuery(
     `SELECT SQL_OBJECT_TYPE, SCHEMA_NAME, SQL_NAME, LIBRARY_NAME, SYSTEM_NAME, OBJECT_TEXT
      FROM TABLE(SYSTOOLS.RELATED_OBJECTS(?, ?)) X`,
     [schema, table],
-    sessionId
+    target
   );
 
   return result.rows.map((row) => ({
@@ -481,12 +482,12 @@ export function journalNeedsAttention(row: Pick<JournalInfoRow, 'journaled' | 'h
   return !row.has_primary_key && row.journal_images !== '*BOTH';
 }
 
-export async function schemaExists(schema: string, sessionId?: string): Promise<boolean> {
+export async function schemaExists(schema: string, target?: DbTarget): Promise<boolean> {
   const name = schema.trim().toUpperCase();
   const result = await executeQuery(
     `SELECT 1 AS FOUND FROM QSYS2.SYSSCHEMAS WHERE SCHEMA_NAME = ? OR SYSTEM_SCHEMA_NAME = ? FETCH FIRST 1 ROW ONLY`,
     [name, name],
-    sessionId
+    target
   );
   return result.rows.length > 0;
 }
@@ -499,7 +500,7 @@ export async function listJournalInfo(
   schema: string,
   filter: string | undefined,
   limit: number,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<{ rows: JournalInfoRow[]; truncated: boolean }> {
   const count = limit + 1;
   if (!Number.isSafeInteger(count) || count < 2) {
@@ -523,7 +524,7 @@ export async function listJournalInfo(
     FETCH FIRST ${count} ROWS ONLY
   `;
 
-  const result = await executeQuery(sql, [schema.trim().toUpperCase(), pattern, pattern], sessionId);
+  const result = await executeQuery(sql, [schema.trim().toUpperCase(), pattern, pattern], target);
   const rows = result.rows.map((row) => {
     const base = {
       table_name: textCell(row.TABLE_NAME) ?? '',

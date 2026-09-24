@@ -30,6 +30,7 @@ DB2I_PASSWORD=your-password
 | `DB2I_DRIVER` | No | `jt400` | Database driver: `jt400` (JDBC via node-jt400, needs a JRE) or `odbc` (IBM i Access ODBC driver, no Java). See [Database Drivers](#database-drivers) |
 | `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated). `jt400` driver only |
 | `DB2I_ODBC_OPTIONS` | No | - | Additional ODBC connection keywords (semicolon-separated). `odbc` driver only |
+| `DB2I_PROFILES` | No | - | Path to a YAML file of IBM i systems. When set, it replaces every other variable in this table. See [Multiple Systems](#multiple-systems) |
 
 *Either the environment variable or the corresponding `*_FILE` variable must be set. File-based secrets take priority when both are provided.
 
@@ -266,6 +267,57 @@ Windows notes:
 DB2I_DRIVER=odbc
 DB2I_ODBC_OPTIONS=SSL=1
 ```
+
+## Multiple Systems
+
+One server can reach several IBM i systems, for example production and test, or two partitions. Set `DB2I_PROFILES` to a YAML file with one profile per system ([example](../examples/profiles.yaml)):
+
+```yaml
+profiles:
+  - name: prod
+    host: ibmi.example.com
+    driver: jt400
+    username: "${DB2I_PROD_USERNAME}"
+    password: "${DB2I_PROD_PASSWORD}"
+    schema: SALES
+    allowedSchemas: [SALES, QSYS2]
+    jdbcOptions: "secure=true"
+  - name: test
+    host: ibmi-test.example.com
+    driver: odbc
+    username: MCPREAD
+    passwordFile: /run/secrets/db2i_test_password
+    odbcOptions: "SSL=1"
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `name` | Yes | - | Name tools use in their `system` argument. Letters, digits, `_` and `-` |
+| `host` | Yes | - | IBM i hostname or IPv4 address |
+| `driver` | No | `jt400` | `jt400` or `odbc`. Each profile can use a different driver |
+| `port` | No | `446` | JDBC port. Not used by `odbc` |
+| `database` | No | `*LOCAL` | Database name |
+| `schema` | No | - | Default library, like `DB2I_SCHEMA` |
+| `allowedSchemas` | No | `QUERY_ALLOWED_SCHEMAS` | Libraries queries on this system may use |
+| `username` | Yes* | - | User profile, as text or a `"${ENV_VAR}"` reference |
+| `usernameFile` | Yes* | - | Path to a file holding the user profile |
+| `password` | Yes* | - | Must be a `"${ENV_VAR}"` reference. A literal password is refused |
+| `passwordFile` | Yes* | - | Path to a file holding the password, for example a Docker secret |
+| `jdbcOptions` | No | - | Like `DB2I_JDBC_OPTIONS`, for this system |
+| `odbcOptions` | No | - | Like `DB2I_ODBC_OPTIONS`, for this system |
+
+*Set `username` or `usernameFile`, and `password` or `passwordFile`. A path may itself be a `"${ENV_VAR}"` reference. Quote every reference: inside a `{ }` map YAML reads a bare `${...}` as another map.
+
+How calls pick a system:
+
+- **The first profile is the default.** A tool call that names no system runs there, and so do resources and prompts.
+- **Built-in tools take an optional `system` argument** when more than one system is configured. Its values are the profile names. With one system the argument is not offered, so tool schemas are unchanged.
+- **YAML tools can set `system:`** to always run on one system. See [Business SQL tools](custom-tools.md#running-on-one-system).
+- **Each system has its own allowlist and default library.** A query on `test` is checked against the `test` profile's `allowedSchemas`, or `QUERY_ALLOWED_SCHEMAS` when the profile sets none.
+- **Pools are per system.** A system's pool opens on its first query and closes at shutdown. Startup checks only the default system's connection.
+- **HTTP `/auth` logs in to one system.** Pass `system` in the request. The token is bound to that system, and its calls cannot switch to another. See [HTTP transport](http-transport.md#multiple-systems).
+
+The file is read once at startup and a mistake stops the server. Restart it after editing the file. When `DB2I_PROFILES` is set, `DB2I_HOSTNAME` and the other connection variables are ignored, and startup logs a warning if they are also set.
 
 ## JDBC Options
 
