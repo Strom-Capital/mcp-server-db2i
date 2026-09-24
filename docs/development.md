@@ -70,6 +70,8 @@ mcp-server-db2i/
 ├── src/
 │   ├── index.ts           # Entry point
 │   ├── server.ts          # MCP server factory
+│   ├── resources.ts       # MCP resources and name completion
+│   ├── prompts.ts         # MCP prompts
 │   ├── config.ts          # Configuration loading
 │   ├── openapi.ts         # OpenAPI specification
 │   ├── auth/              # Authentication (HTTP)

@@ -98,6 +98,8 @@ MCP_TOOLS_ENABLED=list_schemas,list_tables,describe_table
 
 Disabled tools are not listed by `tools/list` and cannot be called. The setting applies to both stdio and HTTP transports.
 
+Resources and prompts follow the tools they draw on. Disabling `describe_table` removes `db2i://{schema}/{table}` and all three prompts. Disabling `get_object_ddl` removes `db2i://{schema}/{table}/ddl`, and disabling `get_business_context` removes `db2i://business-context`. See [Resources and prompts](../README.md#resources-and-prompts).
+
 ### Business SQL tools
 
 | Variable | Default | Description |

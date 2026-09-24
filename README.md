@@ -138,6 +138,26 @@ The list tools support pattern matching:
 - `CUST*` - Starts with "CUST"
 - `*LOG` - Ends with "LOG"
 
+## Resources and prompts
+
+Clients that support MCP resources can read a table's context without a tool call, and complete library and table names as you type.
+
+| Resource | Contents | Registered when |
+|----------|----------|-----------------|
+| `db2i://{schema}/{table}` | Columns from the catalog, plus the YAML business description, column notes, and relations | `describe_table` is enabled |
+| `db2i://{schema}/{table}/ddl` | SQL from `QSYS2.GENERATE_SQL` that recreates the table, view, or alias | `get_object_ddl` is enabled |
+| `db2i://business-context` | Every annotation loaded from `MCP_CUSTOM_TOOLS` | `get_business_context` is enabled |
+
+`resources/list` offers the annotated tables, for example `db2i://MYLIB/ORDERS`. Percent-encode `#` and other reserved characters in names (`ORD%23X` for `ORD#X`). A library outside `QUERY_ALLOWED_SCHEMAS` is rejected with the same message `execute_query` gives, and completion offers only allowed libraries. Reads and completions that query IBM i count against the rate limit, and reads are written to the audit log.
+
+| Prompt | Arguments | What it asks for |
+|--------|-----------|------------------|
+| `explore_library` | `schema` | List the tables, describe the central ones, and summarize how they join |
+| `explain_table` | `schema`, `table` | Explain rows, columns, keys, and relations in plain language |
+| `write_query` | `question`, `schema`, `table` | Write one SELECT from the table's real columns and YAML relations, then validate and run it when those tools are enabled |
+
+A prompt is listed only when the tools it tells the model to call are enabled: `explore_library` needs `list_tables` and `describe_table`, and the other two need `describe_table`. None of them asks for a write.
+
 ## Use cases
 
 I've used this server on projects where the source system was the Iptor DC1 ERP on IBM i. The same patterns work with any IBM i ERP.

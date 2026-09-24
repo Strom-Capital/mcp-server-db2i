@@ -38,6 +38,8 @@ import { getCustomTools, type StoredTool } from './customTools/registry.js';
 import type { LoadedCustomTools } from './customTools/loader.js';
 import { getSessionManager } from './transports/sessionManager.js';
 import { inputSchemaFor } from './customTools/schema.js';
+import { registerPrompts } from './prompts.js';
+import { registerResources } from './resources.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
 import { MAX_COMPUTED_COLUMNS } from './db/profile.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
@@ -905,6 +907,9 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     sessionContext,
     getDefaultSchema,
   });
+
+  registerResources(server, enabledTools, sessionContext);
+  registerPrompts(server, enabledTools, sessionContext);
 
   return server;
 }
