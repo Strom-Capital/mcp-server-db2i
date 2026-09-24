@@ -62,7 +62,7 @@ This uses `tsx` to run TypeScript directly with hot-reload support.
 | `npm run test:watch` | Run tests in watch mode |
 | `npm run lint` | Run ESLint |
 | `npm run lint:fix` | Run ESLint with auto-fix |
-| `npm run typecheck` | Run TypeScript type checking |
+| `npm run typecheck` | Type-check `src` and `tests` |
 
 ## Project Structure
 
