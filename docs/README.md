@@ -6,6 +6,7 @@ Welcome to the mcp-server-db2i documentation. This guide provides detailed infor
 
 | Guide | Description |
 |-------|-------------|
+| [Use cases](use-cases.md) | REST APIs, BI pipelines, journal replication, and ad-hoc ERP analysis |
 | [HTTP Transport](http-transport.md) | HTTP API, auth, and protocol 2026-07-28 |
 | [Configuration](configuration.md) | Environment variables, JDBC options, and all settings |
 | [Security](security.md) | Credentials management, rate limiting, and query validation |
