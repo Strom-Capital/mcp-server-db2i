@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.6.0...v2.7.0) (2026-09-24)
+
+
+### Features
+
+* make ODBC the default driver and JT400 optional ([#102](https://github.com/Strom-Capital/mcp-server-db2i/issues/102)) ([2447c4a](https://github.com/Strom-Capital/mcp-server-db2i/commit/2447c4a90e544da964a94bdc14bc5cc800f59603))
+
 ## [2.6.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.5.1...v2.6.0) (2026-09-24)
 
 
