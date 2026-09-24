@@ -65,6 +65,7 @@ graph LR
 - **Column masking** - Redact sensitive columns, or show only their last four characters, in query results. See [Column masking](docs/security.md#column-masking)
 - **Audit log** - Record every tool call as one JSON line, with the SQL hashed by default. See [Audit log](docs/security.md#audit-log)
 - **Tool reload** - Reload YAML tool files when they change, with `MCP_CUSTOM_TOOLS_WATCH=true`
+- **Resources and prompts** - Read table columns and DDL as MCP resources, and start from prompts that explore a library, explain a table, or write a query. See [Resources and prompts](#resources-and-prompts)
 
 ## Quick Start
 
@@ -141,6 +142,26 @@ The list tools support pattern matching:
 - `CUST` - Contains "CUST"
 - `CUST*` - Starts with "CUST"
 - `*LOG` - Ends with "LOG"
+
+## Resources and prompts
+
+Clients that support MCP resources can read a table's context without a tool call, and complete library and table names as you type.
+
+| Resource | Contents | Registered when |
+|----------|----------|-----------------|
+| `db2i://{schema}/{table}` | Columns from the catalog, plus the YAML business description, column notes, and relations | `describe_table` is enabled |
+| `db2i://{schema}/{table}/ddl` | SQL from `QSYS2.GENERATE_SQL` that recreates the table, view, or alias | `get_object_ddl` is enabled |
+| `db2i://business-context` | Every annotation loaded from `MCP_CUSTOM_TOOLS` | `get_business_context` is enabled |
+
+`resources/list` offers the annotated tables, for example `db2i://MYLIB/ORDERS`. Percent-encode `#` and other reserved characters in names (`ORD%23X` for `ORD#X`). A library outside `QUERY_ALLOWED_SCHEMAS` is rejected with the same message `execute_query` gives, and completion offers only allowed libraries. Reads and completions that query IBM i count against the rate limit, and reads are written to the audit log. Completion fetches a library's name list once and reuses it for 60 seconds, so typing a name costs one query rather than one per keystroke.
+
+| Prompt | Arguments | What it asks for |
+|--------|-----------|------------------|
+| `explore_library` | `schema` | List the tables, describe the central ones, and summarize how they join |
+| `explain_table` | `schema`, `table` | Explain rows, columns, keys, and relations in plain language |
+| `write_query` | `question`, `schema`, `table` | Write one SELECT from the table's real columns and YAML relations, then validate and run it when those tools are enabled |
+
+A prompt is listed only when the tools it tells the model to call are enabled: `explore_library` needs `list_tables` and `describe_table`, and the other two need `describe_table`. None of them asks for a write.
 
 ## Use cases
 

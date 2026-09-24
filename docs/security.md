@@ -182,7 +182,7 @@ The tool is then never registered, so validation bypasses cannot reach it. Busin
 
 ### Schema Allowlist
 
-`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the parse check and the query. The same list applies to `validate_query`, `get_object_ddl`, `get_related_objects`, `get_journal_info`, `profile_table`, and business SQL tools. `get_related_objects` omits dependents whose schema is outside the list. A business tool that fails the check is rejected at startup, and again when it is called.
+`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the parse check and the query. The same list applies to `validate_query`, `get_object_ddl`, `get_related_objects`, `get_journal_info`, `profile_table`, the catalog browsing tools (`list_tables`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`), the resources and prompts, and business SQL tools. `list_schemas` returns only libraries in the list. `get_related_objects` omits dependents whose schema is outside the list. A business tool that fails the check is rejected at startup, and again when it is called.
 
 - Unqualified names resolve to the session schema, or to `DB2I_SCHEMA` when the session has none. If that schema is missing or not in the list, the query is rejected.
 - The list comes from the server environment. A schema chosen at `/auth` changes where unqualified names resolve. It does not add libraries to the list.
@@ -261,6 +261,8 @@ A view, an alias, or a table function that reads a masked table is not covered u
 ## Audit log
 
 `MCP_AUDIT_LOG` writes one JSON line for every tool call: who ran it, which tool, a hash of the SQL (or the text when `MCP_AUDIT_SQL=full`), how many parameters were bound, the row count, how long it took, and whether it succeeded, failed, or was rate limited. HTTP calls record the IBM i username. Stdio calls record `stdio`.
+
+Resource reads and the `write_query` prompt query the catalog too, so they are recorded the same way. Their `tool` is `resource:table`, `resource:table_ddl`, or `prompt:write_query`, and `args` holds the schema and table. Reading `db2i://business-context` and completing names are not recorded.
 
 Hashing is the default because the statement often contains customer values, and an audit file should not become a second copy of the data. Set `MCP_AUDIT_PARAMS=true` only when you need the bound values and the file is protected like a credential.
 

@@ -182,6 +182,51 @@ describe('MCP Server Integration', () => {
       expect(errorText).toContain('OTHERLIB.USERS');
       expect(mockQuery).not.toHaveBeenCalled();
     });
+
+    it.each([
+      ['list_tables', {}],
+      ['describe_table', { table: 'ORDERHDR' }],
+      ['list_views', {}],
+      ['list_indexes', { table: 'ORDERHDR' }],
+      ['get_table_constraints', { table: 'ORDERHDR' }],
+    ])('should reject %s for a library outside QUERY_ALLOWED_SCHEMAS', async (name, args) => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'TESTLIB';
+
+      const result = await client.callTool({
+        name,
+        arguments: { schema: 'OTHERLIB', ...args },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      const errorText = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(errorText).toBe('Schema OTHERLIB is not in QUERY_ALLOWED_SCHEMAS (TESTLIB).');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('should still use an allowed default schema when none is given', async () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'TESTLIB';
+      mockQuery.mockResolvedValueOnce([{ TABLE_NAME: 'ORDERS', TABLE_TYPE: 'T', TABLE_TEXT: null }]);
+
+      const result = await client.callTool({ name: 'list_tables', arguments: {} }) as CallToolResult;
+
+      expect(result.isError).toBeUndefined();
+      expect(mockQuery).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining(['TESTLIB']));
+    });
+
+    it('should list only libraries in QUERY_ALLOWED_SCHEMAS', async () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'TESTLIB,QSYS2';
+      mockQuery.mockResolvedValueOnce([
+        { SCHEMA_NAME: 'OTHERLIB', SCHEMA_TEXT: null },
+        { SCHEMA_NAME: 'QSYS2', SCHEMA_TEXT: 'Catalog' },
+        { SCHEMA_NAME: 'TESTLIB', SCHEMA_TEXT: null },
+      ]);
+
+      const result = await client.callTool({ name: 'list_schemas', arguments: {} }) as CallToolResult;
+
+      const content = JSON.parse((result.content[0] as { type: 'text'; text: string }).text);
+      expect(content.data.map((row: { schema_name: string }) => row.schema_name)).toEqual(['QSYS2', 'TESTLIB']);
+      expect(content.count).toBe(2);
+    });
   });
 
   describe('PARSE_STATEMENT check', () => {
