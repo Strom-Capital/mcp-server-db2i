@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.4.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.3.0...v2.4.0) (2026-09-24)
+
+
+### Features
+
+* add a validate-tools command for YAML tool files ([#67](https://github.com/Strom-Capital/mcp-server-db2i/issues/67)) ([8963230](https://github.com/Strom-Capital/mcp-server-db2i/commit/89632307e2c039fadcbcde9c1f99bf4a420e67d3))
+* add search_columns and search_tables ([4a819ca](https://github.com/Strom-Capital/mcp-server-db2i/commit/4a819cab459e621cf4f5a15a0992cc71675c127b))
+* mask sensitive columns in query results ([#70](https://github.com/Strom-Capital/mcp-server-db2i/issues/70)) ([db0f800](https://github.com/Strom-Capital/mcp-server-db2i/commit/db0f800a089e7c2f0ebf4036fd1e29145873ff3d))
+* record each tool call in an audit log ([#69](https://github.com/Strom-Capital/mcp-server-db2i/issues/69)) ([8b18502](https://github.com/Strom-Capital/mcp-server-db2i/commit/8b1850284ceaf850587e1cfab75e1b9bf818ba68))
+* reload YAML tools when their files change ([#68](https://github.com/Strom-Capital/mcp-server-db2i/issues/68)) ([affa527](https://github.com/Strom-Capital/mcp-server-db2i/commit/affa5274ba9c9029d1bfd6978b7de3a068a28031))
+
 ## [2.3.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.2.1...v2.3.0) (2026-09-24)
 
 

@@ -7,12 +7,12 @@
     "url": "https://github.com/Strom-Capital/mcp-server-db2i",
     "source": "github"
   },
-  "version": "2.3.0",
+  "version": "2.4.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-server-db2i",
-      "version": "2.3.0",
+      "version": "2.4.0",
       "transport": {
         "type": "stdio"
       },
