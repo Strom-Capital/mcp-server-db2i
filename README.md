@@ -136,6 +136,17 @@ The list tools support pattern matching:
 - `CUST*` - Starts with "CUST"
 - `*LOG` - Ends with "LOG"
 
+## Use cases
+
+I've used this server on projects where the source system was the Iptor DC1 ERP on IBM i. The same patterns work with any IBM i ERP.
+
+- **Building REST APIs** - The agent finds the ERP tables and keys, checks its SQL with `validate_query`, tests it on sample rows, and then writes the endpoint.
+- **ETL and ELT pipelines for BI** - Profile source tables, generate staging DDL with `get_object_ddl`, and draft incremental extracts and code mappings for the warehouse.
+- **Near-real-time replication to BI** - Check which tables are journaled, and with which images, before a journal-based tool such as Fivetran streams changes to the warehouse.
+- **Ad-hoc analysis** - Connect Claude or Cursor directly to the ERP and ask business questions in plain language, with vetted Business SQL tools and column masking for sensitive fields.
+
+See [Use cases](docs/use-cases.md) for sample prompts and the guardrails that go with each one.
+
 ## Example Usage
 
 Once connected, you can ask the AI assistant:
@@ -145,11 +156,14 @@ Once connected, you can ask the AI assistant:
 - "Describe the columns in MYLIB/CUSTOMERS"
 - "What indexes exist on the ORDERS table?"
 - "Run this query: SELECT * FROM MYLIB.CUSTOMERS WHERE STATUS = 'A'"
+- "Find the order header and line tables in MYLIB and write a GET /orders/:orderNo endpoint"
+- "Draft an incremental extract of MYLIB.ORDERHDR rows changed since yesterday"
 
 ## Documentation
 
 | Guide | Description |
 |-------|-------------|
+| [Use cases](docs/use-cases.md) | REST APIs, BI pipelines, journal replication, and ad-hoc ERP analysis |
 | [HTTP Transport](docs/http-transport.md) | HTTP API, auth, and protocol versions |
 | [Configuration](docs/configuration.md) | All environment variables and JDBC options |
 | [Security](docs/security.md) | Credentials, rate limiting, query validation |
