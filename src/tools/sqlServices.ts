@@ -13,6 +13,7 @@ import {
   inspectStatement,
   isParseStatementMissing,
   listRelatedObjects,
+  PARSE_STATEMENT_UNAVAILABLE,
   type RelatedObject,
   type StatementInspection,
 } from '../db/sqlServices.js';
@@ -21,9 +22,6 @@ import { checkQuerySchemas, isSchemaAllowed } from '../utils/security/schemaAllo
 
 const RELATED_OBJECTS_UNAVAILABLE =
   'SYSTOOLS.RELATED_OBJECTS is not available. It requires IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release.';
-
-const PARSE_STATEMENT_UNAVAILABLE =
-  'QSYS2.PARSE_STATEMENT is not available on this system. It requires IBM i 7.3 with Db2 PTF group SF99703 level 3, or IBM i 7.4 or later.';
 
 export type ValidateQueryResult = {
   success: boolean;

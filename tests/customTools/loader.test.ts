@@ -3,7 +3,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { CustomToolsError, loadCustomTools, loadCustomToolsFromEnv } from '../../src/customTools/loader.js';
+import { CustomToolsError, loadCustomTools, loadCustomToolsFromEnv, validateCustomToolFiles } from '../../src/customTools/loader.js';
 
 const dirs: string[] = [];
 
@@ -136,5 +136,51 @@ describe('loadCustomTools', () => {
       if (previousSchemas === undefined) delete process.env.QUERY_ALLOWED_SCHEMAS;
       else process.env.QUERY_ALLOWED_SCHEMAS = previousSchemas;
     }
+  });
+});
+
+describe('validateCustomToolFiles', () => {
+  it('reports every failing file in one run', () => {
+    const deleted = VALID.replace(
+      'SELECT H.ORDERNO FROM MYLIB.ORDERHDR H',
+      'DELETE FROM MYLIB.ORDERHDR H'
+    );
+    const first = writeYaml(deleted, 'first.yaml');
+    const second = writeYaml(VALID.replace('search_sales_orders', 'SearchOrders'), 'second.yaml');
+
+    const validation = validateCustomToolFiles([first, second, '/tmp/db2i-tools-missing-path']);
+    const errors = validation.results.map((result) => result.error ?? '');
+
+    expect(errors).toEqual(expect.arrayContaining([
+      expect.stringMatching(/Security validation failed/),
+      expect.stringMatching(/snake_case/),
+      expect.stringMatching(/not found/),
+    ]));
+    expect(errors).toHaveLength(3);
+    expect(validation.loaded.tools).toEqual([]);
+  });
+
+  it('reports a duplicate tool name across files', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'db2i-tools-'));
+    dirs.push(dir);
+    writeFileSync(path.join(dir, 'a.yaml'), VALID);
+    writeFileSync(path.join(dir, 'b.yaml'), VALID);
+
+    const validation = validateCustomToolFiles([dir]);
+    const duplicate = validation.results.find((result) => result.error);
+
+    expect(validation.results.filter((result) => !result.error)).toHaveLength(2);
+    expect(duplicate?.error).toMatch(/defined in both/);
+    expect(validation.loaded.tools).toEqual([]);
+  });
+
+  it('accepts the example ERP pack', () => {
+    const validation = validateCustomToolFiles(['examples/erp-tools'], {
+      allowedSchemas: ['MYLIB'],
+      defaultSchema: 'MYLIB',
+    });
+
+    expect(validation.results.every((result) => result.error === undefined)).toBe(true);
+    expect(validation.loaded.tools.length).toBeGreaterThan(0);
   });
 });

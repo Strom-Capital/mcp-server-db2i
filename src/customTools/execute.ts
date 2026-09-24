@@ -3,7 +3,7 @@
  */
 
 import { executeQuery } from '../db/connection.js';
-import { isParseStatementMissing, parseStatement } from '../db/sqlServices.js';
+import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
 import { applyQueryLimit, getAllowedSchemas, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
 import { applySqlRowLimit } from '../tools/sqlLimit.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -14,9 +14,32 @@ import { formatSchemaIssues, inputSchemaFor, type ParameterDef } from './schema.
 
 const log = createChildLogger({ component: 'custom-tools' });
 
-type ParseOutcome =
+export type ParseOutcome =
   | { ok: true }
   | { ok: false; error: string; violations?: string[] };
+
+/**
+ * Decide whether PARSE_STATEMENT rows describe a query.
+ * Shared by tool execution and `validate-tools --connect`.
+ */
+export function classifyParsedStatement(parsed: ParsedName[]): ParseOutcome {
+  const types = [
+    ...new Set(parsed.map((row) => row.statementType).filter((type): type is string => Boolean(type))),
+  ];
+  if (parsed.length === 0 || types.length === 0 || types.some((type) => type !== 'QUERY')) {
+    const found = types.join(', ') || 'unknown';
+    return {
+      ok: false,
+      error: parsed.length === 0
+        ? 'The statement could not be parsed. Fix the SQL, or set QUERY_PARSE_CHECK=false to skip this check.'
+        : `PARSE_STATEMENT rejected the statement (type: ${found}). Only queries are allowed.`,
+      violations: parsed.length === 0
+        ? ['The statement could not be parsed.']
+        : [`Statement type is ${found}.`],
+    };
+  }
+  return { ok: true };
+}
 
 export interface CustomToolQueryResult {
   success: boolean;
@@ -129,24 +152,7 @@ async function ensureParsed(tool: StoredTool, sessionId?: string): Promise<Parse
 
   try {
     const parsed = await parseStatement(tool.sql, sessionId);
-    const types = [
-      ...new Set(parsed.map((row) => row.statementType).filter((type): type is string => Boolean(type))),
-    ];
-    let outcome: ParseOutcome;
-    if (parsed.length === 0 || types.length === 0 || types.some((type) => type !== 'QUERY')) {
-      const found = types.join(', ') || 'unknown';
-      outcome = {
-        ok: false,
-        error: parsed.length === 0
-          ? 'The statement could not be parsed. Fix the SQL, or set QUERY_PARSE_CHECK=false to skip this check.'
-          : `PARSE_STATEMENT rejected the statement (type: ${found}). Only queries are allowed.`,
-        violations: parsed.length === 0
-          ? ['The statement could not be parsed.']
-          : [`Statement type is ${found}.`],
-      };
-    } else {
-      outcome = { ok: true };
-    }
+    const outcome = classifyParsedStatement(parsed);
     cacheParse(tool.name, outcome);
     return outcome;
   } catch (error) {

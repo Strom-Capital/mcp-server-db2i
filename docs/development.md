@@ -130,6 +130,29 @@ Integration tests require a real IBM i connection. Set environment variables and
 npm run test -- tests/integration/
 ```
 
+## Validating tool files
+
+`validate-tools` runs the startup checks on YAML tool files and then exits. It does not open a database connection and does not need `DB2I_HOSTNAME`.
+
+```bash
+npx mcp-server-db2i validate-tools examples/erp-tools
+```
+
+`QUERY_ALLOWED_SCHEMAS` and `DB2I_SCHEMA` are applied when they are set. `--connect` also runs each statement through `QSYS2.PARSE_STATEMENT` on `ibmi.example.com` (or whichever host `DB2I_HOSTNAME` names). That path needs credentials. A missing `PARSE_STATEMENT` is a failure.
+
+```bash
+npx mcp-server-db2i validate-tools --connect examples/erp-tools
+```
+
+A CI job can run the check with no secrets:
+
+```yaml
+      - name: Validate tool files
+        run: npx mcp-server-db2i validate-tools examples/erp-tools
+```
+
+The command exits 0 when every file passes and 1 when any file fails.
+
 ## Code Style
 
 The project uses ESLint with TypeScript rules. Format code before committing:

@@ -64,6 +64,20 @@ export interface LoadedCustomTools {
   annotations: StoredAnnotation[];
 }
 
+export interface FileValidationResult {
+  /** Display path of the file, or the input path when that input could not be read. Empty for a cross-file failure. */
+  path: string;
+  error?: string;
+  tools: number;
+  annotations: number;
+}
+
+export interface CustomToolsValidation {
+  results: FileValidationResult[];
+  /** Tools and annotations when every file passed, including the cross-file check. */
+  loaded: LoadedCustomTools;
+}
+
 export interface LoadCustomToolsOptions {
   /** Uppercased library names. Omit to skip the schema allowlist. */
   allowedSchemas?: string[];
@@ -136,6 +150,60 @@ export function loadCustomTools(
   }
 
   return { tools, annotations };
+}
+
+/**
+ * Check every file and keep going after a failure.
+ * A second pass over the files that parsed catches duplicate names across files.
+ * Throws only for errors that are not a CustomToolsError.
+ */
+export function validateCustomToolFiles(
+  inputs: readonly string[],
+  options: LoadCustomToolsOptions = {},
+): CustomToolsValidation {
+  const results: FileValidationResult[] = [];
+  const files: string[] = [];
+
+  for (const input of inputs) {
+    try {
+      files.push(...collectFiles(input));
+    } catch (error) {
+      if (!(error instanceof CustomToolsError)) {
+        throw error;
+      }
+      results.push({ path: input, error: error.message, tools: 0, annotations: 0 });
+    }
+  }
+
+  for (const file of files) {
+    try {
+      const loaded = loadCustomTools([file], options);
+      results.push({
+        path: displayPath(file),
+        tools: loaded.tools.length,
+        annotations: loaded.annotations.length,
+      });
+    } catch (error) {
+      if (!(error instanceof CustomToolsError)) {
+        throw error;
+      }
+      results.push({ path: displayPath(file), error: error.message, tools: 0, annotations: 0 });
+    }
+  }
+
+  if (results.some((result) => result.error) || files.length === 0) {
+    return { results, loaded: EMPTY };
+  }
+
+  try {
+    return { results, loaded: loadCustomTools(files, options) };
+  } catch (error) {
+    if (!(error instanceof CustomToolsError)) {
+      throw error;
+    }
+    results.push({ path: '', error: error.message, tools: 0, annotations: 0 });
+    return { results, loaded: EMPTY };
+  }
 }
 
 function readFile(file: string): ReturnType<typeof customToolsFileSchema.parse> {

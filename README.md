@@ -58,7 +58,7 @@ graph LR
 - **Current MCP spec** - Speaks [2026-07-28](https://modelcontextprotocol.io/) and still serves stateless 2025-era clients
 - **Dual Transport** - Run stdio and HTTP simultaneously
 - **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
-- **Business SQL tools** - Load read-only ERP queries and table notes from YAML. See [Business SQL tools](docs/custom-tools.md)
+- **Business SQL tools** - Load read-only ERP queries and table notes from YAML, and check the files with `mcp-server-db2i validate-tools` before the server starts. See [Business SQL tools](docs/custom-tools.md)
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens
 - **Statement checks and DDL** - Validate object names, return the SQL that recreates an object, and list what depends on a table
 

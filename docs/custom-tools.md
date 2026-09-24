@@ -186,6 +186,8 @@ At startup the server runs the same read-only check as `execute_query`. When `QU
 
 When `QUERY_PARSE_CHECK` is on, the first call of each tool asks `QSYS2.PARSE_STATEMENT` whether the statement is a query. That result is cached for the life of the process. A missing function rejects the tool until you set `QUERY_PARSE_CHECK=false`.
 
+`mcp-server-db2i validate-tools <path...>` runs those startup checks and exits, without a database. Add `--connect` to run the `PARSE_STATEMENT` check as well. That needs credentials and a reachable host. See [Validating tool files](development.md#validating-tool-files).
+
 `MCP_TOOLS_ENABLED` and `MCP_TOOLS_DISABLED` accept a custom tool name or `toolset:<name>`, as well as the built-in names. A toolset selector does not match built-in tools. An unknown name or toolset stops startup.
 
 ```env
