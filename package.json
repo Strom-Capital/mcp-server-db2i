@@ -59,7 +59,7 @@
     "@modelcontextprotocol/client": "^2.1.0",
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.8",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.1",
     "eslint": "^9.39.5",
     "knip": "^5.88.1",
     "tsx": "^4.23.15",
