@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.6.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.5.1...v2.6.0) (2026-09-24)
+
+
+### Features
+
+* add a driver interface and an IBM i Access ODBC backend ([#96](https://github.com/Strom-Capital/mcp-server-db2i/issues/96)) ([9c3e88a](https://github.com/Strom-Capital/mcp-server-db2i/commit/9c3e88a0e2c3c14944773614b416a0b68a0b714d)), closes [#57](https://github.com/Strom-Capital/mcp-server-db2i/issues/57)
+* connect to multiple IBM i systems through profiles ([#98](https://github.com/Strom-Capital/mcp-server-db2i/issues/98)) ([cd910a4](https://github.com/Strom-Capital/mcp-server-db2i/commit/cd910a4de06a7553402b3ecd1496c9af4ef7a3f0))
+
+
+### Bug Fixes
+
+* housekeeping pass after connection profiles and the ODBC driver ([#99](https://github.com/Strom-Capital/mcp-server-db2i/issues/99)) ([4182a50](https://github.com/Strom-Capital/mcp-server-db2i/commit/4182a506f3dfdd04ee5ff68315f7f7ecb1a7ea05))
+
+
+### CI/CD
+
+* run CI in the release workflow only before a publish ([#100](https://github.com/Strom-Capital/mcp-server-db2i/issues/100)) ([57850bb](https://github.com/Strom-Capital/mcp-server-db2i/commit/57850bbdfa23f21e3cde903ed416b029b2cce381))
+
 ## [2.5.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.5.0...v2.5.1) (2026-09-24)
 
 
