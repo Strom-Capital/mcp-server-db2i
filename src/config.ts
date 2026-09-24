@@ -35,6 +35,9 @@ import { readFileSync, existsSync } from 'node:fs';
  * npm `odbc` package with the IBM i Access ODBC driver and needs no Java.
  */
 export const DB_DRIVERS = ['jt400', 'odbc'] as const;
+
+/** Name of the one system the DB2I_* variables describe when DB2I_PROFILES is unset. */
+export const DEFAULT_SYSTEM_NAME = 'default';
 export type DbDriverName = (typeof DB_DRIVERS)[number];
 
 export interface DB2iConfig {
@@ -159,7 +162,7 @@ export function validateHostname(hostname: string): boolean {
  * Format: "key1=value1;key2=value2". Used for both DB2I_JDBC_OPTIONS and
  * DB2I_ODBC_OPTIONS.
  */
-function parseJdbcOptions(optionsString: string | undefined): Record<string, string> {
+export function parseJdbcOptions(optionsString: string | undefined): Record<string, string> {
   if (!optionsString) {
     return {};
   }
@@ -247,7 +250,7 @@ export function odbcConnectionSecurity(
 export interface ConnectionSecurity {
   driver: DbDriverName;
   /** The variable that carries driver options, for log messages. */
-  optionsVariable: 'DB2I_JDBC_OPTIONS' | 'DB2I_ODBC_OPTIONS';
+  optionsVariable: string;
   /** The operator's explicit access setting, when it overrides the read-only default. */
   accessOverride?: string;
   /** Whether the database connection is encrypted. */
@@ -259,19 +262,22 @@ export interface ConnectionSecurity {
 /**
  * Security-relevant settings of the selected driver, for the startup warnings.
  */
-export function connectionSecurity(driver: DbDriverName = getDbDriver()): ConnectionSecurity {
+export function connectionSecurity(
+  driver: DbDriverName = getDbDriver(),
+  options?: Record<string, string>
+): ConnectionSecurity {
   if (driver === 'odbc') {
     return {
       driver,
       optionsVariable: 'DB2I_ODBC_OPTIONS',
-      ...odbcConnectionSecurity(),
+      ...odbcConnectionSecurity(options),
       secureHint: 'SSL=1',
     };
   }
   return {
     driver,
     optionsVariable: 'DB2I_JDBC_OPTIONS',
-    ...jdbcConnectionSecurity(),
+    ...jdbcConnectionSecurity(options),
     secureHint: 'secure=true',
   };
 }
@@ -283,15 +289,17 @@ export function connectionSecurity(driver: DbDriverName = getDbDriver()): Connec
  */
 export function assertExtendedMetadataAllowsMasking(
   maskingLoaded: boolean,
-  driver: DbDriverName = getDbDriver()
+  driver: DbDriverName = getDbDriver(),
+  options: Record<string, string> = parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS),
+  optionsLabel = 'DB2I_JDBC_OPTIONS'
 ): void {
   if (!maskingLoaded || driver !== 'jt400') {
     return;
   }
-  const value = jdbcOption(parseJdbcOptions(process.env.DB2I_JDBC_OPTIONS), 'extended metadata');
+  const value = jdbcOption(options, 'extended metadata');
   if (value?.toLowerCase() === 'true') {
     throw new Error(
-      'DB2I_JDBC_OPTIONS sets extended metadata=true, which renames result columns, so masking rules cannot be applied. Remove that option or the masking rules.'
+      `${optionsLabel} sets extended metadata=true, which renames result columns, so masking rules cannot be applied. Remove that option or the masking rules.`
     );
   }
 }
@@ -734,15 +742,16 @@ export function getAllowedSchemas(): string[] | undefined {
     return undefined;
   }
 
-  const names = [
-    ...new Set(
-      value
-        .split(',')
-        .map((name) => name.trim().toUpperCase())
-        .filter((name) => name.length > 0)
-    ),
-  ];
+  return normalizeSchemaList(value.split(','));
+}
 
+/**
+ * Trim, uppercase, and deduplicate library names. Undefined when none remain.
+ */
+export function normalizeSchemaList(values: readonly string[]): string[] | undefined {
+  const names = [
+    ...new Set(values.map((name) => name.trim().toUpperCase()).filter((name) => name.length > 0)),
+  ];
   return names.length > 0 ? names : undefined;
 }
 
@@ -1211,6 +1220,3 @@ export function loadPartialConfig(overrides: {
     odbcOptions: parseJdbcOptions(process.env.DB2I_ODBC_OPTIONS),
   };
 }
-
-// Make parseJdbcOptions accessible internally for loadPartialConfig
-// (it's already defined above, we just need to export it or use it here)

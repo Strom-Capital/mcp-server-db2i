@@ -1,9 +1,8 @@
 /**
  * Connection pool manager for IBM DB2i.
  *
- * Supports both:
- * - Global pool: For stdio transport (single user, env-based config)
- * - Session pools: For HTTP transport (per-user, token-based config)
+ * Pools are owned by a caller (`stdio`, or an HTTP session key) and kept per
+ * IBM i system, so one caller can hold a pool on each configured system.
  *
  * The driver (JT400 over JDBC, or ODBC) is selected by DB2I_DRIVER and loaded
  * on first use, so pools are created lazily by the first query. Registering a
@@ -11,6 +10,9 @@
  */
 
 import type { DB2iConfig } from '../config.js';
+import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
+
+export { STDIO_POOL_KEY };
 import type { DbPool } from './driver.js';
 import { loadDriver, toParams } from './driver.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -30,7 +32,7 @@ export interface QueryResult {
   };
 }
 
-/** A registered pool. `pool` is set by the first query and cleared on failure. */
+/** One pool. `pool` is set by the first query and cleared on failure. */
 interface PoolSlot {
   config: DB2iConfig;
   readOnly: boolean;
@@ -38,129 +40,126 @@ interface PoolSlot {
   pool?: Promise<DbPool>;
 }
 
-// Global pool for stdio transport (backwards compatible)
-let globalSlot: PoolSlot | null = null;
+/**
+ * Pools owned by one caller: `stdio`, or an HTTP session key. Keyed by system,
+ * then by read-only query pool and procedure pool.
+ */
+interface Owner {
+  label: string;
+  systems: Map<string, { query: PoolSlot; procedure?: PoolSlot }>;
+}
 
-// Session pools for HTTP transport (keyed by session/token ID)
-const sessionSlots = new Map<string, PoolSlot>();
+const owners = new Map<string, Owner>();
 
-// QSYS2.GENERATE_SQL is rejected on a read-only connection, so DDL generation
-// uses a second pool without the driver's read-only setting. It runs only the CALL.
-let globalProcedureSlot: PoolSlot | null = null;
-const sessionProcedureSlots = new Map<string, PoolSlot>();
+// The target used when a caller passes none: the stdio owner's default system.
+// Set by initializePool, for the CLI and code paths that predate systems.
+let globalTarget: DbTarget | null = null;
 
-function shortId(sessionId: string): string {
-  return sessionId.substring(0, 8);
+function shortId(poolKey: string): string {
+  return poolKey.substring(0, 8);
+}
+
+function logContext(target: DbTarget): Record<string, unknown> {
+  return target.poolKey === STDIO_POOL_KEY
+    ? { system: target.system }
+    : { sessionId: shortId(target.poolKey), system: target.system };
 }
 
 /**
- * Initialize the global connection pool (for stdio transport)
- *
- * Safe to call multiple times - will skip if pool already exists.
+ * Initialize the stdio pools, and make `system` the target for calls that
+ * pass none. Safe to call more than once; the latest config wins.
  */
-export function initializePool(config: DB2iConfig): void {
-  if (globalSlot) {
-    globalSlot.config = config;
-    log.debug({ hostname: config.hostname }, 'Global pool already exists, skipping initialization');
-    return;
+export function initializePool(config: DB2iConfig, system: string = DEFAULT_SYSTEM_NAME): void {
+  registerOwner(STDIO_POOL_KEY, 'Global');
+  globalTarget = {
+    poolKey: STDIO_POOL_KEY,
+    system,
+    config,
+    allowedSchemas: undefined,
+    defaultSchema: config.schema || undefined,
+  };
+  const slot = owners.get(STDIO_POOL_KEY)?.systems.get(system);
+  if (slot) {
+    slot.query.config = config;
+    if (slot.procedure) {
+      slot.procedure.config = config;
+    }
   }
-
-  log.debug(
-    { hostname: config.hostname, port: config.port, driver: config.driver },
-    'Initializing global connection pool'
-  );
-  globalSlot = { config, readOnly: true, label: 'Global connection pool' };
-  log.info({ hostname: config.hostname, driver: config.driver }, 'Global connection pool registered');
+  log.info({ hostname: config.hostname, driver: config.driver, system }, 'Global connection pool registered');
 }
 
 /**
- * Initialize a session-specific connection pool (for HTTP transport)
- *
- * @param sessionId - Unique session identifier (typically the auth token)
- * @param config - DB2i configuration for this session
+ * Allow pools for an HTTP session key. Pools for each system are created on
+ * that system's first query. A key that was never registered, or was closed,
+ * cannot open a connection.
  */
-export function initializeSessionPool(sessionId: string, config: DB2iConfig): void {
-  const existing = sessionSlots.get(sessionId);
-  if (existing) {
-    existing.config = config;
+export function initializeSessionPool(sessionId: string): void {
+  if (owners.has(sessionId)) {
     log.debug({ sessionId: shortId(sessionId) }, 'Session pool already exists');
     return;
   }
-
-  log.debug(
-    { sessionId: shortId(sessionId), hostname: config.hostname, driver: config.driver },
-    'Initializing session connection pool'
-  );
-  sessionSlots.set(sessionId, { config, readOnly: true, label: 'Session connection pool' });
+  registerOwner(sessionId, 'Session');
   log.info(
-    {
-      sessionId: shortId(sessionId),
-      hostname: config.hostname,
-      driver: config.driver,
-      poolCount: sessionSlots.size,
-    },
+    { sessionId: shortId(sessionId), poolCount: getSessionPoolCount() },
     'Session connection pool registered'
   );
 }
 
+function registerOwner(poolKey: string, label: string): void {
+  if (!owners.has(poolKey)) {
+    owners.set(poolKey, { label, systems: new Map() });
+  }
+}
+
 /**
- * Close a session-specific connection pool
- *
- * @param sessionId - The session identifier
- * @returns Promise that resolves when the pool is closed
+ * Close every pool a session key owns, on every system.
  */
 export async function closeSessionPool(sessionId: string): Promise<void> {
-  const procedureSlot = sessionProcedureSlots.get(sessionId);
-  if (procedureSlot) {
-    sessionProcedureSlots.delete(sessionId);
-    await closeSlot(procedureSlot, sessionId);
+  const owner = owners.get(sessionId);
+  if (!owner) {
+    return;
   }
-
-  const slot = sessionSlots.get(sessionId);
-  if (slot) {
-    // Remove first so a broken pool is never retried
-    sessionSlots.delete(sessionId);
-    await closeSlot(slot, sessionId);
-  }
+  // Remove first so a closed session never reopens a pool
+  owners.delete(sessionId);
+  await closeOwner(owner, sessionId);
 }
 
 /**
  * Close all session connection pools (for shutdown)
- *
- * @returns Promise that resolves when all pools are closed
  */
 export async function closeAllSessionPools(): Promise<void> {
-  const poolCount = sessionSlots.size;
-  if (poolCount === 0) {
+  const keys = [...owners.keys()].filter((key) => key !== STDIO_POOL_KEY);
+  if (keys.length === 0) {
     return;
   }
 
-  log.info({ poolCount }, 'Closing all session connection pools');
-
-  const closePromises = Array.from(sessionSlots.keys()).map((sessionId) =>
-    closeSessionPool(sessionId)
-  );
-
-  await Promise.all(closePromises);
+  log.info({ poolCount: keys.length }, 'Closing all session connection pools');
+  await Promise.all(keys.map((key) => closeSessionPool(key)));
   log.info('All session connection pools closed');
 }
 
 /**
- * Close the global connection pool (for shutdown)
- *
- * @returns Promise that resolves when the pool is closed
+ * Close the stdio pools on every system (for shutdown)
  */
 export async function closeGlobalPool(): Promise<void> {
-  if (globalProcedureSlot) {
-    const slot = globalProcedureSlot;
-    globalProcedureSlot = null;
-    await closeSlot(slot);
+  globalTarget = null;
+  const owner = owners.get(STDIO_POOL_KEY);
+  if (!owner) {
+    return;
   }
+  owners.delete(STDIO_POOL_KEY);
+  await closeOwner(owner);
+}
 
-  if (globalSlot) {
-    const slot = globalSlot;
-    globalSlot = null;
-    await closeSlot(slot);
+async function closeOwner(owner: Owner, sessionId?: string): Promise<void> {
+  const slots = [...owner.systems.entries()].flatMap(([system, pair]) =>
+    [pair.procedure, pair.query]
+      .filter((slot): slot is PoolSlot => slot !== undefined)
+      .map((slot) => ({ system, slot }))
+  );
+  // Procedure pools first, as before systems existed
+  for (const { system, slot } of slots) {
+    await closeSlot(slot, system, sessionId);
   }
 }
 
@@ -168,15 +167,15 @@ export async function closeGlobalPool(): Promise<void> {
  * Close the pool behind a slot, if one was ever created. A slot that never
  * ran a query has nothing to close.
  */
-async function closeSlot(slot: PoolSlot, sessionId?: string): Promise<void> {
+async function closeSlot(slot: PoolSlot, system: string, sessionId?: string): Promise<void> {
   const pending = slot.pool;
   slot.pool = undefined;
   if (!pending) {
     return;
   }
   const context = sessionId
-    ? { sessionId: shortId(sessionId), poolCount: sessionSlots.size }
-    : {};
+    ? { sessionId: shortId(sessionId), system, poolCount: getSessionPoolCount() }
+    : { system };
   try {
     const pool = await pending;
     await pool.close();
@@ -190,11 +189,11 @@ async function closeSlot(slot: PoolSlot, sessionId?: string): Promise<void> {
  * Get the pool behind a slot, creating it on first use. A failed creation is
  * forgotten so the next query tries again.
  */
-function acquire(slot: PoolSlot, sessionId?: string): Promise<DbPool> {
+function acquire(slot: PoolSlot, target: DbTarget): Promise<DbPool> {
   if (slot.pool) {
     return slot.pool;
   }
-  const context = sessionId ? { sessionId: shortId(sessionId) } : {};
+  const context = logContext(target);
   const created = loadDriver(slot.config.driver).then((driver) =>
     driver.createPool(slot.config, { readOnly: slot.readOnly })
   );
@@ -213,45 +212,47 @@ function acquire(slot: PoolSlot, sessionId?: string): Promise<DbPool> {
   return created;
 }
 
-/**
- * Get the appropriate slot - session slot if sessionId provided, otherwise global
- */
-function getSlot(sessionId?: string): PoolSlot {
-  if (sessionId) {
-    const slot = sessionSlots.get(sessionId);
-    if (!slot) {
-      throw new Error(`Session pool not found for session: ${shortId(sessionId)}...`);
-    }
-    return slot;
+function resolve(target: DbTarget | undefined): DbTarget {
+  if (target) {
+    return target;
   }
-  if (!globalSlot) {
+  if (!globalTarget) {
     throw new Error('Global connection pool not initialized. Call initializePool first.');
   }
-  return globalSlot;
+  return globalTarget;
 }
 
 /**
- * Slot for QSYS2.GENERATE_SQL. Created on first use from the same credentials
- * as the query pool, without the driver's read-only setting.
+ * Get the slot for a target, registering it on the owner's first query to
+ * that system. The owner must already be registered.
  */
-function getProcedureSlot(sessionId?: string): PoolSlot {
-  if (sessionId) {
-    const existing = sessionProcedureSlots.get(sessionId);
-    if (existing) {
-      return existing;
+function getSlot(target: DbTarget, procedure: boolean): PoolSlot {
+  const owner = owners.get(target.poolKey);
+  if (!owner) {
+    if (target.poolKey === STDIO_POOL_KEY) {
+      throw new Error('Global connection pool not initialized. Call initializePool first.');
     }
-    const { config } = getSlot(sessionId);
-    const created: PoolSlot = { config, readOnly: false, label: 'Session procedure pool' };
-    sessionProcedureSlots.set(sessionId, created);
-    return created;
+    throw new Error(`Session pool not found for session: ${shortId(target.poolKey)}...`);
   }
 
-  if (globalProcedureSlot) {
-    return globalProcedureSlot;
+  let pair = owner.systems.get(target.system);
+  if (!pair) {
+    pair = {
+      query: { config: target.config, readOnly: true, label: `${owner.label} connection pool` },
+    };
+    owner.systems.set(target.system, pair);
   }
-  const { config } = getSlot();
-  globalProcedureSlot = { config, readOnly: false, label: 'Procedure connection pool' };
-  return globalProcedureSlot;
+  if (!procedure) {
+    return pair.query;
+  }
+  // QSYS2.GENERATE_SQL is rejected on a read-only connection, so DDL generation
+  // uses a second pool without the driver's read-only setting. It runs only the CALL.
+  pair.procedure ??= {
+    config: pair.query.config,
+    readOnly: false,
+    label: `${owner.label} procedure pool`,
+  };
+  return pair.procedure;
 }
 
 /**
@@ -259,21 +260,22 @@ function getProcedureSlot(sessionId?: string): PoolSlot {
  *
  * @param sql - SQL query to execute
  * @param params - Query parameters
- * @param sessionId - Optional session ID for HTTP transport
+ * @param target - Caller and system. Omit for the stdio default system.
  */
 export async function executeQuery(
   sql: string,
   params: unknown[] = [],
-  sessionId?: string
+  target?: DbTarget
 ): Promise<QueryResult> {
-  const slot = getSlot(sessionId);
+  const resolved = resolve(target);
+  const slot = getSlot(resolved, false);
 
   try {
     log.debug(
-      { sql: sql.substring(0, 200), paramCount: params.length, sessionId: sessionId && shortId(sessionId) },
+      { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
       'Executing query'
     );
-    const db = await acquire(slot, sessionId);
+    const db = await acquire(slot, resolved);
     const rows = await db.query(sql, toParams(params));
     log.debug({ rowCount: rows.length }, 'Query completed');
 
@@ -291,21 +293,22 @@ export async function executeQuery(
  *
  * @param sql - Statement to execute. Callers must not pass user SQL text.
  * @param params - Statement parameters
- * @param sessionId - Optional session ID for HTTP transport
+ * @param target - Caller and system. Omit for the stdio default system.
  */
 export async function executeProcedure(
   sql: string,
   params: unknown[] = [],
-  sessionId?: string
+  target?: DbTarget
 ): Promise<QueryResult> {
-  const slot = getProcedureSlot(sessionId);
+  const resolved = resolve(target);
+  const slot = getSlot(resolved, true);
 
   try {
     log.debug(
-      { sql: sql.substring(0, 200), paramCount: params.length, sessionId: sessionId && shortId(sessionId) },
+      { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
       'Executing procedure'
     );
-    const db = await acquire(slot, sessionId);
+    const db = await acquire(slot, resolved);
     const rows = await db.query(sql, toParams(params));
     log.debug({ rowCount: rows.length }, 'Procedure completed');
     return { rows };
@@ -317,47 +320,30 @@ export async function executeProcedure(
 }
 
 /**
- * Test the global database connection (for stdio transport)
+ * Test a connection. Omit the target for the stdio default system.
  */
-export async function testConnection(): Promise<boolean> {
+export async function testConnection(target?: DbTarget): Promise<boolean> {
   try {
-    log.debug('Testing global database connection');
-    await executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    log.debug(target ? logContext(target) : {}, 'Testing database connection');
+    await executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], target);
     log.debug('Connection test successful');
     return true;
   } catch (error) {
-    log.warn({ err: error }, 'Connection test failed');
+    log.warn({ err: error, ...(target ? logContext(target) : {}) }, 'Connection test failed');
     return false;
   }
 }
 
 /**
- * Test a session-specific database connection (for HTTP transport)
- *
- * @param sessionId - The session identifier
- */
-export async function testSessionConnection(sessionId: string): Promise<boolean> {
-  try {
-    log.debug({ sessionId: shortId(sessionId) }, 'Testing session database connection');
-    await executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], sessionId);
-    log.debug({ sessionId: shortId(sessionId) }, 'Session connection test successful');
-    return true;
-  } catch (error) {
-    log.warn({ err: error, sessionId: shortId(sessionId) }, 'Session connection test failed');
-    return false;
-  }
-}
-
-/**
- * Check if a session pool exists
+ * Check if a session key is registered
  */
 export function hasSessionPool(sessionId: string): boolean {
-  return sessionSlots.has(sessionId);
+  return sessionId !== STDIO_POOL_KEY && owners.has(sessionId);
 }
 
 /**
- * Get count of active session pools
+ * Get count of registered session keys
  */
 export function getSessionPoolCount(): number {
-  return sessionSlots.size;
+  return [...owners.keys()].filter((key) => key !== STDIO_POOL_KEY).length;
 }

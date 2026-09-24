@@ -21,7 +21,6 @@ import {
   getHttpConfig,
   hostnameOf,
   isLoopbackHost,
-  loadConfig,
   loadPartialConfig,
   type DB2iConfig,
 } from '../config.js';
@@ -37,9 +36,17 @@ import {
 } from '../auth/index.js';
 import { getSessionManager } from './sessionManager.js';
 import { isSessionOwnedByCaller, resolveCallerSessionKey } from './sessionAuth.js';
-import { createServer as createMcpServer, SERVER_NAME, SERVER_VERSION } from '../server.js';
+import { createServer as createMcpServer, SERVER_NAME, SERVER_VERSION, type SessionContext } from '../server.js';
 import { getOpenApiSpec } from '../openapi.js';
-import { initializeSessionPool, testSessionConnection, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
+import { initializeSessionPool, testConnection, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
+import {
+  DEFAULT_SYSTEM_NAME,
+  defaultSystem,
+  getSystem,
+  getSystems,
+  isProfilesFileConfigured,
+  unknownSystemMessage,
+} from '../systems.js';
 
 const log = createChildLogger({ component: 'http-transport' });
 
@@ -96,6 +103,10 @@ function validateAuthRequest(body: unknown): { valid: boolean; request?: AuthReq
     }
   }
 
+  if (req.system !== undefined && (typeof req.system !== 'string' || req.system.trim() === '')) {
+    return { valid: false, error: 'system must be a non-empty string if provided' };
+  }
+
   return {
     valid: true,
     request: {
@@ -106,6 +117,7 @@ function validateAuthRequest(body: unknown): { valid: boolean; request?: AuthReq
       database: typeof req.database === 'string' ? req.database : undefined,
       schema: typeof req.schema === 'string' ? req.schema : undefined,
       duration: typeof req.duration === 'number' ? req.duration : undefined,
+      system: typeof req.system === 'string' ? req.system.trim() : undefined,
     },
   };
 }
@@ -149,24 +161,79 @@ function bearerToken(authorization: string | null | undefined): string | undefin
  */
 function createHttpMcpServer(request?: globalThis.Request): ReturnType<typeof createMcpServer> {
   const httpConfig = getHttpConfig();
-  let dbConfig: DB2iConfig;
-  let sessionKey: string;
+  let context: SessionContext;
 
   if (httpConfig.authMode === 'none' || httpConfig.authMode === 'token') {
-    dbConfig = loadConfig();
-    sessionKey = resolveCallerSessionKey(httpConfig.authMode);
+    context = { sessionId: resolveCallerSessionKey(httpConfig.authMode) };
   } else {
     const token = bearerToken(request?.headers.get('authorization'));
     const validation = token ? getTokenManager().validateToken(token) : undefined;
     if (!token || !validation?.valid || !validation.session) {
       throw new Error('Token session not found');
     }
-    dbConfig = validation.session.config;
-    sessionKey = resolveCallerSessionKey(httpConfig.authMode, token);
+    context = {
+      sessionId: resolveCallerSessionKey(httpConfig.authMode, token),
+      binding: { system: validation.session.system, config: validation.session.config },
+    };
   }
 
-  initializeSessionPool(sessionKey, dbConfig);
-  return createMcpServer(dbConfig, sessionKey);
+  initializeSessionPool(context.sessionId);
+  return createMcpServer(context);
+}
+
+/**
+ * Hosts /auth may connect to. With DB2I_PROFILES and no explicit
+ * MCP_AUTH_ALLOWED_DB_HOSTS, the profile hosts.
+ */
+function authAllowedDbHosts(httpConfig: ReturnType<typeof getHttpConfig>): string[] | null {
+  if (isProfilesFileConfigured() && !process.env.MCP_AUTH_ALLOWED_DB_HOSTS?.trim()) {
+    return [...new Set(getSystems().map((system) => normalizeDbHost(system.config.hostname)))];
+  }
+  return httpConfig.authAllowedDbHosts;
+}
+
+function normalizeDbHost(host: string): string {
+  return host.trim().replace(/\.$/, '').toLowerCase();
+}
+
+/**
+ * The connection an /auth request asks for: a profile plus the caller's
+ * credentials, or, without DB2I_PROFILES, the request's host over DB2I_*.
+ */
+function authConnection(authReq: AuthRequest): { system: string; config: DB2iConfig } {
+  if (!isProfilesFileConfigured()) {
+    if (authReq.system !== undefined && authReq.system !== DEFAULT_SYSTEM_NAME) {
+      throw new Error(unknownSystemMessage(authReq.system));
+    }
+    return {
+      system: DEFAULT_SYSTEM_NAME,
+      config: loadPartialConfig({
+        hostname: authReq.host,
+        port: authReq.port,
+        username: authReq.username,
+        password: authReq.password,
+        database: authReq.database,
+        schema: authReq.schema,
+      }),
+    };
+  }
+
+  if (authReq.host !== undefined || authReq.port !== undefined || authReq.database !== undefined) {
+    throw new Error('host, port, and database come from DB2I_PROFILES. Choose a profile with system.');
+  }
+  const profile = authReq.system === undefined ? defaultSystem() : getSystem(authReq.system);
+  if (!profile) {
+    throw new Error(unknownSystemMessage(authReq.system ?? ''));
+  }
+  return {
+    system: profile.name,
+    config: {
+      ...profile.config,
+      username: authReq.username,
+      password: authReq.password,
+      schema: authReq.schema ?? profile.config.schema,
+    },
+  };
 }
 
 /**
@@ -246,22 +313,10 @@ async function handleStatefulLegacyRequest(req: Request, res: Response): Promise
   }
 
   try {
-    let dbConfig: DB2iConfig;
     let sessionKey: string;
+    let binding: SessionContext['binding'];
 
     if (httpConfig.authMode === 'none' || httpConfig.authMode === 'token') {
-      try {
-        dbConfig = loadConfig();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Configuration error';
-        log.error({ err }, 'Failed to load DB config from environment');
-        res.status(500).json({
-          jsonrpc: '2.0',
-          error: { code: -32603, message: `DB configuration error: ${message}` },
-          id: null,
-        });
-        return;
-      }
       sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
     } else {
       if (!authReq.tokenSession || !authReq.authToken) {
@@ -273,7 +328,7 @@ async function handleStatefulLegacyRequest(req: Request, res: Response): Promise
         });
         return;
       }
-      dbConfig = authReq.tokenSession.config;
+      binding = { system: authReq.tokenSession.system, config: authReq.tokenSession.config };
       sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
     }
 
@@ -305,14 +360,14 @@ async function handleStatefulLegacyRequest(req: Request, res: Response): Promise
       return;
     }
 
-    initializeSessionPool(sessionKey, dbConfig);
+    initializeSessionPool(sessionKey);
 
     let mcpServer: ReturnType<typeof createMcpServer> | undefined;
     let transport: Awaited<ReturnType<typeof sessionManager.createSession>>['transport'];
     let newSessionId: string;
 
     try {
-      mcpServer = createMcpServer(dbConfig, sessionKey);
+      mcpServer = createMcpServer({ sessionId: sessionKey, binding });
       const result = await sessionManager.createSession(mcpServer, sessionKey);
       transport = result.transport;
       newSessionId = result.sessionId;
@@ -504,17 +559,11 @@ export function createHttpApp(): Express {
 
       const authReq = validation.request;
 
-      // Build DB config with env fallbacks
+      // A profile plus the caller's credentials, or the request's host with env fallbacks
       let dbConfig: DB2iConfig;
+      let system: string;
       try {
-        dbConfig = loadPartialConfig({
-          hostname: authReq.host,
-          port: authReq.port,
-          username: authReq.username,
-          password: authReq.password,
-          database: authReq.database,
-          schema: authReq.schema,
-        });
+        ({ config: dbConfig, system } = authConnection(authReq));
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Configuration error';
         res.status(400).json({
@@ -524,8 +573,8 @@ export function createHttpApp(): Express {
         return;
       }
 
-      const allowedDbHosts = httpConfig.authAllowedDbHosts;
-      const requestedHost = dbConfig.hostname.trim().replace(/\.$/, '').toLowerCase();
+      const allowedDbHosts = authAllowedDbHosts(httpConfig);
+      const requestedHost = normalizeDbHost(dbConfig.hostname);
       if (allowedDbHosts && !allowedDbHosts.includes(requestedHost)) {
         res.status(400).json({
           error: 'invalid_request',
@@ -540,8 +589,8 @@ export function createHttpApp(): Express {
       // Use crypto random bytes for unique test pool ID (avoids collision with concurrent requests)
       const testPoolId = `auth-test-${crypto.randomBytes(16).toString('hex')}`;
       try {
-        initializeSessionPool(testPoolId, dbConfig);
-        const connected = await testSessionConnection(testPoolId);
+        initializeSessionPool(testPoolId);
+        const connected = await testConnection({ poolKey: testPoolId, system, config: dbConfig });
         await closeSessionPool(testPoolId);
 
         if (!connected) {
@@ -579,7 +628,7 @@ export function createHttpApp(): Express {
       let expiresAt: Date;
       let expiresIn: number;
       try {
-        const result = tokenManager.createSession(dbConfig, authReq.duration);
+        const result = tokenManager.createSession(dbConfig, authReq.duration, system);
         token = result.token;
         expiresAt = result.expiresAt;
         expiresIn = result.expiresIn;
@@ -606,7 +655,7 @@ export function createHttpApp(): Express {
       };
 
       log.info(
-        { host: dbConfig.hostname, user: dbConfig.username, expiresIn },
+        { host: dbConfig.hostname, system, user: dbConfig.username, expiresIn },
         'Authentication successful'
       );
 
@@ -665,7 +714,7 @@ export async function startHttpServer(): Promise<http.Server | https.Server> {
     );
   }
 
-  if (httpConfig.authMode === 'required' && httpConfig.authAllowedDbHosts === null) {
+  if (httpConfig.authMode === 'required' && authAllowedDbHosts(httpConfig) === null) {
     log.warn(
       'MCP_AUTH_ALLOWED_DB_HOSTS and DB2I_HOSTNAME are unset. ' +
       '/auth will open a database connection to any host the client names.'

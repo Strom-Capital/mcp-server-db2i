@@ -10,7 +10,8 @@ import path from 'node:path';
 
 import { parseDocument } from 'yaml';
 
-import { getAllowedSchemas, TOOL_NAMES } from '../config.js';
+import { TOOL_NAMES } from '../config.js';
+import { getSystems } from '../systems.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { PlaceholderError, rewriteNamedPlaceholders } from './params.js';
@@ -54,6 +55,8 @@ export interface StoredTool {
   description: string;
   parameters: Record<string, ParameterDef>;
   maxRows?: number;
+  /** System the tool always runs on. Unset means the caller's choice, or the default system. */
+  system?: string;
   /** SQL with :name placeholders already rewritten to ? markers. */
   sql: string;
   /** Placeholder names in bind order. */
@@ -88,6 +91,31 @@ export interface LoadCustomToolsOptions {
   allowedSchemas?: string[];
   /** Schema unqualified names resolve to while the allowlist is on. */
   defaultSchema?: string;
+  /**
+   * Configured systems. A tool with `system:` must name one, and is checked
+   * against that system's allowlist instead of allowedSchemas. Omit to accept
+   * any name.
+   */
+  systems?: SystemPolicy[];
+}
+
+export interface SystemPolicy {
+  name: string;
+  allowedSchemas?: string[];
+  defaultSchema?: string;
+}
+
+/**
+ * Allowlist options from the configured systems. Tools without `system:` are
+ * checked against the default (first) system.
+ */
+export function systemLoadOptions(): LoadCustomToolsOptions {
+  const systems = getSystems().map((system) => ({
+    name: system.name,
+    allowedSchemas: system.allowedSchemas,
+    defaultSchema: system.defaultSchema,
+  }));
+  return { ...systems[0], systems };
 }
 
 const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map() };
@@ -103,10 +131,7 @@ export function loadCustomToolsFromEnv(): LoadedCustomTools {
   }
 
   const paths = raw.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-  return loadCustomTools(paths, {
-    allowedSchemas: getAllowedSchemas(),
-    defaultSchema: process.env.DB2I_SCHEMA,
-  });
+  return loadCustomTools(paths, systemLoadOptions());
 }
 
 /**
@@ -305,10 +330,21 @@ function checkTool(tool: ToolDef, file: string, options: LoadCustomToolsOptions)
     );
   }
 
-  if (options.allowedSchemas && options.allowedSchemas.length > 0) {
+  let policy: { allowedSchemas?: string[]; defaultSchema?: string } = options;
+  if (tool.system && options.systems) {
+    const system = options.systems.find((candidate) => candidate.name === tool.system);
+    if (!system) {
+      throw new CustomToolsError(
+        `${where}: system ${tool.system} is not configured. Available: ${options.systems.map((candidate) => candidate.name).join(', ')}`
+      );
+    }
+    policy = system;
+  }
+
+  if (policy.allowedSchemas && policy.allowedSchemas.length > 0) {
     const schemaResult = checkQuerySchemas(rewritten.sql, {
-      allowed: options.allowedSchemas,
-      defaultSchema: options.defaultSchema,
+      allowed: policy.allowedSchemas,
+      defaultSchema: policy.defaultSchema,
     });
     if (!schemaResult.ok) {
       throw new CustomToolsError(
@@ -324,6 +360,7 @@ function checkTool(tool: ToolDef, file: string, options: LoadCustomToolsOptions)
     description: tool.description,
     parameters,
     ...(tool.maxRows !== undefined ? { maxRows: tool.maxRows } : {}),
+    ...(tool.system ? { system: tool.system } : {}),
     sql: rewritten.sql,
     placeholderNames: rewritten.names,
     source: displayPath(file),

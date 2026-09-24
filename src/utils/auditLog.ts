@@ -14,6 +14,8 @@ import { logger } from './logger.js';
 export interface AuditCall {
   tool: string;
   identity: string;
+  /** IBM i system the call ran on, or asked for when it failed before running. */
+  system?: string;
   sql?: string | null;
   params?: unknown[];
   args?: Record<string, unknown>;
@@ -85,6 +87,7 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
     time: new Date().toISOString(),
     tool: entry.tool,
     identity: entry.identity,
+    ...(entry.system ? { system: entry.system } : {}),
     sql: formatSql(entry.sql, current.sql),
     outcome: entry.outcome,
   };

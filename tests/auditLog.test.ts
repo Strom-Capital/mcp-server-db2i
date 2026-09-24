@@ -132,7 +132,7 @@ describe('tool call audit', () => {
 
     const session = {
       sessionId: 'token',
-      config: { username: 'MYUSER' } as DB2iConfig,
+      binding: { system: 'default', config: { username: 'MYUSER' } as DB2iConfig },
     };
     const audit = {
       tool: 'execute_query',
@@ -155,6 +155,7 @@ describe('tool call audit', () => {
     const lines = readLines(file);
     expect(lines.map((line) => line.outcome)).toEqual(['success', 'error', 'rate_limited']);
     expect(lines[0]?.identity).toBe('MYUSER');
+    expect(lines[0]?.system).toBe('default');
     expect(lines[0]?.rowCount).toBe(2);
     expect(lines[0]?.durationMs).toEqual(expect.any(Number));
     expect(lines[1]?.identity).toBe('stdio');

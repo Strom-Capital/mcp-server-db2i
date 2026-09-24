@@ -490,9 +490,14 @@ export function getOpenApiSpec(baseUrl?: string): OpenApiSpec {
               format: 'password',
               description: 'IBM i password',
             },
+            system: {
+              type: 'string',
+              description: 'Profile name from DB2I_PROFILES (default: the first profile). The token is bound to this system. Cannot be combined with host, port, or database.',
+              example: 'prod',
+            },
             host: {
               type: 'string',
-              description: 'IBM i hostname (falls back to DB2I_HOSTNAME env var)',
+              description: 'IBM i hostname (falls back to DB2I_HOSTNAME env var). Not accepted when DB2I_PROFILES is set.',
               example: 'ibmi.example.com',
             },
             port: {

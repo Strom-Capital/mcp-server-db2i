@@ -9,6 +9,7 @@ const PARAM_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const SQL_NAME = /^[A-Za-z_@#$][A-Za-z0-9_@#$]{0,127}$/;
 const TABLE_REF = /^[A-Za-z_@#$][A-Za-z0-9_@#$]{0,127}\.[A-Za-z_@#$][A-Za-z0-9_@#$]{0,127}$/;
 const DATE_TEXT = /^\d{4}-\d{2}-\d{2}$/;
+const SYSTEM_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
 export const parameterSchema = z.strictObject({
   type: z.enum(['string', 'integer', 'number', 'boolean', 'date', 'enum']),
@@ -142,6 +143,7 @@ export const toolSchema = z.strictObject({
     parameterSchema,
   ).optional(),
   maxRows: z.number().int().positive().optional(),
+  system: z.string().regex(SYSTEM_NAME, 'System must be a profile name from DB2I_PROFILES').optional(),
   sql: z.string().min(1),
 });
 

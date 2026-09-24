@@ -1,9 +1,9 @@
 /**
  * Metadata inspection tools for IBM DB2i MCP Server
  * 
- * All tools support optional sessionId for HTTP transport.
- * When sessionId is provided, uses session-specific connection pool.
- * When omitted, uses global connection pool (stdio mode).
+ * Every tool takes an optional target: the caller and IBM i system to query,
+ * with that system's allowlist and default schema. Omitted, a tool uses the
+ * stdio default system and the QUERY_ALLOWED_SCHEMAS environment setting.
  */
 
 import {
@@ -19,7 +19,8 @@ import {
   type SearchColumnRow,
   type SearchTableRow,
 } from '../db/queries.js';
-import { applyQueryLimit, getAllowedSchemas, getDefaultSchema, loadConfig } from '../config.js';
+import { applyQueryLimit, getDefaultSchema, loadConfig } from '../config.js';
+import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import { annotationFor } from '../customTools/context.js';
 import type { StoredRelation } from '../customTools/loader.js';
 import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
@@ -50,12 +51,11 @@ async function withErrorHandling<T>(
 /**
  * Get schema to use - either from input or from default config
  */
-function resolveSchema(inputSchema?: string): string {
+function resolveSchema(inputSchema: string | undefined, target: DbTarget | undefined): string {
   if (inputSchema) {
     return inputSchema;
   }
-  const config = loadConfig();
-  const defaultSchema = getDefaultSchema(config);
+  const defaultSchema = target ? target.defaultSchema : getDefaultSchema(loadConfig());
   if (!defaultSchema) {
     throw new Error('Schema is required. Either provide it as a parameter or set DB2I_SCHEMA environment variable.');
   }
@@ -65,9 +65,9 @@ function resolveSchema(inputSchema?: string): string {
 /**
  * Resolved schema, rejected before any query when it is outside QUERY_ALLOWED_SCHEMAS.
  */
-function allowedSchema(inputSchema?: string): string {
-  const schema = resolveSchema(inputSchema);
-  const allowed = getAllowedSchemas();
+function allowedSchema(inputSchema: string | undefined, target: DbTarget | undefined): string {
+  const schema = resolveSchema(inputSchema, target);
+  const allowed = allowedSchemasFor(target);
   if (allowed && !isSchemaAllowed(schema, allowed)) {
     throw new Error(schemaDenied(schema, allowed));
   }
@@ -82,13 +82,13 @@ function messageOf(error: unknown): string {
 // List Schemas Tool
 // ============================================================================
 
-export function listSchemasTool(input: { filter?: string; sessionId?: string }): Promise<ToolResult<{
+export function listSchemasTool(input: { filter?: string; target?: DbTarget }): Promise<ToolResult<{
   schema_name: string;
   schema_text: string | null;
 }>> {
   return withErrorHandling(async () => {
-    const rows = await listSchemas(input.filter, input.sessionId);
-    const allowed = getAllowedSchemas();
+    const rows = await listSchemas(input.filter, input.target);
+    const allowed = allowedSchemasFor(input.target);
     return allowed ? rows.filter((row) => isSchemaAllowed(row.schema_name, allowed)) : rows;
   });
 }
@@ -97,15 +97,15 @@ export function listSchemasTool(input: { filter?: string; sessionId?: string }):
 // List Tables Tool
 // ============================================================================
 
-export async function listTablesTool(input: { schema?: string; filter?: string; sessionId?: string }): Promise<ToolResult<{
+export async function listTablesTool(input: { schema?: string; filter?: string; target?: DbTarget }): Promise<ToolResult<{
   table_name: string;
   table_type: string;
   table_text: string | null;
   business_description?: string;
 }>> {
   try {
-    const schema = allowedSchema(input.schema);
-    const result = await withErrorHandling(() => listTables(schema, input.filter, input.sessionId));
+    const schema = allowedSchema(input.schema, input.target);
+    const result = await withErrorHandling(() => listTables(schema, input.filter, input.target));
     if (!result.success) {
       return result;
     }
@@ -125,7 +125,7 @@ export async function listTablesTool(input: { schema?: string; filter?: string; 
 // Describe Table Tool
 // ============================================================================
 
-export async function describeTableTool(input: { schema?: string; table: string; sessionId?: string }): Promise<
+export async function describeTableTool(input: { schema?: string; table: string; target?: DbTarget }): Promise<
   | {
       success: true;
       data: Array<{
@@ -148,8 +148,8 @@ export async function describeTableTool(input: { schema?: string; table: string;
   | { success: false; error: string }
 > {
   try {
-    const schema = allowedSchema(input.schema);
-    const result = await withErrorHandling(() => describeTable(schema, input.table, input.sessionId));
+    const schema = allowedSchema(input.schema, input.target);
+    const result = await withErrorHandling(() => describeTable(schema, input.table, input.target));
     if (!result.success) {
       return result;
     }
@@ -176,13 +176,13 @@ export async function describeTableTool(input: { schema?: string; table: string;
 // List Views Tool
 // ============================================================================
 
-export function listViewsTool(input: { schema?: string; filter?: string; sessionId?: string }): Promise<ToolResult<{
+export function listViewsTool(input: { schema?: string; filter?: string; target?: DbTarget }): Promise<ToolResult<{
   view_name: string;
   view_text: string | null;
 }>> {
   return withErrorHandling(() => {
-    const schema = allowedSchema(input.schema);
-    return listViews(schema, input.filter, input.sessionId);
+    const schema = allowedSchema(input.schema, input.target);
+    return listViews(schema, input.filter, input.target);
   });
 }
 
@@ -190,15 +190,15 @@ export function listViewsTool(input: { schema?: string; filter?: string; session
 // List Indexes Tool
 // ============================================================================
 
-export function listIndexesTool(input: { schema?: string; table: string; sessionId?: string }): Promise<ToolResult<{
+export function listIndexesTool(input: { schema?: string; table: string; target?: DbTarget }): Promise<ToolResult<{
   index_name: string;
   index_schema: string;
   is_unique: string;
   column_names: string;
 }>> {
   return withErrorHandling(() => {
-    const schema = allowedSchema(input.schema);
-    return listIndexes(schema, input.table, input.sessionId);
+    const schema = allowedSchema(input.schema, input.target);
+    return listIndexes(schema, input.table, input.target);
   });
 }
 
@@ -206,7 +206,7 @@ export function listIndexesTool(input: { schema?: string; table: string; session
 // Get Table Constraints Tool
 // ============================================================================
 
-export function getTableConstraintsTool(input: { schema?: string; table: string; sessionId?: string }): Promise<ToolResult<{
+export function getTableConstraintsTool(input: { schema?: string; table: string; target?: DbTarget }): Promise<ToolResult<{
   constraint_name: string;
   constraint_type: string;
   column_name: string;
@@ -216,8 +216,8 @@ export function getTableConstraintsTool(input: { schema?: string; table: string;
   referenced_column_name: string | null;
 }>> {
   return withErrorHandling(() => {
-    const schema = allowedSchema(input.schema);
-    return getTableConstraints(schema, input.table, input.sessionId);
+    const schema = allowedSchema(input.schema, input.target);
+    return getTableConstraints(schema, input.table, input.target);
   });
 }
 
@@ -230,7 +230,7 @@ export interface CatalogSearchInput {
   schema?: string;
   includeSystem?: boolean;
   limit?: number;
-  sessionId?: string;
+  target?: DbTarget;
 }
 
 type SearchResult<T> =
@@ -249,7 +249,7 @@ function resolveSearchScope(input: CatalogSearchInput): CatalogSearchScope | { e
     return { error: 'Filter must contain a name or text to match. A pattern of only * or % is not allowed.' };
   }
 
-  const allowed = getAllowedSchemas();
+  const allowed = allowedSchemasFor(input.target);
   const requested = input.schema?.trim().toUpperCase();
 
   if (allowed) {
@@ -298,7 +298,7 @@ export async function searchColumnsTool(input: CatalogSearchInput): Promise<Sear
   }
 
   try {
-    const result = await searchColumns(input.filter, scope, input.sessionId);
+    const result = await searchColumns(input.filter, scope, input.target);
     const data = withColumnNotes(result.rows);
     return { success: true, data, count: data.length, truncated: result.truncated };
   } catch (error) {
@@ -313,7 +313,7 @@ export async function searchTablesTool(input: CatalogSearchInput): Promise<Searc
   }
 
   try {
-    const result = await searchTables(input.filter, scope, input.sessionId);
+    const result = await searchTables(input.filter, scope, input.target);
     const data = withTableNotes(result.rows);
     return { success: true, data, count: data.length, truncated: result.truncated };
   } catch (error) {

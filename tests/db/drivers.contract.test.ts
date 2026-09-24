@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { DB2iConfig, DbDriverName } from '../../src/config.js';
+import type { DbTarget } from '../../src/systems.js';
 
 interface FakePool {
   query: ReturnType<typeof vi.fn>;
@@ -74,6 +75,10 @@ vi.mock('odbc', () => ({
 }));
 
 type Connection = typeof import('../../src/db/connection.js');
+
+function target(poolKey: string, system: string, config: DB2iConfig): DbTarget {
+  return { poolKey, system, config };
+}
 
 function baseConfig(driver: DbDriverName): DB2iConfig {
   return {
@@ -218,13 +223,15 @@ describe.each(probes)('driver contract: $name', (probe) => {
   });
 
   it('keeps session pools separate and closes them by id', async () => {
-    connection.initializeSessionPool('session-a', baseConfig(probe.name));
-    connection.initializeSessionPool('session-b', baseConfig(probe.name));
+    connection.initializeSessionPool('session-a');
+    connection.initializeSessionPool('session-b');
     expect(connection.getSessionPoolCount()).toBe(2);
 
-    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], 'session-a');
-    await connection.executeProcedure("CALL QSYS2.GENERATE_SQL('T', 'MYLIB', 'TABLE')", [], 'session-a');
-    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], 'session-b');
+    const a = target('session-a', 'default', baseConfig(probe.name));
+    const b = target('session-b', 'default', baseConfig(probe.name));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], a);
+    await connection.executeProcedure("CALL QSYS2.GENERATE_SQL('T', 'MYLIB', 'TABLE')", [], a);
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], b);
 
     const pools = probe.pools();
     expect(pools).toHaveLength(3);
@@ -239,15 +246,54 @@ describe.each(probes)('driver contract: $name', (probe) => {
     expect(connection.hasSessionPool('session-a')).toBe(false);
     expect(connection.hasSessionPool('session-b')).toBe(true);
     await expect(
-      connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], 'session-a')
+      connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], a)
     ).rejects.toThrow('Session pool not found');
   });
 
   it('rejects an unknown session without creating a connection', async () => {
     await expect(
-      connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], 'missing')
+      connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], target('missing', 'default', baseConfig(probe.name)))
     ).rejects.toThrow('Session pool not found');
     expect(probe.pools()).toHaveLength(0);
+  });
+
+  it('keeps one pool per system for a session and closes them together', async () => {
+    connection.initializeSessionPool('session-a');
+    const prod = target('session-a', 'prod', { ...baseConfig(probe.name), hostname: 'prod.example.com' });
+    const test = target('session-a', 'test', { ...baseConfig(probe.name), hostname: 'test.example.com' });
+
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], prod);
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], test);
+    await connection.executeQuery('SELECT 2 FROM SYSIBM.SYSDUMMY1', [], prod);
+
+    const pools = probe.pools();
+    expect(pools).toHaveLength(2);
+    expect(connection.getSessionPoolCount()).toBe(1);
+
+    await connection.closeSessionPool('session-a');
+    expect(pools[0].close).toHaveBeenCalledTimes(1);
+    expect(pools[1].close).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps stdio pools per system next to the default target', async () => {
+    connection.initializePool(baseConfig(probe.name), 'prod');
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    await connection.executeQuery(
+      'SELECT 1 FROM SYSIBM.SYSDUMMY1',
+      [],
+      target('stdio', 'prod', baseConfig(probe.name))
+    );
+    await connection.executeQuery(
+      'SELECT 1 FROM SYSIBM.SYSDUMMY1',
+      [],
+      target('stdio', 'test', { ...baseConfig(probe.name), hostname: 'test.example.com' })
+    );
+
+    const pools = probe.pools();
+    expect(pools).toHaveLength(2);
+    await connection.closeGlobalPool();
+    expect(pools[0].close).toHaveBeenCalledTimes(1);
+    expect(pools[1].close).toHaveBeenCalledTimes(1);
   });
 });
 

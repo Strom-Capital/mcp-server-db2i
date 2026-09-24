@@ -3,6 +3,7 @@
  */
 
 import { executeQuery } from './connection.js';
+import type { DbTarget } from '../systems.js';
 import {
   SqlSecurityValidator,
   validateQuery as validateSqlQuery,
@@ -69,9 +70,9 @@ export function validateQuery(sql: string, config?: SecurityConfig): SecurityVal
  * List all schemas/libraries
  * 
  * @param filter - Optional filter pattern
- * @param sessionId - Optional session ID for HTTP transport
+ * @param target - Caller and system to query
  */
-export async function listSchemas(filter?: string, sessionId?: string): Promise<Array<{ schema_name: string; schema_text: string | null }>> {
+export async function listSchemas(filter?: string, target?: DbTarget): Promise<Array<{ schema_name: string; schema_text: string | null }>> {
   const pattern = filterToLikePattern(filter);
   
   const sql = `
@@ -83,7 +84,7 @@ export async function listSchemas(filter?: string, sessionId?: string): Promise<
     ORDER BY SCHEMA_NAME
   `;
 
-  const result = await executeQuery(sql, [pattern], sessionId);
+  const result = await executeQuery(sql, [pattern], target);
   
   return result.rows.map(row => ({
     schema_name: String(row.SCHEMA_NAME || '').trim(),
@@ -96,12 +97,12 @@ export async function listSchemas(filter?: string, sessionId?: string): Promise<
  * 
  * @param schema - Schema name
  * @param filter - Optional filter pattern
- * @param sessionId - Optional session ID for HTTP transport
+ * @param target - Caller and system to query
  */
 export async function listTables(
   schema: string,
   filter?: string,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<Array<{ table_name: string; table_type: string; table_text: string | null }>> {
   const pattern = filterToLikePattern(filter);
   
@@ -116,7 +117,7 @@ export async function listTables(
     ORDER BY TABLE_NAME
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), pattern], sessionId);
+  const result = await executeQuery(sql, [schema.toUpperCase(), pattern], target);
   
   return result.rows.map(row => ({
     table_name: String(row.TABLE_NAME || '').trim(),
@@ -130,12 +131,12 @@ export async function listTables(
  * 
  * @param schema - Schema name
  * @param table - Table name
- * @param sessionId - Optional session ID for HTTP transport
+ * @param target - Caller and system to query
  */
 export async function describeTable(
   schema: string,
   table: string,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<Array<{
   column_name: string;
   ordinal_position: number;
@@ -166,7 +167,7 @@ export async function describeTable(
     ORDER BY ORDINAL_POSITION
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], sessionId);
+  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], target);
   
   return result.rows.map(row => ({
     column_name: String(row.COLUMN_NAME || '').trim(),
@@ -190,12 +191,12 @@ export async function describeTable(
  * 
  * @param schema - Schema name
  * @param filter - Optional filter pattern
- * @param sessionId - Optional session ID for HTTP transport
+ * @param target - Caller and system to query
  */
 export async function listViews(
   schema: string,
   filter?: string,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<Array<{ view_name: string; view_text: string | null }>> {
   const pattern = filterToLikePattern(filter);
   
@@ -210,7 +211,7 @@ export async function listViews(
     ORDER BY TABLE_NAME
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), pattern], sessionId);
+  const result = await executeQuery(sql, [schema.toUpperCase(), pattern], target);
   
   return result.rows.map(row => ({
     view_name: String(row.VIEW_NAME || '').trim(),
@@ -226,12 +227,12 @@ export async function listViews(
  * 
  * @param schema - Schema name
  * @param table - Table name
- * @param sessionId - Optional session ID for HTTP transport
+ * @param target - Caller and system to query
  */
 export async function listIndexes(
   schema: string,
   table: string,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<Array<{
   index_name: string;
   index_schema: string;
@@ -257,7 +258,7 @@ export async function listIndexes(
     ORDER BY I.INDEX_NAME
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], sessionId);
+  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], target);
   
   return result.rows.map(row => ({
     index_name: String(row.INDEX_NAME || '').trim(),
@@ -272,12 +273,12 @@ export async function listIndexes(
  * 
  * @param schema - Schema name
  * @param table - Table name
- * @param sessionId - Optional session ID for HTTP transport
+ * @param target - Caller and system to query
  */
 export async function getTableConstraints(
   schema: string,
   table: string,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<Array<{
   constraint_name: string;
   constraint_type: string;
@@ -312,7 +313,7 @@ export async function getTableConstraints(
     ORDER BY CST.CONSTRAINT_NAME, KC.ORDINAL_POSITION
   `;
 
-  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], sessionId);
+  const result = await executeQuery(sql, [schema.toUpperCase(), table.toUpperCase()], target);
   
   return result.rows.map(row => ({
     constraint_name: String(row.CONSTRAINT_NAME || '').trim(),
@@ -412,7 +413,7 @@ function textOrNull(value: unknown): string | null {
 export async function searchColumns(
   filter: string,
   scope: CatalogSearchScope,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<CatalogSearchResult<SearchColumnRow>> {
   const pattern = filterToLikePattern(filter);
   const schemas = schemaPredicate(scope);
@@ -438,7 +439,7 @@ export async function searchColumns(
     ${fetchFirst(scope.limit)}
   `;
 
-  const result = await executeQuery(sql, [pattern, pattern, pattern, ...schemas.params], sessionId);
+  const result = await executeQuery(sql, [pattern, pattern, pattern, ...schemas.params], target);
   const rows = result.rows.map((row) => ({
     schema_name: String(row.TABLE_SCHEMA || '').trim(),
     table_name: String(row.TABLE_NAME || '').trim(),
@@ -459,7 +460,7 @@ export async function searchColumns(
 export async function searchTables(
   filter: string,
   scope: CatalogSearchScope,
-  sessionId?: string
+  target?: DbTarget
 ): Promise<CatalogSearchResult<SearchTableRow>> {
   const pattern = filterToLikePattern(filter);
   const schemas = schemaPredicate(scope);
@@ -481,7 +482,7 @@ export async function searchTables(
     ${fetchFirst(scope.limit)}
   `;
 
-  const result = await executeQuery(sql, [pattern, pattern, pattern, ...schemas.params], sessionId);
+  const result = await executeQuery(sql, [pattern, pattern, pattern, ...schemas.params], target);
   const rows = result.rows.map((row) => ({
     schema_name: String(row.TABLE_SCHEMA || '').trim(),
     table_name: String(row.TABLE_NAME || '').trim(),

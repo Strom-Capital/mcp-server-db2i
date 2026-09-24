@@ -72,14 +72,14 @@ async function writeQueryPrompt(
 ): Promise<GetPromptResult> {
   const schema = normalize(args.schema);
   const table = normalize(args.table);
-  assertSchemaAllowed(schema);
+  assertSchemaAllowed(schema, caller);
 
   const described = await guarded(
     caller,
     'prompt:write_query',
     { schema, table },
     async () => {
-      const result = await describeTableTool({ schema, table, sessionId: caller.sessionId });
+      const result = await describeTableTool({ schema, table, target: caller.target() });
       if (!result.success) {
         throw new ProtocolError(ProtocolErrorCode.InternalError, result.error);
       }
@@ -153,7 +153,7 @@ export function registerPrompts(
       },
       ({ schema: input }) => {
         const schema = normalize(input);
-        assertSchemaAllowed(schema);
+        assertSchemaAllowed(schema, caller);
         const steps = [
           `1. Call list_tables with schema "${schema}".`,
           '2. Pick the tables that look central: master data, order or document headers, and the lines that refer to them. Go by table names and table text.',
@@ -187,7 +187,7 @@ export function registerPrompts(
       ({ schema: schemaInput, table: tableInput }) => {
         const schema = normalize(schemaInput);
         const table = normalize(tableInput);
-        assertSchemaAllowed(schema);
+        assertSchemaAllowed(schema, caller);
         const name = qualified(schema, table);
         const calls = [`Call describe_table with schema "${schema}" and table "${table}".`];
         if (has('get_table_constraints')) {

@@ -375,7 +375,7 @@ describe('HTTP session ownership', () => {
     const owner = tokenManager.createSession(dbConfig);
     const other = tokenManager.createSession(dbConfig);
 
-    const mcpServer = createServer(dbConfig, owner.token);
+    const mcpServer = createServer({ sessionId: owner.token, binding: { system: 'default', config: dbConfig } });
     const { sessionId } = await getSessionManager().createSession(mcpServer, owner.token);
 
     const { server, baseUrl } = await listen(createHttpApp());

@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock the config module before importing tokenManager
 vi.mock('../../src/config.js', () => ({
+  DEFAULT_SYSTEM_NAME: 'default',
   getHttpConfig: vi.fn(() => ({
     transport: 'http',
     port: 3000,
