@@ -858,6 +858,14 @@ describe('Config Module', () => {
       delete process.env.QUERY_DEFAULT_LIMIT;
       delete process.env.QUERY_MAX_LIMIT;
     });
+
+    it('should reject a limit that is not a whole number', () => {
+      process.env.QUERY_DEFAULT_LIMIT = 'abc';
+
+      expect(() => getQueryLimitConfig()).toThrow('QUERY_DEFAULT_LIMIT must be a whole number, got "abc"');
+
+      delete process.env.QUERY_DEFAULT_LIMIT;
+    });
   });
 
   describe('applyQueryLimit', () => {

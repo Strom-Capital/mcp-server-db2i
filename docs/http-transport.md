@@ -171,7 +171,7 @@ curl -X POST http://localhost:3000/mcp \
 | `port` | No | Connection port (falls back to `DB2I_PORT`) |
 | `database` | No | Database name (falls back to `DB2I_DATABASE`) |
 | `schema` | No | Default schema (falls back to `DB2I_SCHEMA`) |
-| `duration` | No | Token lifetime in seconds (max 86400) |
+| `duration` | No | Token lifetime in seconds. Capped at `MCP_TOKEN_EXPIRY` |
 | `system` | No | Profile from `DB2I_PROFILES` to log in to (default: the first). Not accepted with `host`, `port`, or `database` |
 
 ## Multiple Systems

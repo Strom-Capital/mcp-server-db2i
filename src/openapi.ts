@@ -521,7 +521,7 @@ export function getOpenApiSpec(baseUrl?: string): OpenApiSpec {
               type: 'integer',
               minimum: 1,
               maximum: 86400,
-              description: 'Token lifetime in seconds (default: 3600, max: 86400)',
+              description: 'Token lifetime in seconds. Defaults to and is capped at MCP_TOKEN_EXPIRY (3600 unless configured).',
               example: 3600,
             },
           },

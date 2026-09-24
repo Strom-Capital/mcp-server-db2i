@@ -145,19 +145,6 @@ class SessionManager {
   }
 
   /**
-   * Get a session by auth token
-   */
-  getSessionByToken(authToken: string): McpSession | undefined {
-    for (const session of this.sessions.values()) {
-      if (session.authToken === authToken && !session.isClosing) {
-        session.lastAccessedAt = new Date();
-        return session;
-      }
-    }
-    return undefined;
-  }
-
-  /**
    * Check if a session exists
    */
   hasSession(sessionId: string): boolean {

@@ -9,10 +9,10 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { getTokenManager } from './tokenManager.js';
 import { createChildLogger } from '../utils/logger.js';
-import { getHttpConfig, type AuthMode } from '../config.js';
+import { getHttpConfig } from '../config.js';
 import type { TokenSession } from './types.js';
 
 const log = createChildLogger({ component: 'auth-middleware' });
@@ -27,10 +27,14 @@ export interface AuthenticatedRequest extends Request {
   authToken?: string;
 }
 
+function sha256(value: string): Buffer {
+  return createHash('sha256').update(value).digest();
+}
+
 /**
  * Extract Bearer token from Authorization header
  */
-function extractBearerToken(authHeader: string | undefined): string | null {
+export function extractBearerToken(authHeader: string | undefined): string | null {
   if (!authHeader) {
     return null;
   }
@@ -90,12 +94,8 @@ export function authMiddleware(
       return;
     }
     
-    // Use constant-time comparison to prevent timing attacks
-    const staticToken = httpConfig.staticToken ?? '';
-    const tokenBuffer = Buffer.from(token);
-    const staticTokenBuffer = Buffer.from(staticToken);
-    const tokensMatch = tokenBuffer.length === staticTokenBuffer.length &&
-      timingSafeEqual(tokenBuffer, staticTokenBuffer);
+    // Compare digests in constant time, so neither the contents nor the length leak
+    const tokensMatch = timingSafeEqual(sha256(token), sha256(httpConfig.staticToken ?? ''));
     
     if (tokensMatch) {
       log.debug(
@@ -167,43 +167,6 @@ export function authMiddleware(
 }
 
 /**
- * Get the current auth mode for use in route handlers
- */
-export function getAuthModeFromConfig(): AuthMode {
-  return getHttpConfig().authMode;
-}
-
-/**
- * Optional authentication middleware
- * 
- * Similar to authMiddleware but doesn't require authentication.
- * If a valid token is provided, attaches the session to the request.
- * If no token or invalid token, continues without error.
- * 
- * Useful for endpoints that work with or without authentication.
- */
-export function optionalAuthMiddleware(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
-  const authHeader = req.headers.authorization;
-  const token = extractBearerToken(authHeader);
-
-  if (token) {
-    const tokenManager = getTokenManager();
-    const result = tokenManager.validateToken(token);
-
-    if (result.valid && result.session) {
-      (req as AuthenticatedRequest).tokenSession = result.session;
-      (req as AuthenticatedRequest).authToken = token;
-    }
-  }
-
-  next();
-}
-
-/**
  * Rate limiting middleware for auth endpoints
  * 
  * Simple in-memory rate limiter to prevent brute force attacks.
@@ -216,6 +179,17 @@ const AUTH_RATE_LIMIT = {
   maxAttempts: 5,
   windowMs: 60000, // 1 minute
 };
+
+/** Past this many tracked addresses, expired entries are dropped before adding more. */
+const AUTH_ATTEMPTS_SWEEP_SIZE = 1000;
+
+function sweepAuthAttempts(now: number): void {
+  for (const [ip, entry] of authAttempts) {
+    if (entry.resetAt <= now) {
+      authAttempts.delete(ip);
+    }
+  }
+}
 
 /**
  * Get client IP from request
@@ -247,6 +221,9 @@ export function authRateLimitMiddleware(
 ): void {
   const ip = getClientIp(req);
   const now = Date.now();
+  if (authAttempts.size >= AUTH_ATTEMPTS_SWEEP_SIZE) {
+    sweepAuthAttempts(now);
+  }
 
   let current = authAttempts.get(ip);
   if (!current || current.resetAt <= now) {

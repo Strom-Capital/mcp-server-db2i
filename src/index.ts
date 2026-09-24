@@ -31,6 +31,7 @@ import {
   assertCustomToolsWatch,
   isCustomToolsWatchEnabled,
   isQueryParseCheckEnabled,
+  getQueryLimitConfig,
 } from './config.js';
 import { initializePool, testConnection, closeGlobalPool } from './db/connection.js';
 import { defaultSystem, getSystems, isProfilesFileConfigured, type SystemProfile } from './systems.js';
@@ -99,6 +100,8 @@ async function main(): Promise<void> {
 
     // Initialize rate limiter (logs its own config)
     getRateLimiter();
+    // Fail on a malformed QUERY_DEFAULT_LIMIT / QUERY_MAX_LIMIT now, not on the first query
+    getQueryLimitConfig();
 
     // Reads and checks DB2I_PROFILES, so a bad file stops startup
     const systems = getSystems();
