@@ -81,6 +81,33 @@ describe('reloadCustomTools', () => {
     expect(String(error.mock.calls[0]?.[1])).toMatch(/keeping the last good set/);
     error.mockRestore();
   });
+
+  it('tells clients the resource list changed, since it offers the annotated tables', () => {
+    const dir = tempDir();
+    writeFileSync(path.join(dir, 'tools.yaml'), toolYaml('search_sales_orders', 'Open sales orders'));
+    process.env.MCP_CUSTOM_TOOLS = dir;
+
+    const server = createServer();
+    releases.push(pinStdioServer(server));
+    const resourcesChanged = vi.spyOn(server, 'sendResourceListChanged');
+
+    expect(reloadCustomTools()).toBe(true);
+    expect(resourcesChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends no resource notification when the table resource is not registered', () => {
+    const dir = tempDir();
+    writeFileSync(path.join(dir, 'tools.yaml'), toolYaml('search_sales_orders', 'Open sales orders'));
+    process.env.MCP_CUSTOM_TOOLS = dir;
+    process.env.MCP_TOOLS_DISABLED = 'describe_table';
+
+    const server = createServer();
+    releases.push(pinStdioServer(server));
+    const resourcesChanged = vi.spyOn(server, 'sendResourceListChanged');
+
+    expect(reloadCustomTools()).toBe(true);
+    expect(resourcesChanged).not.toHaveBeenCalled();
+  });
 });
 
 describe('custom tools watch', () => {

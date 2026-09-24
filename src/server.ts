@@ -906,6 +906,7 @@ export function createServer(sessionConfig?: DB2iConfig, sessionId?: string): Mc
     tools: customRegistrations,
     sessionContext,
     getDefaultSchema,
+    listsAnnotatedTables: enabledTools.has('describe_table'),
   });
 
   registerResources(server, enabledTools, sessionContext);
@@ -924,6 +925,8 @@ interface LiveCustomTools {
   tools: Map<string, LiveCustomTool>;
   sessionContext?: SessionContext;
   getDefaultSchema: () => string | undefined;
+  /** resources/list offers the annotated tables, so a reload changes it. */
+  listsAnnotatedTables: boolean;
 }
 
 const liveCustomTools = new WeakMap<McpServer, LiveCustomTools>();
@@ -963,6 +966,9 @@ export function syncLiveCustomTools(loaded: LoadedCustomTools, enabled: Readonly
     }
     syncOneServer(live, loaded, enabled);
     server.sendToolListChanged();
+    if (live.listsAnnotatedTables) {
+      server.sendResourceListChanged();
+    }
   }
 }
 
