@@ -21,8 +21,11 @@ cd mcp-server-db2i
 ### 2. Install Dependencies
 
 ```bash
+nvm use
 npm install
 ```
+
+`nvm use` reads `.nvmrc` and switches to Node 22. fnm and mise read the same file. `.npmrc` sets `engine-strict`, so `npm install` fails on an older Node instead of building the JDBC bridge for the wrong version. If you switch Node versions later, run `npm rebuild` so the native module matches.
 
 ### 3. Configure Environment
 

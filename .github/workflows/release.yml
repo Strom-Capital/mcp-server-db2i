@@ -65,6 +65,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
+          # Pinned here, not read from .nvmrc: a manual re-publish can check out a tag cut before .nvmrc existed.
           node-version: '22'
           cache: 'npm'
 
