@@ -246,7 +246,7 @@ QUERY_ALLOWED_SCHEMAS=MYLIB
 
 That registers the sales tools and `get_business_context`, and leaves `execute_query` unregistered.
 
-IBM i object authority on the user profile is the last line of defense. The profile should be able to read the business files and should not be able to change them. A read-only JDBC connection and the statement checks sit in front of that. They do not replace it.
+IBM i object authority on the user profile is the last line of defense. The profile should be able to read the business files and should not be able to change them. A read-only database connection and the statement checks sit in front of that. They do not replace it.
 
 ## Docker
 

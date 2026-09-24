@@ -2,6 +2,17 @@
 
 This guide covers all configuration options for mcp-server-db2i.
 
+The server reads all of its settings from environment variables, set directly, in a `.env` file, or in the `env` block of an MCP client. There are two ways to describe the database connection:
+
+| You connect to | Use | Where the connection lives |
+|----------------|-----|----------------------------|
+| One IBM i system | The `DB2I_*` variables below | Environment variables |
+| Several IBM i systems | `DB2I_PROFILES` | A YAML file with one profile per system. See [Multiple Systems](#multiple-systems) |
+
+Start with the variables. Switch to profiles when you add a second system, or when each system needs its own driver, options or library allowlist. The single-system variables work the same way as a profile named `default`.
+
+When `DB2I_PROFILES` is set, it replaces the connection variables (`DB2I_HOSTNAME`, `DB2I_USERNAME`, `DB2I_PASSWORD`, `DB2I_SCHEMA` and the driver options). `DB2I_DRIVER` still applies, as the driver for profiles that don't set their own. Everything else stays in environment variables either way: transport, HTTP auth, TLS, query limits, tool selection, rate limiting and logging. Profile passwords also come from the environment or from files, never from the YAML itself.
+
 ## Quick Start
 
 Create a `.env` file or set environment variables:
@@ -27,10 +38,10 @@ DB2I_PASSWORD=your-password
 | `DB2I_PORT` | No | `446` | Not used. Both drivers connect to the IBM i host servers (8471, or 9471 with TLS), not the DRDA port |
 | `DB2I_DATABASE` | No | `*LOCAL` | Not used. To reach an independent ASP, set the driver option (`database name` for jt400, `DATABASE` for ODBC) |
 | `DB2I_SCHEMA` | No | - | Default schema/library. Also the library list for `execute_query` (JDBC `libraries`, ODBC `DBQ`) when the option is not set |
-| `DB2I_DRIVER` | No | `jt400` | Database driver: `jt400` (JDBC via node-jt400, needs a JRE) or `odbc` (IBM i Access ODBC driver, no Java). See [Database Drivers](#database-drivers) |
+| `DB2I_DRIVER` | No | `odbc` | Database driver: `odbc` (IBM i Access ODBC driver, no Java) or `jt400` (JDBC via the optional node-jt400 package, needs Java). See [Database Drivers](#database-drivers) |
 | `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated). `jt400` driver only |
 | `DB2I_ODBC_OPTIONS` | No | - | Additional ODBC connection keywords (semicolon-separated). `odbc` driver only |
-| `DB2I_PROFILES` | No | - | Path to a YAML file of IBM i systems. When set, it replaces every other variable in this table. See [Multiple Systems](#multiple-systems) |
+| `DB2I_PROFILES` | No | - | Path to a YAML file of IBM i systems. When set, it replaces the other variables in this table, except `DB2I_DRIVER`, which becomes the default driver for profiles. See [Multiple Systems](#multiple-systems) |
 
 *Either the environment variable or the corresponding `*_FILE` variable must be set. File-based secrets take priority when both are provided.
 
@@ -208,14 +219,24 @@ NODE_ENV=production
 
 ## Database Drivers
 
-`DB2I_DRIVER` picks how the server talks to Db2 for i. Both drivers run the same tools and apply the same defaults: system naming, ISO dates, a read-only query connection, `DB2I_SCHEMA` as the library list, and a second connection without the read-only setting for `QSYS2.GENERATE_SQL` (`get_object_ddl`). Each driver is loaded on first use, so an `odbc` install never starts Java.
+`DB2I_DRIVER` picks how the server talks to Db2 for i. Both drivers run the same tools and apply the same defaults: system naming, ISO dates, a read-only query connection, `DB2I_SCHEMA` as the library list, and a second connection without the read-only setting for `QSYS2.GENERATE_SQL` (`get_object_ddl`). Each driver is loaded on first use, so the default `odbc` driver never starts Java.
 
 | Driver | Package | Needs | Options variable |
 |--------|---------|-------|------------------|
-| `jt400` (default) | [node-jt400](https://www.npmjs.com/package/node-jt400) | Java Runtime Environment 11 or later | `DB2I_JDBC_OPTIONS` |
-| `odbc` | [odbc](https://www.npmjs.com/package/odbc) (IBM/node-odbc, optional dependency) | unixODBC and the IBM i Access ODBC Driver | `DB2I_ODBC_OPTIONS` |
+| `odbc` (default) | [odbc](https://www.npmjs.com/package/odbc) (IBM/node-odbc) | unixODBC and the IBM i Access ODBC Driver | `DB2I_ODBC_OPTIONS` |
+| `jt400` | [node-jt400](https://www.npmjs.com/package/node-jt400) | A JDK when running `npm install`, and a Java Runtime Environment 11 or later at runtime | `DB2I_JDBC_OPTIONS` |
 
-The `odbc` package is an optional dependency. If its prebuilt binary is missing for your platform, `npm install` builds it from source and needs the unixODBC headers (`unixodbc-dev` on Debian and Ubuntu, `unixODBC-devel` on RHEL and SUSE).
+Both packages are optional dependencies, so `npm install` succeeds when one of them cannot build. If the `odbc` prebuilt binary is missing for your platform, `npm install` builds it from source and needs the unixODBC headers (`unixodbc-dev` on Debian and Ubuntu, `unixODBC-devel` on RHEL and SUSE).
+
+### Using the JT400 driver
+
+`node-jt400` builds a native Java bridge during `npm install`. Without a JDK the build fails, npm skips the package, and the install still succeeds with ODBC only. To use JT400:
+
+1. Install a JDK (11 or later) and make sure `JAVA_HOME` points at it.
+2. Install or reinstall the server, for example `npm install -g mcp-server-db2i`, so `node-jt400` builds.
+3. Set `DB2I_DRIVER=jt400`, or `driver: jt400` on a profile.
+
+If the package is missing, the first query fails with an error that names `node-jt400`. The server itself still starts.
 
 ### Installing the IBM i Access ODBC Driver
 
@@ -230,7 +251,7 @@ The driver is part of IBM i Access Client Solutions (ACS), but not of the ACS ba
 | Windows 10 and later | x64 driver plus a 32-bit driver for 32-bit processes | Windows ODBC Data Source Administrator | `setup.exe` in the Windows Application Package. Use the 64-bit driver with 64-bit Node.js |
 | IBM i PASE | ppc64 | unixODBC (installed as a dependency) | `yum install ibm-iaccess`, or the `.rpm` in the PASE Application Package |
 
-Linux on arm64 (for example Raspberry Pi or Graviton) is not covered: IBM publishes no arm64 Linux build. Run the `jt400` driver there, or run the `odbc` image under amd64 emulation (see [docker.md](docker.md#multi-stage-build)).
+Linux on arm64 (for example Raspberry Pi or Graviton) is not covered: IBM publishes no arm64 Linux build. Use the `jt400` driver there, or run the `odbc` image under amd64 emulation (see [docker.md](docker.md#multi-stage-build)).
 
 ```bash
 # Debian / Ubuntu
@@ -259,16 +280,15 @@ Check the registration with `odbcinst -q -d` on Linux, macOS and PASE, or in the
 Windows notes:
 
 - IBM ships the Windows driver for x64 and x86 only. On Windows on ARM install the **x64** build of Node.js; it runs under emulation and can load the x64 driver. A native ARM64 Node.js cannot load it.
-- `npm install` builds the JT400 bridge and needs a JDK. For an ODBC-only install without Java, run `npm ci --ignore-scripts` and then `npm rebuild odbc`, which only fetches the prebuilt ODBC binary.
 
 ```env
-DB2I_DRIVER=odbc
+# odbc is the default, so DB2I_DRIVER can be left unset
 DB2I_ODBC_OPTIONS=SSL=1
 ```
 
 ## Multiple Systems
 
-One server can reach several IBM i systems, for example production and test, or two partitions. Set `DB2I_PROFILES` to a YAML file with one profile per system ([example](../examples/profiles.yaml)):
+One server can reach several IBM i systems, for example production and test, or two partitions. Set `DB2I_PROFILES` to a YAML file with one profile per system ([example](../examples/profiles.yaml)). For a single system, the [environment variables](#database-connection) are simpler, so you don't need a profiles file.
 
 ```yaml
 profiles:
@@ -292,7 +312,7 @@ profiles:
 |-------|----------|---------|-------------|
 | `name` | Yes | - | Name tools use in their `system` argument. Letters, digits, `_` and `-` |
 | `host` | Yes | - | IBM i hostname or IPv4 address |
-| `driver` | No | `jt400` | `jt400` or `odbc`. Each profile can use a different driver |
+| `driver` | No | `DB2I_DRIVER`, else `odbc` | `odbc` or `jt400`. Each profile can use a different driver |
 | `schema` | No | - | Default library, like `DB2I_SCHEMA` |
 | `allowedSchemas` | No | `QUERY_ALLOWED_SCHEMAS` | Libraries queries on this system may use |
 | `username` | Yes* | - | User profile, as text or a `"${ENV_VAR}"` reference |
@@ -317,7 +337,7 @@ The file is read once at startup and a mistake stops the server. Restart it afte
 
 ## JDBC Options
 
-The `DB2I_JDBC_OPTIONS` variable accepts semicolon-separated JDBC options for the JT400/JTOpen driver. It applies when `DB2I_DRIVER` is `jt400`.
+The `DB2I_JDBC_OPTIONS` variable accepts semicolon-separated JDBC options for the JT400/JTOpen driver. It applies when `DB2I_DRIVER` is `jt400` (see [Using the JT400 driver](#using-the-jt400-driver)).
 
 ### Common Options
 
@@ -358,7 +378,7 @@ The `naming` option affects how you reference tables:
 
 ## ODBC Options
 
-The `DB2I_ODBC_OPTIONS` variable accepts semicolon-separated connection keywords for the IBM i Access ODBC Driver. It applies when `DB2I_DRIVER` is `odbc`. Keywords are case-insensitive and most have a long alias (`NAM` or `Naming`). IBM documents the full list under [Connection string keywords](https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords).
+The `DB2I_ODBC_OPTIONS` variable accepts semicolon-separated connection keywords for the IBM i Access ODBC Driver. It applies when `DB2I_DRIVER` is `odbc`, the default. Keywords are case-insensitive and most have a long alias (`NAM` or `Naming`). IBM documents the full list under [Connection string keywords](https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords).
 
 ### Common Keywords
 

@@ -9,7 +9,13 @@
 
 services:
   mcp-server-db2i:
-    build: .
+    # Builds the default odbc image. IBM publishes the ODBC driver for amd64
+    # only, so the platform is pinned (arm64 hosts run it under emulation).
+    # For the JDBC image, use `target: jt400` and remove the platform line.
+    build:
+      context: .
+      # target: jt400
+    platform: linux/amd64
     image: mcp-server-db2i:latest
     container_name: mcp-server-db2i
     stdin_open: true
@@ -21,6 +27,8 @@ services:
       # Database connection
       - DB2I_HOSTNAME=${DB2I_HOSTNAME}
       - DB2I_SCHEMA=${DB2I_SCHEMA:-}
+      # Driver options. The driver itself is set by the image target.
+      - DB2I_ODBC_OPTIONS=${DB2I_ODBC_OPTIONS:-}
       - DB2I_JDBC_OPTIONS=${DB2I_JDBC_OPTIONS:-}
       # Option 1: Plain environment variables (from .env file)
       # Less secure - credentials visible via 'docker inspect'

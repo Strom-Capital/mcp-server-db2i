@@ -54,6 +54,7 @@ describe('Custom ERP tools', () => {
     process.env = {
       ...originalEnv,
       DB2I_HOSTNAME: 'ibmi.example.com',
+      DB2I_DRIVER: 'jt400',
       DB2I_USERNAME: 'test-user',
       DB2I_PASSWORD: 'test-pass',
       DB2I_SCHEMA: 'MYLIB',

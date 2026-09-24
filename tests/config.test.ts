@@ -597,11 +597,17 @@ describe('Config Module', () => {
   });
 
   describe('getDbDriver', () => {
-    it('should default to jt400', () => {
+    it('should default to odbc', () => {
       delete process.env.DB2I_DRIVER;
-      expect(getDbDriver()).toBe('jt400');
+      expect(getDbDriver()).toBe('odbc');
       process.env.DB2I_DRIVER = '';
+      expect(getDbDriver()).toBe('odbc');
+    });
+
+    it('should accept jt400 in any case', () => {
+      process.env.DB2I_DRIVER = 'JT400';
       expect(getDbDriver()).toBe('jt400');
+      delete process.env.DB2I_DRIVER;
     });
 
     it('should accept odbc in any case', () => {
@@ -1100,11 +1106,13 @@ describe('Config Module', () => {
 
   describe('assertExtendedMetadataAllowsMasking', () => {
     it('should reject extended metadata when masking is loaded', () => {
+      process.env.DB2I_DRIVER = 'jt400';
       delete process.env.DB2I_JDBC_OPTIONS;
       expect(() => assertExtendedMetadataAllowsMasking(true)).not.toThrow();
       process.env.DB2I_JDBC_OPTIONS = 'extended metadata=true';
       expect(() => assertExtendedMetadataAllowsMasking(true)).toThrow(/extended metadata=true/);
       expect(() => assertExtendedMetadataAllowsMasking(false)).not.toThrow();
+      delete process.env.DB2I_DRIVER;
       delete process.env.DB2I_JDBC_OPTIONS;
     });
 
@@ -1114,6 +1122,7 @@ describe('Config Module', () => {
       process.env.DB2I_DRIVER = 'odbc';
       expect(() => assertExtendedMetadataAllowsMasking(true)).not.toThrow();
       delete process.env.DB2I_DRIVER;
+      expect(() => assertExtendedMetadataAllowsMasking(true)).not.toThrow();
       delete process.env.DB2I_JDBC_OPTIONS;
     });
   });

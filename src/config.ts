@@ -3,7 +3,7 @@
  * Handles environment variables and the JDBC / ODBC connection options
  *
  * Database driver:
- * - DB2I_DRIVER: 'jt400' | 'odbc' (default: 'jt400')
+ * - DB2I_DRIVER: 'odbc' | 'jt400' (default: 'odbc')
  * - DB2I_JDBC_OPTIONS: extra JT400 properties, `key=value;key=value`
  * - DB2I_ODBC_OPTIONS: extra IBM i Access ODBC keywords, `KEY=value;KEY=value`
  *
@@ -47,7 +47,7 @@ export interface DB2iConfig {
   password: string;
   database: string;
   schema: string;
-  /** Selected by DB2I_DRIVER. Defaults to jt400. */
+  /** Selected by DB2I_DRIVER. Defaults to odbc. */
   driver: DbDriverName;
   /** Extra JT400 properties from DB2I_JDBC_OPTIONS. Used when driver is jt400. */
   jdbcOptions: Record<string, string>;
@@ -57,12 +57,12 @@ export interface DB2iConfig {
 
 /**
  * Get the database driver from DB2I_DRIVER.
- * Defaults to jt400 so existing installs keep working.
+ * Defaults to odbc, which needs no Java. jt400 is opt-in.
  */
 export function getDbDriver(): DbDriverName {
   const raw = process.env.DB2I_DRIVER?.trim();
   if (!raw) {
-    return 'jt400';
+    return 'odbc';
   }
   const value = raw.toLowerCase();
   if ((DB_DRIVERS as readonly string[]).includes(value)) {

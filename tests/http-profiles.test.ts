@@ -25,11 +25,13 @@ const PROFILES = `
 profiles:
   - name: prod
     host: prod.example.com
+    driver: jt400
     username: PRODUSER
     password: \${PROD_PASSWORD}
     schema: SALES
   - name: test
     host: test.example.com
+    driver: jt400
     username: TESTUSER
     password: \${TEST_PASSWORD}
 `;

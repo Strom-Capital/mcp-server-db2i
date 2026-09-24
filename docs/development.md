@@ -5,8 +5,8 @@ This guide covers setting up a development environment and contributing to mcp-s
 ## Prerequisites
 
 - **Node.js** 22 or higher (required for `--env-file` flag)
-- **Java Runtime Environment (JRE)** 11 or higher (for the default `jt400` driver; `npm install` builds the JDBC bridge)
-- **unixODBC** and the **IBM i Access ODBC Driver** only if you run with `DB2I_DRIVER=odbc` (see [Database Drivers](configuration.md#database-drivers))
+- **unixODBC** and the **IBM i Access ODBC Driver** for the default `odbc` driver (see [Database Drivers](configuration.md#database-drivers))
+- **JDK** 11 or higher, optional. Only needed to build and run the `jt400` driver: `npm install` builds its Java bridge when a JDK is present and skips it otherwise. The tests mock both drivers, but `npm run typecheck` needs both packages installed, and CI builds both
 - **npm** or **yarn**
 - Access to an IBM i system (for integration testing)
 
@@ -26,7 +26,7 @@ nvm use
 npm install
 ```
 
-`nvm use` reads `.nvmrc` and switches to Node 22. fnm and mise read the same file. `.npmrc` sets `engine-strict`, so `npm install` fails on an older Node instead of building the JDBC bridge for the wrong version. If you switch Node versions later, run `npm rebuild` so the native module matches.
+`nvm use` reads `.nvmrc` and switches to Node 22. fnm and mise read the same file. `.npmrc` sets `engine-strict`, so `npm install` fails on an older Node instead of building the native modules for the wrong version. If you switch Node versions later, run `npm rebuild` so the native module matches.
 
 ### 3. Configure Environment
 
