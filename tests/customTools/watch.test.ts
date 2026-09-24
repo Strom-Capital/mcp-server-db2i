@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +12,7 @@ vi.mock('../../src/db/connection.js', () => ({
 
 import { loadCustomTools } from '../../src/customTools/loader.js';
 import { getCustomTools, resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
+import { resetSystems } from '../../src/systems.js';
 import { reloadCustomTools, startCustomToolsWatch, stopCustomToolsWatch } from '../../src/customTools/watch.js';
 import { createServer, liveCustomTool, pinStdioServer } from '../../src/server.js';
 import { logger } from '../../src/utils/logger.js';
@@ -34,6 +35,9 @@ afterEach(() => {
   delete process.env.QUERY_ALLOWED_SCHEMAS;
   delete process.env.MCP_TOOLS_ENABLED;
   delete process.env.MCP_TOOLS_DISABLED;
+  delete process.env.DB2I_PROFILES;
+  delete process.env.TEST_DB2I_PASSWORD;
+  resetSystems();
 });
 
 function tempDir(): string {
@@ -65,6 +69,32 @@ async function waitFor(check: () => boolean): Promise<void> {
 }
 
 describe('reloadCustomTools', () => {
+  it('checks reloaded tools against the profiles in DB2I_PROFILES', () => {
+    const dir = tempDir();
+    const profiles = path.join(dir, 'profiles.yaml');
+    writeFileSync(profiles, `
+profiles:
+  - name: prod
+    host: ibmi.example.com
+    username: \${TEST_DB2I_PASSWORD}
+    password: \${TEST_DB2I_PASSWORD}
+    allowedSchemas: [MYLIB]
+`);
+    process.env.TEST_DB2I_PASSWORD = 'secret';
+    process.env.DB2I_PROFILES = profiles;
+    const toolsDir = path.join(dir, 'tools');
+    mkdirSync(toolsDir);
+    process.env.MCP_CUSTOM_TOOLS = toolsDir;
+    const error = vi.spyOn(logger, 'error').mockImplementation(() => {});
+
+    writeFileSync(path.join(toolsDir, 'tools.yaml'), toolYaml('other_orders', 'Other orders', 'SELECT ORDERNO FROM OTHERLIB.ORDERS'));
+    expect(reloadCustomTools()).toBe(false);
+
+    writeFileSync(path.join(toolsDir, 'tools.yaml'), `${toolYaml('open_orders', 'Open orders')}    system: missing\n`);
+    expect(reloadCustomTools()).toBe(false);
+    expect(error).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the last good set when the new file is invalid', () => {
     const dir = tempDir();
     const file = path.join(dir, 'tools.yaml');

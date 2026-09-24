@@ -29,7 +29,6 @@ import {
   getResponseFormat,
   connectionSecurity,
   assertCustomToolsWatch,
-  assertExtendedMetadataAllowsMasking,
   isCustomToolsWatchEnabled,
   isQueryParseCheckEnabled,
 } from './config.js';
@@ -117,18 +116,6 @@ async function main(): Promise<void> {
     // Validates tool files and MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts
     const customTools = loadCustomToolsFromEnv();
     assertCustomToolsWatch();
-    if (profiles) {
-      for (const system of systems) {
-        assertExtendedMetadataAllowsMasking(
-          customTools.masking.size > 0,
-          system.config.driver,
-          system.config.jdbcOptions,
-          `Profile ${system.name} jdbcOptions`
-        );
-      }
-    } else {
-      assertExtendedMetadataAllowsMasking(customTools.masking.size > 0);
-    }
     if (customTools.masking.size > 0 && !isQueryParseCheckEnabled()) {
       logger.warn(
         'Masking rules are loaded and QUERY_PARSE_CHECK is off. execute_query will refuse to run until the check is on.'

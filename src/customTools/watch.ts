@@ -8,11 +8,11 @@
 import { readdirSync, statSync, watch, type FSWatcher } from 'node:fs';
 import path from 'node:path';
 
-import { getAllowedSchemas, getEnabledTools } from '../config.js';
+import { getEnabledTools } from '../config.js';
 import { syncLiveCustomTools } from '../server.js';
 import { notifyCustomToolsChanged } from '../transports/http.js';
 import { logger } from '../utils/logger.js';
-import { loadCustomTools } from './loader.js';
+import { customToolInputs, loadCustomToolsFromEnv } from './loader.js';
 import { setCustomTools } from './registry.js';
 
 const DEFAULT_DEBOUNCE_MS = 200;
@@ -67,12 +67,8 @@ export function stopCustomToolsWatch(): void {
  * Returns true when the new set replaced the registry.
  */
 export function reloadCustomTools(): boolean {
-  const inputs = customToolInputs();
   try {
-    const loaded = loadCustomTools(inputs, {
-      allowedSchemas: getAllowedSchemas(),
-      defaultSchema: process.env.DB2I_SCHEMA,
-    });
+    const loaded = loadCustomToolsFromEnv();
     const enabled = new Set(getEnabledTools(loaded.tools));
     setCustomTools(loaded);
     syncLiveCustomTools(loaded, enabled);
@@ -86,11 +82,6 @@ export function reloadCustomTools(): boolean {
     logger.error({ err: error }, 'Custom tools reload rejected; keeping the last good set');
     return false;
   }
-}
-
-function customToolInputs(): string[] {
-  const raw = process.env.MCP_CUSTOM_TOOLS ?? '';
-  return raw.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0);
 }
 
 function watchDirectory(dir: string): void {
