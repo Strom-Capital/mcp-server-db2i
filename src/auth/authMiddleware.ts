@@ -12,7 +12,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getTokenManager } from './tokenManager.js';
 import { createChildLogger } from '../utils/logger.js';
-import { getHttpConfig } from '../config.js';
+import { DEFAULT_AUTH_RATE_LIMIT, getHttpConfig, type AuthRateLimitConfig } from '../config.js';
 import type { TokenSession } from './types.js';
 
 const log = createChildLogger({ component: 'auth-middleware' });
@@ -175,10 +175,6 @@ export function authMiddleware(
  * parallel requests would otherwise all pass the check.
  */
 const authAttempts = new Map<string, { count: number; resetAt: number }>();
-const AUTH_RATE_LIMIT = {
-  maxAttempts: 5,
-  windowMs: 60000, // 1 minute
-};
 
 /** Past this many tracked addresses, expired entries are dropped before adding more. */
 const AUTH_ATTEMPTS_SWEEP_SIZE = 1000;
@@ -208,42 +204,44 @@ function getClientIp(req: Request): string {
 }
 
 /**
- * Auth rate limiting middleware
+ * Create the auth rate limiting middleware
  * 
  * Limits authentication attempts per IP to prevent brute force.
  * Should be applied to the /auth endpoint. Call clearAuthRateLimit
  * after a successful authentication.
+ *
+ * @param limit - Attempts allowed per IP address and the window length
  */
-export function authRateLimitMiddleware(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
-  const ip = getClientIp(req);
-  const now = Date.now();
-  if (authAttempts.size >= AUTH_ATTEMPTS_SWEEP_SIZE) {
-    sweepAuthAttempts(now);
-  }
+export function createAuthRateLimitMiddleware(
+  limit: AuthRateLimitConfig = DEFAULT_AUTH_RATE_LIMIT
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next) => {
+    const ip = getClientIp(req);
+    const now = Date.now();
+    if (authAttempts.size >= AUTH_ATTEMPTS_SWEEP_SIZE) {
+      sweepAuthAttempts(now);
+    }
 
-  let current = authAttempts.get(ip);
-  if (!current || current.resetAt <= now) {
-    current = { count: 0, resetAt: now + AUTH_RATE_LIMIT.windowMs };
-    authAttempts.set(ip, current);
-  }
+    let current = authAttempts.get(ip);
+    if (!current || current.resetAt <= now) {
+      current = { count: 0, resetAt: now + limit.windowMs };
+      authAttempts.set(ip, current);
+    }
 
-  if (current.count >= AUTH_RATE_LIMIT.maxAttempts) {
-    const retryAfter = Math.ceil((current.resetAt - now) / 1000);
-    log.warn({ ip, attempts: current.count }, 'Auth rate limit exceeded');
-    res.status(429).json({
-      error: 'too_many_requests',
-      error_description: `Too many authentication attempts. Try again in ${retryAfter} seconds.`,
-      retry_after: retryAfter,
-    });
-    return;
-  }
+    if (current.count >= limit.maxAttempts) {
+      const retryAfter = Math.ceil((current.resetAt - now) / 1000);
+      log.warn({ ip, attempts: current.count }, 'Auth rate limit exceeded');
+      res.status(429).json({
+        error: 'too_many_requests',
+        error_description: `Too many authentication attempts. Try again in ${retryAfter} seconds.`,
+        retry_after: retryAfter,
+      });
+      return;
+    }
 
-  current.count++;
-  next();
+    current.count++;
+    next();
+  };
 }
 
 /**

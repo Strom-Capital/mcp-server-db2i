@@ -765,6 +765,48 @@ export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
 };
 
 /**
+ * Limits for the /auth endpoint, per client IP address
+ */
+export interface AuthRateLimitConfig {
+  /** Attempts allowed per IP address in the window (default: 5) */
+  maxAttempts: number;
+  /** Window length in milliseconds (default: 60000) */
+  windowMs: number;
+}
+
+/**
+ * Default /auth rate limit values
+ *
+ * Environment variables:
+ * - AUTH_RATE_LIMIT_MAX_ATTEMPTS: Attempts per IP address in the window (default: 5)
+ * - AUTH_RATE_LIMIT_WINDOW_MS: Window length in milliseconds (default: 60000)
+ */
+export const DEFAULT_AUTH_RATE_LIMIT: AuthRateLimitConfig = {
+  maxAttempts: 5,
+  windowMs: 60_000, // 1 minute
+};
+
+/**
+ * Get the /auth rate limit from environment variables. Both values must be
+ * positive. There is deliberately no switch to turn this limit off, and
+ * RATE_LIMIT_ENABLED does not affect it, because it guards against password
+ * guessing.
+ *
+ * @throws Error if either value is not a positive whole number
+ */
+export function getAuthRateLimitConfig(): AuthRateLimitConfig {
+  const maxAttempts = readIntEnv('AUTH_RATE_LIMIT_MAX_ATTEMPTS', DEFAULT_AUTH_RATE_LIMIT.maxAttempts);
+  if (maxAttempts < 1) {
+    throw new Error(`AUTH_RATE_LIMIT_MAX_ATTEMPTS must be at least 1, got ${maxAttempts}`);
+  }
+  const windowMs = readIntEnv('AUTH_RATE_LIMIT_WINDOW_MS', DEFAULT_AUTH_RATE_LIMIT.windowMs);
+  if (windowMs < 1) {
+    throw new Error(`AUTH_RATE_LIMIT_WINDOW_MS must be at least 1, got ${windowMs}`);
+  }
+  return { maxAttempts, windowMs };
+}
+
+/**
  * Query limit configuration interface
  */
 export interface QueryLimitConfig {
@@ -1136,6 +1178,8 @@ export interface HttpConfig {
    * nor DB2I_HOSTNAME is set, so any host is accepted.
    */
   authAllowedDbHosts: string[] | null;
+  /** Attempt limit for the /auth endpoint */
+  authRateLimit: AuthRateLimitConfig;
 }
 
 /**
@@ -1368,6 +1412,7 @@ export function getHttpConfig(): HttpConfig {
     allowedHosts: getAllowedHosts(host),
     allowUnauthenticatedHttp: allowUnauthenticatedHttp(),
     authAllowedDbHosts: getAuthAllowedDbHosts(),
+    authRateLimit: getAuthRateLimitConfig(),
   };
 }
 

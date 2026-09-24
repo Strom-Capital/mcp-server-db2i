@@ -20,7 +20,7 @@ export { getTokenManager, TokenManager, type SessionCleanupCallback } from './to
 export {
   authMiddleware,
   extractBearerToken,
-  authRateLimitMiddleware,
+  createAuthRateLimitMiddleware,
   clearAuthRateLimit,
   type AuthenticatedRequest,
 } from './authMiddleware.js';

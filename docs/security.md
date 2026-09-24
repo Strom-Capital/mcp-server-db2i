@@ -216,18 +216,18 @@ See [HTTP Transport](http-transport.md) for the request shapes. Protocol session
 
 The `/auth` endpoint has additional rate limiting to prevent brute-force attacks:
 
-| Setting | Value | Description |
-|---------|-------|-------------|
-| Max attempts | 5 | Maximum attempts before lockout |
-| Window | 60 seconds | Time window for tracking attempts |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `5` | Maximum attempts before lockout |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | `60000` | Time window for tracking attempts, in milliseconds |
 
 **Behavior:**
 - Authentication attempts are tracked per IP address and counted when they arrive, so parallel requests cannot get past the limit while earlier attempts are still testing their credentials
-- After 5 attempts within 60 seconds, further requests from that IP get 429 until the window ends
+- After the maximum number of attempts within the window (5 in 60 seconds by default), further requests from that IP get 429 until the window ends
 - Successful authentication clears the count for that IP
 - Lockout automatically expires after the window period
 
-> **Note:** These values are currently hardcoded. Environment variable configuration may be added in a future release.
+> **Note:** This limit cannot be turned off, and `RATE_LIMIT_ENABLED=false` does not disable it. Both values must be positive whole numbers. See [Rate Limiting](configuration.md#rate-limiting) in the configuration reference.
 
 ### TLS/HTTPS
 

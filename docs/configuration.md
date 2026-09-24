@@ -143,6 +143,10 @@ The server reads these files before it accepts connections. A statement that is 
 | `RATE_LIMIT_WINDOW_MS` | `900000` | Rate limit time window in milliseconds (15 min) |
 | `RATE_LIMIT_MAX_REQUESTS` | `100` | Maximum requests allowed per window |
 | `RATE_LIMIT_ENABLED` | `true` | Set to `false` or `0` to disable rate limiting |
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `5` | `/auth` attempts allowed per IP address in the window |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | `60000` | `/auth` rate limit window in milliseconds (1 min) |
+
+The `/auth` limit guards against password guessing, so it has no off switch and `RATE_LIMIT_ENABLED` does not affect it. Both values must be positive whole numbers, or the HTTP server does not start. Raise the attempt count when several users share one address behind NAT or a proxy.
 
 ### Logging
 

@@ -30,7 +30,7 @@ import { createChildLogger } from '../utils/logger.js';
 import {
   getTokenManager,
   authMiddleware,
-  authRateLimitMiddleware,
+  createAuthRateLimitMiddleware,
   clearAuthRateLimit,
   extractBearerToken,
   type AuthenticatedRequest,
@@ -529,7 +529,7 @@ export function createHttpApp(): Express {
   });
 
   // Authentication endpoint (only active in 'required' auth mode)
-  app.post('/auth', authRateLimitMiddleware, async (req: Request, res: Response) => {
+  app.post('/auth', createAuthRateLimitMiddleware(httpConfig.authRateLimit), async (req: Request, res: Response) => {
     try {
       // Check if /auth endpoint is needed for current auth mode
       if (httpConfig.authMode !== 'required') {
