@@ -2,6 +2,17 @@
 
 This guide covers all configuration options for mcp-server-db2i.
 
+The server reads all of its settings from environment variables, set directly, in a `.env` file, or in the `env` block of an MCP client. There are two ways to describe the database connection:
+
+| You connect to | Use | Where the connection lives |
+|----------------|-----|----------------------------|
+| One IBM i system | The `DB2I_*` variables below | Environment variables |
+| Several IBM i systems | `DB2I_PROFILES` | A YAML file with one profile per system. See [Multiple Systems](#multiple-systems) |
+
+Start with the variables. Switch to profiles when you add a second system, or when each system needs its own driver, options or library allowlist. The single-system variables work the same way as a profile named `default`.
+
+When `DB2I_PROFILES` is set, it replaces the connection variables (`DB2I_HOSTNAME`, `DB2I_USERNAME`, `DB2I_PASSWORD`, `DB2I_SCHEMA` and the driver options). `DB2I_DRIVER` still applies, as the driver for profiles that don't set their own. Everything else stays in environment variables either way: transport, HTTP auth, TLS, query limits, tool selection, rate limiting and logging. Profile passwords also come from the environment or from files, never from the YAML itself.
+
 ## Quick Start
 
 Create a `.env` file or set environment variables:
@@ -30,7 +41,7 @@ DB2I_PASSWORD=your-password
 | `DB2I_DRIVER` | No | `odbc` | Database driver: `odbc` (IBM i Access ODBC driver, no Java) or `jt400` (JDBC via the optional node-jt400 package, needs Java). See [Database Drivers](#database-drivers) |
 | `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated). `jt400` driver only |
 | `DB2I_ODBC_OPTIONS` | No | - | Additional ODBC connection keywords (semicolon-separated). `odbc` driver only |
-| `DB2I_PROFILES` | No | - | Path to a YAML file of IBM i systems. When set, it replaces every other variable in this table. See [Multiple Systems](#multiple-systems) |
+| `DB2I_PROFILES` | No | - | Path to a YAML file of IBM i systems. When set, it replaces the other variables in this table, except `DB2I_DRIVER`, which becomes the default driver for profiles. See [Multiple Systems](#multiple-systems) |
 
 *Either the environment variable or the corresponding `*_FILE` variable must be set. File-based secrets take priority when both are provided.
 
@@ -277,7 +288,7 @@ DB2I_ODBC_OPTIONS=SSL=1
 
 ## Multiple Systems
 
-One server can reach several IBM i systems, for example production and test, or two partitions. Set `DB2I_PROFILES` to a YAML file with one profile per system ([example](../examples/profiles.yaml)):
+One server can reach several IBM i systems, for example production and test, or two partitions. Set `DB2I_PROFILES` to a YAML file with one profile per system ([example](../examples/profiles.yaml)). For a single system, the [environment variables](#database-connection) are simpler, so you don't need a profiles file.
 
 ```yaml
 profiles:
