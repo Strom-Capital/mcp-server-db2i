@@ -173,12 +173,44 @@ export function authMiddleware(
  * Tracks attempts by IP address. Each attempt is counted when it arrives,
  * because failures are only known after a slow database connection test and
  * parallel requests would otherwise all pass the check.
+ * 
+ * Configuration via environment variables:
+ * - AUTH_RATE_LIMIT_MAX_ATTEMPTS: max attempts per IP (default: 5)
+ * - AUTH_RATE_LIMIT_WINDOW_MS: window length in ms (default: 60000)
  */
+
+interface AuthRateLimitConfig {
+  maxAttempts: number;
+  windowMs: number;
+}
+
+function readIntEnv(name: string, defaultValue: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') {
+    return defaultValue;
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(
+      `Environment variable ${name} must be a positive integer, got: "${raw}"`
+    );
+  }
+  return value;
+}
+
+let authRateLimitConfig: AuthRateLimitConfig | null = null;
+
+function getAuthRateLimitConfig(): AuthRateLimitConfig {
+  if (!authRateLimitConfig) {
+    authRateLimitConfig = {
+      maxAttempts: readIntEnv('AUTH_RATE_LIMIT_MAX_ATTEMPTS', 5),
+      windowMs: readIntEnv('AUTH_RATE_LIMIT_WINDOW_MS', 60000),
+    };
+  }
+  return authRateLimitConfig;
+}
+
 const authAttempts = new Map<string, { count: number; resetAt: number }>();
-const AUTH_RATE_LIMIT = {
-  maxAttempts: 5,
-  windowMs: 60000, // 1 minute
-};
 
 /** Past this many tracked addresses, expired entries are dropped before adding more. */
 const AUTH_ATTEMPTS_SWEEP_SIZE = 1000;
@@ -219,6 +251,7 @@ export function authRateLimitMiddleware(
   res: Response,
   next: NextFunction
 ): void {
+  const config = getAuthRateLimitConfig();
   const ip = getClientIp(req);
   const now = Date.now();
   if (authAttempts.size >= AUTH_ATTEMPTS_SWEEP_SIZE) {
@@ -227,11 +260,11 @@ export function authRateLimitMiddleware(
 
   let current = authAttempts.get(ip);
   if (!current || current.resetAt <= now) {
-    current = { count: 0, resetAt: now + AUTH_RATE_LIMIT.windowMs };
+    current = { count: 0, resetAt: now + config.windowMs };
     authAttempts.set(ip, current);
   }
 
-  if (current.count >= AUTH_RATE_LIMIT.maxAttempts) {
+  if (current.count >= config.maxAttempts) {
     const retryAfter = Math.ceil((current.resetAt - now) / 1000);
     log.warn({ ip, attempts: current.count }, 'Auth rate limit exceeded');
     res.status(429).json({
