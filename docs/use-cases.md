@@ -28,7 +28,7 @@ A BI solution needs the ERP data in a warehouse or lakehouse, refreshed every ni
 
 The agent can do most of that groundwork:
 
-- **Profile the source.** Row counts, distinct values, date ranges, and null rates through `execute_query`. This shows which columns are real data and which are unused.
+- **Profile the source.** `profile_table` returns the row count and last change from the catalog, plus distinct and null counts per column. Stored statistics cost nothing to read. `compute: true` scans the table for exact counts and the minimum and maximum of up to 20 columns. This shows which columns are real data and which are unused. Masked columns keep their counts and return no values.
 - **Build the staging tables.** `get_object_ddl` returns the DDL for a source table, which the agent translates to the target platform's types.
 - **Map the dependencies.** `get_related_objects` lists the views, indexes, and logical files that depend on a source table. That often points to a view someone already built for reporting.
 - **Draft the incremental extract.** The agent finds a change date or a sequence column and writes a watermark query, for example every `MYLIB.ORDERHDR` row changed since the last run.
@@ -36,7 +36,7 @@ The agent can do most of that groundwork:
 
 A prompt to start with:
 
-> Profile MYLIB.ORDERHDR: row count, date range of ORDERDATE, and the distinct values of STATUS with counts. Then draft an incremental extract of rows changed since yesterday.
+> Profile MYLIB.ORDERHDR with `profile_table`, computing ORDERDATE and STATUS. Then list the distinct values of STATUS with counts, and draft an incremental extract of rows changed since yesterday.
 
 Tip: explore with a narrow scope. Set `QUERY_ALLOWED_SCHEMAS` to the libraries the pipeline reads, or use `MCP_TOOLS_ENABLED` for a metadata-only setup without `execute_query`. Run the pipeline itself under a read-only user profile. See [Configuration](configuration.md).
 
@@ -46,16 +46,16 @@ Nightly extracts leave dashboards a day behind. Journal-based change data captur
 
 The replication tool does the streaming. The work before it starts is knowing which tables are journaled, and how. The agent can answer that from the catalog:
 
-- **Check journaling.** `QSYS2.OBJECT_STATISTICS` shows whether each file is journaled, to which journal and library, and whether the journal records before images, after images, or both.
-- **Find tables without keys.** `get_table_constraints` lists the primary keys. A table without one usually needs both before and after images (`IMAGES(*BOTH)`) so the tool can match an update to the row it changed.
+- **Check journaling.** `get_journal_info` lists each physical file in a library with its journal, journal library, and whether the journal records after images only or both before and after images. It reads `QSYS2.OBJECT_STATISTICS`, so it needs no free-form SQL.
+- **Find tables without keys.** The same call reports `has_primary_key`. A table without one usually needs both images (`IMAGES(*BOTH)`) so the tool can match an update to the row it changed. `needs_attention` is true for every table that is not journaled, or that has no primary key and does not journal both images.
 - **Inspect the journal.** `QSYS2.DISPLAY_JOURNAL` shows recent entries, so you can confirm that changes to a table actually reach the journal the tool reads.
 - **Pick the table list.** The agent groups the tables by journal and flags the ones that need a change before the connector goes live.
 
 A prompt to start with:
 
-> List the physical files in MYLIB with their journal, journal library, and journal images. Flag every table that has no primary key and does not journal both images.
+> Run `get_journal_info` on MYLIB. Group the tables by journal, and list the ones that need attention with the reason.
 
-The server only reads. Starting journaling (`STRJRNPF`) or changing images (`CHGJRNOBJ`) is a change on the system, and an administrator runs those commands. When `QUERY_ALLOWED_SCHEMAS` is set, add `QSYS2` so the catalog queries can run.
+The server only reads. Starting journaling (`STRJRNPF`) or changing images (`CHGJRNOBJ`) is a change on the system, and an administrator runs those commands. When `QUERY_ALLOWED_SCHEMAS` is set, `get_journal_info` only needs the library it inspects in the list. Add `QSYS2` only if the agent also queries `QSYS2.DISPLAY_JOURNAL` through `execute_query`.
 
 Once the raw tables land in the warehouse, the ETL tips above still apply. The same annotations that decode dates and status codes for the agent describe the transformation layer on top of the replicated tables.
 

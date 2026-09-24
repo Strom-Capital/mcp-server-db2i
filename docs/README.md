@@ -66,6 +66,8 @@ graph LR
 | `validate_query` | Check a statement without running it, including catalog names |
 | `get_object_ddl` | Return the SQL DDL that recreates an object |
 | `get_related_objects` | List objects that depend on a table |
+| `get_journal_info` | List journal, images, and primary key per table, and flag tables a replication tool cannot read |
+| `profile_table` | Row count, last change, and per-column distinct and null counts from stored statistics or a scan |
 | `get_business_context` | List business descriptions and relations loaded from YAML |
 
 > **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included.

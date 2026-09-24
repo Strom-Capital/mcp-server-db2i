@@ -107,6 +107,8 @@ An unqualified `EMAIL` counts as the masked column whenever `MYLIB.CUSTOMERS` is
 
 YAML tools are checked when the files load, including a rule that lives in a different file from the tool. `execute_query` uses `QSYS2.PARSE_STATEMENT` to see which tables the statement touches, so it refuses to run when masking is loaded and `QUERY_PARSE_CHECK` is off. `extended metadata=true` in `DB2I_JDBC_OPTIONS` renames result columns, and the server refuses to start with that option while masking is loaded.
 
+`profile_table` applies the same rules: a masked column keeps its distinct and null counts and returns no low, high, minimum, or maximum value.
+
 See [Security](security.md#column-masking) for why this is a backstop and not a database control.
 
 ## Common patterns

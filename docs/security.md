@@ -182,7 +182,7 @@ The tool is then never registered, so validation bypasses cannot reach it. Busin
 
 ### Schema Allowlist
 
-`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the parse check and the query. The same list applies to `validate_query`, `get_object_ddl`, `get_related_objects`, and business SQL tools. `get_related_objects` omits dependents whose schema is outside the list. A business tool that fails the check is rejected at startup, and again when it is called.
+`QUERY_ALLOWED_SCHEMAS` rejects an `execute_query` call whose tables are outside that list. The check runs after the read-only validation and before the parse check and the query. The same list applies to `validate_query`, `get_object_ddl`, `get_related_objects`, `get_journal_info`, `profile_table`, and business SQL tools. `get_related_objects` omits dependents whose schema is outside the list. A business tool that fails the check is rejected at startup, and again when it is called.
 
 - Unqualified names resolve to the session schema, or to `DB2I_SCHEMA` when the session has none. If that schema is missing or not in the list, the query is rejected.
 - The list comes from the server environment. A schema chosen at `/auth` changes where unqualified names resolve. It does not add libraries to the list.
@@ -246,11 +246,13 @@ MCP_MAX_SESSIONS=100  # Maximum concurrent sessions
 
 ## Column masking
 
-Db2 row and column access control (RCAC) is the control that actually holds. A mask in this server only changes what an agent receives from `execute_query` and from YAML tools. It does not change what the database user can read with another client.
+Db2 row and column access control (RCAC) is the control that actually holds. A mask in this server only changes what an agent receives from `execute_query`, from YAML tools, and from `profile_table`. It does not change what the database user can read with another client.
 
 Rules live in the YAML `masking` section described in [Business SQL tools](custom-tools.md#masking). `redact` replaces a value. `last4` keeps the last four characters.
 
 The server rejects a statement that uses a masked column as anything other than a plain selected column, so an alias or `UPPER(EMAIL)` cannot carry the value out under another name. That check needs `QSYS2.PARSE_STATEMENT` for `execute_query`. When masking is loaded and `QUERY_PARSE_CHECK` is off, `execute_query` refuses to run. A mask the server cannot enforce would be worse than no mask. YAML tools are checked from the statement text at load time and do not depend on that setting.
+
+`profile_table` writes its own statements, so the select-list check does not apply to it. It never selects `MIN` or `MAX` of a masked column when it scans, and it drops the stored low and high values of a masked column. Distinct and null counts are still returned, marked with `masked` and the rule. With `compute: true` the generated aggregate goes to the audit log like any other SQL.
 
 `extended metadata=true` in `DB2I_JDBC_OPTIONS` makes JT400 label result keys with `LABEL ON` text instead of the column name. Masking would miss those keys, so the server refuses to start when that option is set and a masking rule is loaded.
 

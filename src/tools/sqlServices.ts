@@ -4,16 +4,21 @@
  * validate_query parses a statement and checks catalog names.
  * get_object_ddl returns DDL from QSYS2.GENERATE_SQL.
  * get_related_objects lists dependents from SYSTOOLS.RELATED_OBJECTS.
+ * get_journal_info reports journal state from QSYS2.OBJECT_STATISTICS.
  */
 
-import { getAllowedSchemas } from '../config.js';
+import { applyQueryLimit, getAllowedSchemas } from '../config.js';
 import {
   generateObjectDdl,
   hasRoutine,
   inspectStatement,
+  isJournalColumnMissing,
   isParseStatementMissing,
+  JOURNAL_INFO_UNAVAILABLE,
+  listJournalInfo,
   listRelatedObjects,
   PARSE_STATEMENT_UNAVAILABLE,
+  type JournalInfoRow,
   type RelatedObject,
   type StatementInspection,
 } from '../db/sqlServices.js';
@@ -50,15 +55,25 @@ export type RelatedObjectsResult = {
   count?: number;
 };
 
+export type JournalInfoResult = {
+  success: boolean;
+  error?: string;
+  schema?: string;
+  data?: JournalInfoRow[];
+  count?: number;
+  needsAttention?: number;
+  truncated?: boolean;
+};
+
 function unique(items: string[]): string[] {
   return [...new Set(items)];
 }
 
-function schemaDenied(schema: string, allowed: string[]): string {
+export function schemaDenied(schema: string, allowed: string[]): string {
   return `Schema ${schema.trim().toUpperCase()} is not in QUERY_ALLOWED_SCHEMAS (${allowed.join(', ')}).`;
 }
 
-function requireSchema(schema: string | undefined, fallback: string | undefined): string {
+export function requireSchema(schema: string | undefined, fallback: string | undefined): string {
   const resolved = schema?.trim() || fallback?.trim();
   if (!resolved) {
     throw new Error('Schema is required. Either provide it as a parameter or set DB2I_SCHEMA environment variable.');
@@ -183,6 +198,37 @@ export async function getRelatedObjectsTool(input: {
 
     return { success: true, data, count: data.length };
   } catch (error) {
+    return { success: false, error: messageOf(error) };
+  }
+}
+
+export async function getJournalInfoTool(input: {
+  schema?: string;
+  filter?: string;
+  limit?: number;
+  sessionId?: string;
+  defaultSchema?: string;
+}): Promise<JournalInfoResult> {
+  try {
+    const schema = requireSchema(input.schema, input.defaultSchema);
+    const allowed = getAllowedSchemas();
+    if (allowed && !isSchemaAllowed(schema, allowed)) {
+      return { success: false, error: schemaDenied(schema, allowed) };
+    }
+
+    const result = await listJournalInfo(schema, input.filter, applyQueryLimit(input.limit), input.sessionId);
+    return {
+      success: true,
+      schema: schema.trim().toUpperCase(),
+      data: result.rows,
+      count: result.rows.length,
+      needsAttention: result.rows.filter((row) => row.needs_attention).length,
+      truncated: result.truncated,
+    };
+  } catch (error) {
+    if (isJournalColumnMissing(error)) {
+      return { success: false, error: JOURNAL_INFO_UNAVAILABLE };
+    }
     return { success: false, error: messageOf(error) };
   }
 }
