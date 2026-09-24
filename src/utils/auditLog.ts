@@ -41,7 +41,7 @@ export function initAuditLog(): void {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not open audit log';
     config = undefined;
-    throw new Error(`MCP_AUDIT_LOG is not writable (${path}): ${message}`);
+    throw new Error(`MCP_AUDIT_LOG is not writable (${path}): ${message}`, { cause: error });
   }
 }
 
