@@ -16,6 +16,23 @@ describe('HTTP Configuration', () => {
     process.env = originalEnv;
   });
 
+  describe('trustProxy', () => {
+    it('trusts no proxy by default, and parses hop counts and address lists', async () => {
+      process.env.MCP_AUTH_MODE = 'none';
+      const { getHttpConfig } = await import('../src/config.js');
+      delete process.env.MCP_TRUST_PROXY;
+      expect(getHttpConfig().trustProxy).toBe(false);
+      process.env.MCP_TRUST_PROXY = '0';
+      expect(getHttpConfig().trustProxy).toBe(false);
+      process.env.MCP_TRUST_PROXY = 'true';
+      expect(getHttpConfig().trustProxy).toBe(true);
+      process.env.MCP_TRUST_PROXY = '1';
+      expect(getHttpConfig().trustProxy).toBe(1);
+      process.env.MCP_TRUST_PROXY = 'loopback, 10.0.0.0/8';
+      expect(getHttpConfig().trustProxy).toBe('loopback, 10.0.0.0/8');
+    });
+  });
+
   describe('getTransportMode', () => {
     it('should default to stdio', async () => {
       delete process.env.MCP_TRANSPORT;
@@ -223,6 +240,52 @@ describe('HTTP Configuration', () => {
       const { getAuthRateLimitConfig, getHttpConfig } = await import('../src/config.js');
 
       expect(() => getAuthRateLimitConfig()).toThrow(`${name} ${message}`);
+      expect(() => getHttpConfig()).toThrow(name);
+    });
+  });
+
+  describe('getOAuthRateLimitConfig', () => {
+    beforeEach(() => {
+      delete process.env.OAUTH_RATE_LIMIT_MAX_REQUESTS;
+      delete process.env.OAUTH_RATE_LIMIT_WINDOW_MS;
+    });
+
+    it('defaults to 120 requests per 60 seconds', async () => {
+      const { getOAuthRateLimitConfig, getHttpConfig } = await import('../src/config.js');
+
+      expect(getOAuthRateLimitConfig()).toEqual({ maxRequests: 120, windowMs: 60000 });
+      expect(getHttpConfig().oauthRateLimit).toEqual({ maxRequests: 120, windowMs: 60000 });
+    });
+
+    it('reads custom values', async () => {
+      process.env.OAUTH_RATE_LIMIT_MAX_REQUESTS = ' 600 ';
+      process.env.OAUTH_RATE_LIMIT_WINDOW_MS = '300000';
+
+      const { getOAuthRateLimitConfig } = await import('../src/config.js');
+
+      expect(getOAuthRateLimitConfig()).toEqual({ maxRequests: 600, windowMs: 300000 });
+    });
+
+    it('is not turned off by RATE_LIMIT_ENABLED=false', async () => {
+      process.env.RATE_LIMIT_ENABLED = 'false';
+
+      const { getOAuthRateLimitConfig } = await import('../src/config.js');
+
+      expect(getOAuthRateLimitConfig()).toEqual({ maxRequests: 120, windowMs: 60000 });
+    });
+
+    it.each([
+      ['OAUTH_RATE_LIMIT_MAX_REQUESTS', '0', 'must be at least 1'],
+      ['OAUTH_RATE_LIMIT_MAX_REQUESTS', '-3', 'must be at least 1'],
+      ['OAUTH_RATE_LIMIT_MAX_REQUESTS', '2.5', 'must be a whole number'],
+      ['OAUTH_RATE_LIMIT_WINDOW_MS', '0', 'must be at least 1'],
+      ['OAUTH_RATE_LIMIT_WINDOW_MS', '1e3', 'must be a whole number'],
+    ])('rejects %s=%s', async (name, value, message) => {
+      process.env[name] = value;
+
+      const { getOAuthRateLimitConfig, getHttpConfig } = await import('../src/config.js');
+
+      expect(() => getOAuthRateLimitConfig()).toThrow(`${name} ${message}`);
       expect(() => getHttpConfig()).toThrow(name);
     });
   });

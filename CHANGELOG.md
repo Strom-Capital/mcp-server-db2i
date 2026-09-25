@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.9.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.8.0...v2.9.0) (2026-09-25)
+
+
+### Features
+
+* add a built-in OAuth 2.1 authorization server with IBM i sign-in ([#122](https://github.com/Strom-Capital/mcp-server-db2i/issues/122)) ([d960444](https://github.com/Strom-Capital/mcp-server-db2i/commit/d960444d0f33f8369fac922049894754dbe943c5))
+
+## [2.8.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.7.0...v2.8.0) (2026-09-24)
+
+
+### Features
+
+* add a Mapepire-over-SSH driver (DB2I_DRIVER=mapepire) ([#109](https://github.com/Strom-Capital/mcp-server-db2i/issues/109)) ([808c996](https://github.com/Strom-Capital/mcp-server-db2i/commit/808c9965ccdea144b5089e27093c9e2f948b649e))
+
+
+### Bug Fixes
+
+* shorten server.json description to the registry limit ([#107](https://github.com/Strom-Capital/mcp-server-db2i/issues/107)) ([f3d8676](https://github.com/Strom-Capital/mcp-server-db2i/commit/f3d8676649d5b73f028b11f3f58e62eb8c875163))
+
 ## [2.7.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.6.0...v2.7.0) (2026-09-24)
 
 

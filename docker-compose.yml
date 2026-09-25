@@ -50,6 +50,8 @@ services:
       - MCP_HTTP_HOST=${MCP_HTTP_HOST:-127.0.0.1}
       # Extra Host names when clients use a public hostname. Loopback is always allowed.
       - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
+      # Set to 1 behind one reverse proxy or tunnel, so rate limits see each client's address
+      - MCP_TRUST_PROXY=${MCP_TRUST_PROXY:-false}
       # stateless (default). Set stateful only for 2025-era clients that require Mcp-Session-Id.
       - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateless}
       - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}
@@ -65,6 +67,12 @@ services:
       - MCP_ALLOW_UNAUTHENTICATED_HTTP=${MCP_ALLOW_UNAUTHENTICATED_HTTP:-false}
       # Hosts POST /auth may connect to. Empty uses DB2I_HOSTNAME only.
       - MCP_AUTH_ALLOWED_DB_HOSTS=${MCP_AUTH_ALLOWED_DB_HOSTS:-}
+      # OAuth for remote clients such as claude.ai (required mode only)
+      - MCP_OAUTH_ENABLED=${MCP_OAUTH_ENABLED:-false}
+      - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-}
+      - MCP_OAUTH_REDIRECT_URIS=${MCP_OAUTH_REDIRECT_URIS:-}
+      - MCP_OAUTH_SECRET=${MCP_OAUTH_SECRET:-}
+      - MCP_OAUTH_REFRESH_EXPIRY=${MCP_OAUTH_REFRESH_EXPIRY:-604800}
       
       # CORS allowed origins (comma-separated, * for all, empty for same-origin only)
       - MCP_CORS_ORIGINS=${MCP_CORS_ORIGINS:-}
@@ -80,6 +88,8 @@ services:
       - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
       - AUTH_RATE_LIMIT_MAX_ATTEMPTS=${AUTH_RATE_LIMIT_MAX_ATTEMPTS:-5}
       - AUTH_RATE_LIMIT_WINDOW_MS=${AUTH_RATE_LIMIT_WINDOW_MS:-60000}
+      - OAUTH_RATE_LIMIT_MAX_REQUESTS=${OAUTH_RATE_LIMIT_MAX_REQUESTS:-120}
+      - OAUTH_RATE_LIMIT_WINDOW_MS=${OAUTH_RATE_LIMIT_WINDOW_MS:-60000}
       
       # Query limits
       - QUERY_DEFAULT_LIMIT=${QUERY_DEFAULT_LIMIT:-1000}

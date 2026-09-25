@@ -61,12 +61,16 @@ class TokenManager {
    * @param config - DB2i configuration for this session
    * @param durationSeconds - Optional custom token duration
    * @param system - System the credentials were checked on
+   * @param clientId - OAuth client the token is issued to, if any
+   * @param grantId - OAuth sign-in the token descends from, if any
    * @returns The generated token and session info
    */
   createSession(
     config: DB2iConfig,
     durationSeconds?: number,
-    system: string = DEFAULT_SYSTEM_NAME
+    system: string = DEFAULT_SYSTEM_NAME,
+    clientId?: string,
+    grantId?: string
   ): { token: string; expiresAt: Date; expiresIn: number } {
     const httpConfig = getHttpConfig();
     
@@ -87,6 +91,8 @@ class TokenManager {
       token,
       config,
       system,
+      clientId,
+      grantId,
       createdAt: now,
       expiresAt,
       lastUsedAt: now,
@@ -176,6 +182,22 @@ class TokenManager {
       'Token revoked'
     );
     return true;
+  }
+
+  /**
+   * Revoke every token issued from one OAuth sign-in
+   *
+   * @param grantId - The grant the tokens descend from
+   * @returns How many tokens were revoked
+   */
+  async revokeGrant(grantId: string): Promise<number> {
+    const tokens = [...this.sessions.entries()]
+      .filter(([, session]) => session.grantId === grantId)
+      .map(([token]) => token);
+    for (const token of tokens) {
+      await this.revokeToken(token);
+    }
+    return tokens.length;
   }
 
   /**

@@ -53,6 +53,7 @@ DB2I_PASSWORD=your-password
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
 | `MCP_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` for a published Docker port or a reverse proxy on another container. Terminate TLS here or at that proxy |
+| `MCP_TRUST_PROXY` | `false` | Express `trust proxy`: `true`, a hop count, or comma-separated proxy addresses or subnets. Set it behind a reverse proxy or tunnel so rate limits see the client address |
 | `MCP_ALLOWED_HOSTS` | loopback | Extra `Host` header names, comma-separated. `localhost`, `127.0.0.1`, and `::1` are always allowed. The bind address is included unless it is `0.0.0.0` |
 | `MCP_SESSION_MODE` | `stateless` | `stateless` (default). `stateful` is deprecated and only keeps `Mcp-Session-Id` for 2025-era clients |
 | `MCP_TOKEN_EXPIRY` | `3600` | Token lifetime in seconds (for `required` auth mode) |
@@ -65,7 +66,12 @@ DB2I_PASSWORD=your-password
 | `MCP_AUTH_MODE` | `required` | Authentication mode (see below) |
 | `MCP_AUTH_TOKEN` | - | Static token for `token` auth mode |
 | `MCP_ALLOW_UNAUTHENTICATED_HTTP` | `false` | Allow `MCP_AUTH_MODE=none` when `MCP_HTTP_HOST` is not a loopback address |
-| `MCP_AUTH_ALLOWED_DB_HOSTS` | `DB2I_HOSTNAME` | Comma-separated hosts `POST /auth` may connect to. When unset, only `DB2I_HOSTNAME` is accepted. When both are unset, any host is accepted and a warning is logged |
+| `MCP_AUTH_ALLOWED_DB_HOSTS` | `DB2I_HOSTNAME` | Comma-separated hosts `POST /auth` and the OAuth sign-in may connect to. When unset, only `DB2I_HOSTNAME` is accepted. When both are unset, any host is accepted and a warning is logged |
+| `MCP_OAUTH_ENABLED` | `false` | Built-in OAuth 2.1 authorization server with an IBM i sign-in page, for remote clients such as claude.ai. Requires `MCP_AUTH_MODE=required`. See [Remote Clients (OAuth)](http-transport.md#remote-clients-oauth) |
+| `MCP_PUBLIC_URL` | - | External HTTPS origin of the server (no path). Required with OAuth |
+| `MCP_OAUTH_REDIRECT_URIS` | Claude connector and Cursor callbacks | Comma-separated redirect URIs clients may register. Exact URLs, or prefixes ending in `/*`. Loopback is always accepted |
+| `MCP_OAUTH_SECRET` | random per process | Signing key, at least 32 characters. Set it so client registrations survive a restart |
+| `MCP_OAUTH_REFRESH_EXPIRY` | `604800` | Refresh token lifetime in seconds. `0` turns refresh tokens off |
 
 **Authentication Modes:**
 
@@ -143,10 +149,14 @@ The server reads these files before it accepts connections. A statement that is 
 | `RATE_LIMIT_WINDOW_MS` | `900000` | Rate limit time window in milliseconds (15 min) |
 | `RATE_LIMIT_MAX_REQUESTS` | `100` | Maximum requests allowed per window |
 | `RATE_LIMIT_ENABLED` | `true` | Set to `false` or `0` to disable rate limiting |
-| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `5` | `/auth` attempts allowed per IP address in the window |
-| `AUTH_RATE_LIMIT_WINDOW_MS` | `60000` | `/auth` rate limit window in milliseconds (1 min) |
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `5` | Login attempts allowed per IP address in the window, for `POST /auth` and the OAuth sign-in form together |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | `60000` | Login rate limit window in milliseconds (1 min) |
+| `OAUTH_RATE_LIMIT_MAX_REQUESTS` | `120` | Requests allowed per IP address in the window, across all `/oauth/*` endpoints |
+| `OAUTH_RATE_LIMIT_WINDOW_MS` | `60000` | OAuth endpoint rate limit window in milliseconds (1 min) |
 
-The `/auth` limit guards against password guessing, so it has no off switch and `RATE_LIMIT_ENABLED` does not affect it. Both values must be positive whole numbers, or the HTTP server does not start. Raise the attempt count when several users share one address behind NAT or a proxy.
+The login limit guards against password guessing. `POST /auth` and the OAuth sign-in form share it. The OAuth limit covers registration, sign-in, token and revocation requests, and only applies with `MCP_OAUTH_ENABLED`. Neither limit has an off switch, and `RATE_LIMIT_ENABLED` does not affect them. All four values must be positive whole numbers, or the HTTP server does not start.
+
+Both limits count per client address. Raise them when many users arrive from one address: behind NAT or a proxy, or through a hosted client such as claude.ai, whose requests come from a shared outbound range (`160.79.104.0/21`).
 
 ### Logging
 

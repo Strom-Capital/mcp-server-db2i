@@ -21,6 +21,13 @@ export {
   authMiddleware,
   extractBearerToken,
   createAuthRateLimitMiddleware,
-  clearAuthRateLimit,
+  createOAuthRateLimitMiddleware,
+  type LoginRateLimitedHandler,
   type AuthenticatedRequest,
 } from './authMiddleware.js';
+
+// IBM i login shared by /auth and OAuth
+export { authAllowedDbHosts, authConnection, testCredentials, verifyLogin, type LoginResult } from './login.js';
+
+// OAuth authorization server
+export { createOAuthRouter, resetOAuthState, type OAuthRouterLimits } from './oauth.js';

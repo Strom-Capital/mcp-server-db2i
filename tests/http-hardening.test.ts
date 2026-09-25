@@ -352,7 +352,7 @@ describe('HTTP /auth rate limiting', () => {
     }
   });
 
-  it('resets the count after a successful login', async () => {
+  it('does not count a successful login, and does not forget earlier failures', async () => {
     const { server, baseUrl } = await listen(createHttpApp());
     try {
       await mockDbLogin(false);
@@ -360,13 +360,13 @@ describe('HTTP /auth rate limiting', () => {
         expect((await postAuth(baseUrl)).status).toBe(401);
       }
 
+      // A valid profile must not reset the count used to guess another profile's password
       await mockDbLogin(true);
+      expect((await postAuth(baseUrl)).status).toBe(201);
       expect((await postAuth(baseUrl)).status).toBe(201);
 
       await mockDbLogin(false);
-      for (let i = 0; i < 5; i++) {
-        expect((await postAuth(baseUrl)).status).toBe(401);
-      }
+      expect((await postAuth(baseUrl)).status).toBe(401);
       expect((await postAuth(baseUrl)).status).toBe(429);
     } finally {
       await closeServer(server);
@@ -391,6 +391,27 @@ describe('HTTP /auth rate limiting', () => {
 
       vi.setSystemTime(clock + 120_000);
       expect((await postAuth(baseUrl)).status).toBe(401);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('keys the limit on the forwarded client address when MCP_TRUST_PROXY is set', async () => {
+    process.env.MCP_TRUST_PROXY = '1';
+    await mockDbLogin(false);
+    const { server, baseUrl } = await listen(createHttpApp());
+    const postFrom = (client: string): Promise<Response> =>
+      fetch(`${baseUrl}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': client },
+        body: JSON.stringify({ username: 'user', password: 'wrong' }),
+      });
+    try {
+      for (let i = 0; i < 5; i++) {
+        expect((await postFrom('203.0.113.10')).status).toBe(401);
+      }
+      expect((await postFrom('203.0.113.10')).status).toBe(429);
+      expect((await postFrom('203.0.113.20')).status).toBe(401);
     } finally {
       await closeServer(server);
     }
