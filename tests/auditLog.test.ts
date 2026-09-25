@@ -21,7 +21,7 @@ vi.mock('../src/db/connection.js', () => ({
 import { loadCustomTools } from '../src/customTools/loader.js';
 import { resetCustomTools, setCustomTools } from '../src/customTools/registry.js';
 import { createServer, liveCustomTool, withToolHandler } from '../src/server.js';
-import { closeAuditLog, initAuditLog, writeAudit } from '../src/utils/auditLog.js';
+import { closeAuditLog, initAuditLog, writeAudit, writeAuditEvent } from '../src/utils/auditLog.js';
 import { logger } from '../src/utils/logger.js';
 import { resetRateLimiterInstance } from '../src/utils/rateLimiter.js';
 import type { DB2iConfig } from '../src/config.js';
@@ -102,6 +102,21 @@ describe('audit log writer', () => {
     const [line] = readLines(file);
     expect(line?.sql).toBe('SELECT ORDERNO FROM MYLIB.ORDERS WHERE ORDERNO = ?');
     expect(line?.params).toEqual([1001]);
+  });
+
+  it('writes a shutdown event line', () => {
+    const file = path.join(tempDir(), 'audit.log');
+    process.env.MCP_AUDIT_LOG = file;
+    initAuditLog();
+    writeAuditEvent({ event: 'shutdown', reason: 'stdin closed' });
+    const [line] = readLines(file);
+    expect(line).toEqual({ time: expect.any(String), event: 'shutdown', reason: 'stdin closed' });
+  });
+
+  it('writes no event when the audit log is off', () => {
+    initAuditLog();
+    writeAuditEvent({ event: 'shutdown', reason: 'SIGTERM' });
+    expect(writeSync).not.toHaveBeenCalled();
   });
 
   it('refuses a path that cannot be opened', () => {

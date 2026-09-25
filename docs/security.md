@@ -304,6 +304,8 @@ Resource reads and the `write_query` prompt query the catalog too, so they are r
 
 Hashing is the default because the statement often contains customer values, and an audit file should not become a second copy of the data. Set `MCP_AUDIT_PARAMS=true` only when you need the bound values and the file is protected like a credential.
 
+The audit log also records why the server stopped, as a line such as `{"time":"...","event":"shutdown","reason":"stdin closed"}`. The reason is `SIGINT`, `SIGTERM`, `SIGHUP`, or `stdin closed` (the stdio client went away). A second line with reason `deadline` means shutdown ran past 5 seconds and the process exited while a pool was still closing. Lines with an `event` field have no `tool`.
+
 The pino log is not this record. At `info` it does not keep the SQL, and at `debug` it is a diagnostic trace, not an answer to who ran what. A failed audit write is reported once and does not fail the tool call.
 
 ## Logging Security

@@ -294,6 +294,24 @@ describe.each(probes)('driver contract: $name', (probe) => {
     );
   });
 
+  it('lists a pool whose close is still waiting', async () => {
+    connection.initializePool(baseConfig(probe.name));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    const [pool] = probe.pools();
+    let release: () => void = () => {};
+    pool.close.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve(undefined);
+    }));
+
+    const closing = connection.closeGlobalPool();
+    await vi.waitFor(() => expect(pool.close).toHaveBeenCalled());
+    expect(connection.pendingPoolCloses()).toEqual(['Global connection pool (default)']);
+
+    release();
+    await closing;
+    expect(connection.pendingPoolCloses()).toEqual([]);
+  });
+
   it('keeps session pools separate and closes them by id', async () => {
     connection.initializeSessionPool('session-a');
     connection.initializeSessionPool('session-b');
