@@ -9,5 +9,5 @@
     </g>
     <path d="M184 48C184 62 192 70 206 70C192 70 184 78 184 92C184 78 176 70 162 70C176 70 184 62 184 48Z" fill="#22C55E"/>
   </g>
-  <text x="104" y="62" fill="#0F172A" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="40" font-weight="600">mcp-server-db2i</text>
+  <text x="104" y="62" fill="#0F172A" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="40" font-weight="600">Db2 for i MCP Server</text>
 </svg>
