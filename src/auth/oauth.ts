@@ -291,8 +291,8 @@ const LOGO_SVG =
 const FAVICON_HREF = `data:image/svg+xml,${encodeURIComponent(FAVICON_SVG)}`;
 
 const PAGE_STYLE = `
-  :root { color-scheme: light dark; --fg: #1f2328; --muted: #59636e; --bg: #f6f8fa; --card: #fff; --line: #d1d9e0; --accent: #0969da; --error: #cf222e; }
-  @media (prefers-color-scheme: dark) { :root { --fg: #f0f6fc; --muted: #9198a1; --bg: #0d1117; --card: #151b23; --line: #3d444d; --accent: #4493f8; --error: #f85149; } }
+  :root { color-scheme: light dark; --fg: #1f2328; --muted: #59636e; --bg: #f6f8fa; --card: #fff; --line: #d1d9e0; --accent: #15803d; --error: #cf222e; --on-accent: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f0f6fc; --muted: #9198a1; --bg: #0d1117; --card: #151b23; --line: #3d444d; --accent: #22c55e; --error: #f85149; --on-accent: #052e16; } }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px; }
@@ -305,7 +305,7 @@ const PAGE_STYLE = `
   label { display: block; font-weight: 600; margin: 14px 0 6px; }
   input, select { width: 100%; padding: 9px 11px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 8px; }
   input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button { width: 100%; margin-top: 22px; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
+  button { width: 100%; margin-top: 22px; padding: 10px; font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
   .error { color: var(--error); margin: 0 0 12px; }
   .note { font-size: 13px; margin: 16px 0 0; }
 `;

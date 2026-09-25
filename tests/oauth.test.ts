@@ -212,7 +212,11 @@ describe('OAuth authorization server', () => {
 
   it('publishes protected resource and authorization server metadata', async () => {
     const prm = await (await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`)).json();
-    expect(prm).toMatchObject({ resource: `${PUBLIC_URL}/mcp`, authorization_servers: [PUBLIC_URL] });
+    expect(prm).toMatchObject({
+      resource: `${PUBLIC_URL}/mcp`,
+      authorization_servers: [PUBLIC_URL],
+      resource_name: 'Db2 for i MCP Server',
+    });
 
     const as = await (await fetch(`${baseUrl}/.well-known/oauth-authorization-server`)).json();
     expect(as).toMatchObject({
@@ -318,8 +322,8 @@ describe('OAuth authorization server', () => {
     expect(res.headers.get('referrer-policy')).toBe('same-origin');
     const html = await res.text();
     expect(html).toContain('<svg class="logo"');
-    expect(html).toContain('<span class="brand-name">mcp-server-db2i</span>');
-    expect(html).toContain('<title>Sign in to IBM i · mcp-server-db2i</title>');
+    expect(html).toContain('<span class="brand-name">Db2 for i MCP Server</span>');
+    expect(html).toContain('<title>Sign in to IBM i · Db2 for i MCP Server</title>');
     expect(html).toContain('rel="icon" type="image/svg+xml" href="data:image/svg+xml,');
     expect(html).toContain('<option value="prod" selected>prod</option>');
     expect(html).toContain('<option value="test">test</option>');
