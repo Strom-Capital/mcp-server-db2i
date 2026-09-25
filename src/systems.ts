@@ -21,6 +21,7 @@ import {
   getAllowedSchemas,
   getDbDriver,
   loadConfig,
+  MAX_QUERY_TIMEOUT_SECONDS,
   normalizeSchemaList,
   parseJdbcOptions,
   readSecretFromFile,
@@ -70,6 +71,7 @@ const profileSchema = z.strictObject({
   jdbcOptions: z.string().optional(),
   odbcOptions: z.string().optional(),
   mapepireOptions: z.string().optional(),
+  queryTimeout: z.number().int().min(0).max(MAX_QUERY_TIMEOUT_SECONDS).optional(),
 });
 
 const profilesFileSchema = z.strictObject({
@@ -212,6 +214,7 @@ function toSystem(def: ProfileDef, where: string): SystemProfile {
       jdbcOptions: parseJdbcOptions(def.jdbcOptions),
       odbcOptions: parseJdbcOptions(def.odbcOptions),
       mapepireOptions,
+      queryTimeout: def.queryTimeout,
     },
     allowedSchemas: def.allowedSchemas ? normalizeSchemaList(def.allowedSchemas) : getAllowedSchemas(),
     defaultSchema: schema || undefined,

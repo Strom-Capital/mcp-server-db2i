@@ -68,7 +68,7 @@ graph LR
 
 ## Features
 
-- **Read-only SQL queries** - Execute SELECT statements safely with automatic result limiting
+- **Read-only SQL queries** - Execute SELECT statements safely with automatic result limiting, and a query timeout that cancels runaway statements on the IBM i
 - **Schema inspection** - List all schemas/libraries with optional filtering
 - **Table metadata** - List tables, describe columns, view indexes and constraints
 - **View inspection** - List and explore database views

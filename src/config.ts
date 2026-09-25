@@ -67,6 +67,8 @@ export interface DB2iConfig {
   odbcOptions: Record<string, string>;
   /** Transport settings from DB2I_MAPEPIRE_OPTIONS. Used when driver is mapepire. */
   mapepireOptions?: Record<string, string>;
+  /** Seconds before a statement is cancelled, from a profile's queryTimeout. Unset means QUERY_TIMEOUT. */
+  queryTimeout?: number;
 }
 
 /**
@@ -887,6 +889,27 @@ export function readIntEnvInRange(name: string, fallback: number, min: number, m
     throw new Error(`${name} must be at most ${max}`);
   }
   return value;
+}
+
+/** Longest QUERY_TIMEOUT or profile queryTimeout, in seconds: one day. */
+export const MAX_QUERY_TIMEOUT_SECONDS = 86_400;
+
+/**
+ * Seconds a statement may run before it is cancelled on the IBM i, from
+ * QUERY_TIMEOUT. The default is 120, and 0 turns the limit off.
+ *
+ * @throws Error if the value is not a whole number from 0 to one day
+ */
+export function getQueryTimeoutSeconds(): number {
+  return readIntEnvInRange('QUERY_TIMEOUT', 120, 0, MAX_QUERY_TIMEOUT_SECONDS);
+}
+
+/**
+ * The statement time limit for a system in milliseconds: the profile's
+ * queryTimeout, else QUERY_TIMEOUT. 0 means no limit.
+ */
+export function queryTimeoutMs(config: DB2iConfig): number {
+  return (config.queryTimeout ?? getQueryTimeoutSeconds()) * 1000;
 }
 
 /**

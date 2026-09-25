@@ -9,7 +9,7 @@
 import type { DB2iConfig } from '../../config.js';
 import { buildOdbcConnectionConfig, serializeOdbcConnectionString } from '../../config.js';
 import type { CreatePoolOptions, DbDriver, DbPool, QueryParam } from '../driver.js';
-import { toDb2Timestamp } from '../driver.js';
+import { QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
 
 /** One diagnostic record from the ODBC driver manager. */
 interface OdbcDiagnostic {
@@ -19,6 +19,8 @@ interface OdbcDiagnostic {
 }
 
 type OdbcModule = typeof import('odbc');
+type OdbcPool = Awaited<ReturnType<OdbcModule['pool']>>;
+type Row = Record<string, unknown>;
 
 // Imported once and shared by every pool. Concurrent first queries from several
 // sessions must not each start their own import. A failed import is forgotten.
@@ -75,7 +77,7 @@ export const odbcDriver: DbDriver = {
     const connectionString = serializeOdbcConnectionString(
       buildOdbcConnectionConfig(config, { readOnly: options.readOnly })
     );
-    let pool: Awaited<ReturnType<typeof odbc.pool>>;
+    let pool: OdbcPool;
     try {
       pool = await odbc.pool({
         connectionString,
@@ -88,13 +90,19 @@ export const odbcDriver: DbDriver = {
       throw new Error(describeOdbcError(error), { cause: error });
     }
     return {
-      async query(sql, params) {
+      async query(sql, params, options) {
+        const timeoutMs = options?.timeoutMs ?? 0;
         try {
-          const result = await pool.query<Record<string, unknown>>(sql, bindParams(params));
           // Result is an Array with extra properties (columns, count, ...).
           // Copy the rows so only plain row objects leave the driver.
-          return Array.from(result);
+          if (timeoutMs <= 0) {
+            return Array.from(await pool.query<Row>(sql, bindParams(params)));
+          }
+          return Array.from(await queryWithCancel(pool, sql, params, timeoutMs));
         } catch (error) {
+          if (error instanceof QueryTimeoutError) {
+            throw error;
+          }
           throw new Error(describeOdbcError(error), { cause: error });
         }
       },
@@ -104,3 +112,39 @@ export const odbcDriver: DbDriver = {
     };
   },
 };
+
+/**
+ * Run a statement on a connection of its own, so it can be cancelled with
+ * SQLCancel. The IBM i Access ODBC driver ignores SQL_ATTR_QUERY_TIMEOUT for
+ * elapsed time, but SQLCancel stops the statement on the host and needs no
+ * special authority. The connection goes back to the pool once the statement
+ * has ended, whether it finished, failed or was cancelled.
+ */
+async function queryWithCancel(
+  pool: OdbcPool,
+  sql: string,
+  params: readonly QueryParam[],
+  timeoutMs: number
+): Promise<Row[]> {
+  const connection = await pool.connect();
+  let statement: Awaited<ReturnType<typeof connection.createStatement>> | undefined;
+  const execution = (async () => {
+    statement = await connection.createStatement();
+    await statement.prepare(sql);
+    if (params.length > 0) {
+      await statement.bind(bindParams(params));
+    }
+    return statement.execute<Row>();
+  })();
+  const release = async (): Promise<void> => {
+    await statement?.close().catch(() => undefined);
+    await connection.close().catch(() => undefined);
+  };
+  void execution.then(release, release);
+  return withQueryTimeout(execution, timeoutMs, async () => {
+    if (!statement) {
+      throw new Error('The statement had not started, so there was nothing to cancel');
+    }
+    await statement.cancel();
+  });
+}

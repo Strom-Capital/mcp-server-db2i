@@ -11,9 +11,28 @@ import type { DB2iConfig, DbDriverName } from '../config.js';
 
 export type QueryParam = string | number | Date | null;
 
+export interface DbQueryOptions {
+  /** Milliseconds before the statement is cancelled on the IBM i. 0 means no limit. */
+  timeoutMs: number;
+  /**
+   * Cancel the statement running in another job with QSYS2.CANCEL_SQL. For
+   * drivers that know the job name but cannot cancel on their own connection.
+   */
+  cancelJob?: (jobName: string) => Promise<void>;
+  /**
+   * The statement returns no result set, such as a CALL of a procedure
+   * without one. JT400 fails such a statement when it is read as a query.
+   */
+  noResultSet?: boolean;
+}
+
 export interface DbPool {
   /** Run a statement with positional `?` parameters and return its rows. */
-  query(sql: string, params: readonly QueryParam[]): Promise<Record<string, unknown>[]>;
+  query(
+    sql: string,
+    params: readonly QueryParam[],
+    options?: DbQueryOptions
+  ): Promise<Record<string, unknown>[]>;
   /** Close every connection in the pool. */
   close(): Promise<void>;
 }
@@ -73,6 +92,83 @@ export function loadDriver(name: DbDriverName): Promise<DbDriver> {
     }
   });
   return pending;
+}
+
+/** How long a cancelled statement gets to end before the caller stops waiting. */
+export const CANCEL_GRACE_MS = 10_000;
+
+/**
+ * A statement ran past its time limit. `cancelled` is false when the cancel
+ * failed, in which case the statement may still be running on the IBM i.
+ */
+export class QueryTimeoutError extends Error {
+  constructor(
+    readonly timeoutMs: number,
+    readonly cancelled: boolean,
+    options?: ErrorOptions
+  ) {
+    const seconds = Math.round(timeoutMs / 100) / 10;
+    const hint = 'Narrow the filter, or add a condition on an indexed column.';
+    super(
+      cancelled
+        ? `Query cancelled on the IBM i after ${seconds} seconds (QUERY_TIMEOUT). ${hint}`
+        : `Query stopped after ${seconds} seconds (QUERY_TIMEOUT), but it could not be cancelled and may still be running on the IBM i. ${hint}`,
+      options
+    );
+    this.name = 'QueryTimeoutError';
+  }
+}
+
+/**
+ * Settle with `execution`, unless it runs past `timeoutMs`. Then call `cancel`
+ * and reject with a QueryTimeoutError, even when the cancelled statement
+ * returns rows: a cancelled statement's result is not the answer.
+ *
+ * After a successful cancel the rejection waits up to CANCEL_GRACE_MS for the
+ * statement to end, so its connection is idle again before the caller moves on.
+ * A failed cancel rejects at once. `execution` is always observed, so a late
+ * failure never becomes an unhandled rejection.
+ */
+export function withQueryTimeout<T>(
+  execution: Promise<T>,
+  timeoutMs: number,
+  cancel: () => Promise<void>
+): Promise<T> {
+  if (timeoutMs <= 0) {
+    return execution;
+  }
+  return new Promise<T>((resolve, reject) => {
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      cancel().then(
+        () => {
+          const fail = (): void => reject(new QueryTimeoutError(timeoutMs, true));
+          const grace = setTimeout(fail, CANCEL_GRACE_MS);
+          const ended = (): void => {
+            clearTimeout(grace);
+            fail();
+          };
+          execution.then(ended, ended);
+        },
+        (error: unknown) => reject(new QueryTimeoutError(timeoutMs, false, { cause: error }))
+      );
+    }, timeoutMs);
+    execution.then(
+      (value) => {
+        if (!timedOut) {
+          clearTimeout(timer);
+          resolve(value);
+        }
+      },
+      (error: unknown) => {
+        if (!timedOut) {
+          clearTimeout(timer);
+          reject(error);
+        }
+      }
+    );
+  });
 }
 
 /**

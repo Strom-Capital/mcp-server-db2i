@@ -95,6 +95,7 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 |----------|---------|-------------|
 | `QUERY_DEFAULT_LIMIT` | `1000` | Default number of rows returned by queries |
 | `QUERY_MAX_LIMIT` | `10000` | Maximum rows allowed (caps user-provided limits) |
+| `QUERY_TIMEOUT` | `120` | Seconds a statement may run before it is cancelled on the IBM i. Applies to every statement a tool runs, including catalog queries. `0` turns the limit off; at most `86400`. A profile's `queryTimeout` overrides it. How each driver cancels is in [Security](security.md#query-timeout) |
 | `QUERY_PARSE_CHECK` | on | `execute_query` and business SQL tools parse the statement with `QSYS2.PARSE_STATEMENT` before running it. One extra round trip, often a few hundred milliseconds. Business tools cache that result. Set to `false` or `0` to turn the check off |
 
 ### Tool Selection
@@ -212,6 +213,7 @@ MCP_TLS_KEY_PATH=/certs/server.key
 # Query limits
 QUERY_DEFAULT_LIMIT=1000
 QUERY_MAX_LIMIT=10000
+QUERY_TIMEOUT=120
 
 # Libraries execute_query and the SQL service tools may reference (unset = no restriction)
 # QUERY_ALLOWED_SCHEMAS=MYLIB,QSYS2
@@ -302,7 +304,7 @@ If neither matches, the connection is refused and the error shows the key's fing
 | `maxJobs` | `2` | Most Mapepire jobs (JVMs) one pool runs at a time |
 | `idleTimeout` | `600000` | Milliseconds before an idle job is closed |
 | `startupTimeout` | `60000` | Milliseconds to wait for a job to start |
-| `requestTimeout` | `120000` | Milliseconds to wait for one query or fetch to answer. A job that does not answer in time is closed |
+| `requestTimeout` | `120000` | Milliseconds to wait for one query or fetch to answer. A job that does not answer in time is closed, which does not stop its statement on the IBM i. While [`QUERY_TIMEOUT`](#query-limits) is on, a request is given at least that limit plus 10 seconds, so the statement is cancelled first |
 
 ```env
 DB2I_DRIVER=mapepire
@@ -398,6 +400,7 @@ profiles:
 | `jdbcOptions` | No | - | Like `DB2I_JDBC_OPTIONS`, for this system |
 | `odbcOptions` | No | - | Like `DB2I_ODBC_OPTIONS`, for this system |
 | `mapepireOptions` | No | - | Like `DB2I_MAPEPIRE_OPTIONS`, for this system |
+| `queryTimeout` | No | `QUERY_TIMEOUT` | Seconds a statement on this system may run before it is cancelled. `0` turns the limit off for this system |
 
 *Set `username` or `usernameFile`, and `password` or `passwordFile`. A `mapepire` profile with `privateKeyFile` in `mapepireOptions` needs no password. A path may itself be a `"${ENV_VAR}"` reference. Quote every reference: inside a `{ }` map YAML reads a bare `${...}` as another map.
 

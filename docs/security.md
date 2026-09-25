@@ -9,6 +9,7 @@ This guide covers security features and best practices for mcp-server-db2i.
 - **No credentials in code**: All sensitive data via environment variables or file-based secrets
 - **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
 - **Result limiting**: Default limit of 1000 rows, configurable max limit (default: 10000)
+- **Query timeout**: A statement that runs longer than `QUERY_TIMEOUT` (default 120 seconds) is cancelled on the IBM i
 - **Rate limiting**: Configurable request throttling to prevent abuse (100 req/15 min default)
 - **Structured logging**: Automatic redaction of sensitive fields like passwords
 - **HTTP auth**: `required` (per-user credentials via `/auth`), `token` (static bearer), or `none` (trusted networks)
@@ -172,6 +173,24 @@ Query results are automatically limited to prevent memory exhaustion:
 |----------|---------|-------------|
 | `QUERY_DEFAULT_LIMIT` | `1000` | Applied when no limit specified |
 | `QUERY_MAX_LIMIT` | `10000` | Maximum allowed (caps user limits) |
+
+### Query Timeout
+
+The row limit caps what a query returns, not the work the IBM i does to produce it. A `SELECT` that scans a large table, or joins on columns without an index, can hold a CPU for a long time. The IBM i also keeps running a statement after its client disconnects or is killed. `QUERY_TIMEOUT` (seconds, default `120`) cancels such a statement on the IBM i, not only on the client side.
+
+It applies to every statement a tool runs: `execute_query`, business SQL tools, the catalog tools and `get_object_ddl`. A profile can set its own `queryTimeout`, and `0` turns the limit off. The tool returns an error that says the query was cancelled after N seconds and suggests narrowing the filter. The connection goes back to the pool.
+
+How each driver cancels:
+
+| Driver | How | Authority it needs | Extra cost |
+|--------|-----|--------------------|------------|
+| `odbc` | `SQLCancel` on the statement's own connection. The IBM i Access ODBC driver ignores `SQL_ATTR_QUERY_TIMEOUT` for elapsed time, so the server does not use it | None beyond the connection's own | None measurable |
+| `jt400` | Runs each statement in a transaction to learn its job (`QSYS2.JOB_NAME`), then calls `QSYS2.CANCEL_SQL` for that job | *JOBCTL special authority or the `QIBM_DB_SQLADM` function usage | About 40 ms per statement |
+| `mapepire` | Calls `QSYS2.CANCEL_SQL` for the job the Mapepire server reported when it connected | *JOBCTL special authority or the `QIBM_DB_SQLADM` function usage | None measurable |
+
+All three cancel by elapsed time, not by the optimizer's estimate. A read-only connection rejects `CALL QSYS2.CANCEL_SQL`, so jt400 and mapepire make that call on the separate connection `get_object_ddl` uses, which is not marked read-only and runs only fixed statements. Once a statement has used half its limit, that connection is opened in the background, so the cancel does not wait for a new Mapepire job to start.
+
+If the cancel fails, for example because the user profile lacks that authority, the tool still returns after the limit, with an error saying the statement could not be cancelled and may still be running on the IBM i. The server logs a warning the first time this happens on each system. The mapepire driver then closes the job, which frees the client but does not stop the statement on the IBM i; it runs until it finishes. With a low-privilege profile, the `odbc` driver is the one that cancels on the IBM i.
 
 ### Metadata-Only Mode
 
@@ -344,7 +363,7 @@ LOG_LEVEL=info
 - [ ] With `MCP_OAUTH_ENABLED`, set `MCP_OAUTH_SECRET`, serve `MCP_PUBLIC_URL` over HTTPS, and keep `MCP_OAUTH_REDIRECT_URIS` to the clients you use
 - [ ] Leave `access` (JDBC) and `CONNTYPE` (ODBC) unset so the connection stays read only, or treat an explicit value as a deliberate override
 - [ ] Set appropriate rate limits
-- [ ] Configure query limits
+- [ ] Configure query limits, and keep `QUERY_TIMEOUT` on. With `jt400` or `mapepire`, check that the user profile can run `QSYS2.CANCEL_SQL`, or use `odbc`
 - [ ] Disable tools clients don't need (e.g. `MCP_TOOLS_DISABLED=execute_query`)
 - [ ] Set `QUERY_ALLOWED_SCHEMAS` when `execute_query` or business SQL tools are enabled, and limit the IBM i user profile to those libraries
 - [ ] Use `info` or higher log level

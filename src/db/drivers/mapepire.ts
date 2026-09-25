@@ -20,8 +20,8 @@ import type { SQLJob } from '@ibm/mapepire-js';
 import type { Client, ConnectConfig } from 'ssh2';
 import type { DB2iConfig, MapepireSettings, MapepireSshSettings } from '../../config.js';
 import { buildMapepireJdbcOptions, resolveMapepireSettings } from '../../config.js';
-import type { CreatePoolOptions, DbDriver, DbPool, QueryParam } from '../driver.js';
-import { toDb2Timestamp } from '../driver.js';
+import type { CreatePoolOptions, DbDriver, DbPool, DbQueryOptions, QueryParam } from '../driver.js';
+import { CANCEL_GRACE_MS, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
 import { createHostKeyVerifier } from './sshHostKey.js';
 
 type MapepireModule = typeof import('@ibm/mapepire-js');
@@ -222,10 +222,11 @@ export class JobPool implements DbPool {
     this.sweeper.unref();
   }
 
-  async query(sql: string, params: readonly QueryParam[]): Promise<Row[]> {
+  async query(sql: string, params: readonly QueryParam[], options?: DbQueryOptions): Promise<Row[]> {
     if (this.closed) {
       throw new Error('Mapepire pool is closed');
     }
+    const timeoutMs = options?.timeoutMs ?? 0;
     const slot = this.pick();
     slot.active += 1;
     try {
@@ -235,14 +236,31 @@ export class JobPool implements DbPool {
       } catch (error) {
         throw new Error(describeMapepireError(error), { cause: error });
       }
+      // With a statement time limit, a request may take that long plus the
+      // time the cancel needs, so the cancel runs before requestTimeout fires.
+      const requestTimeout =
+        timeoutMs > 0
+          ? Math.max(this.options.requestTimeout, timeoutMs + CANCEL_GRACE_MS)
+          : this.options.requestTimeout;
       try {
-        return await runOnJob(job, sql, params, this.options.requestTimeout);
+        return await withQueryTimeout(runOnJob(job, sql, params, requestTimeout), timeoutMs, async () => {
+          const cancelJob = options?.cancelJob;
+          if (!cancelJob || !job.id) {
+            throw new Error('No connection is available to cancel the statement');
+          }
+          await cancelJob(job.id);
+        });
       } catch (error) {
         // A timed-out job may still be running the statement, and a job whose
-        // server process exited stays "busy" in mapepire-js. Neither may be reused.
-        if (error instanceof RequestTimeoutError || !jobIsUsable(job)) {
+        // server process exited stays "busy" in mapepire-js. Neither may be
+        // reused. A job whose statement was cancelled is idle again.
+        const cancelled = error instanceof QueryTimeoutError && error.cancelled;
+        if (!cancelled && (error instanceof RequestTimeoutError || error instanceof QueryTimeoutError || !jobIsUsable(job))) {
           this.drop(slot);
           void job.close().catch(() => undefined);
+        }
+        if (error instanceof QueryTimeoutError) {
+          throw error;
         }
         throw new Error(describeMapepireError(error), { cause: error });
       }
