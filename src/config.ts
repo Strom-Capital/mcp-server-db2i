@@ -965,6 +965,7 @@ export const TOOL_NAMES = [
   'get_object_ddl',
   'get_related_objects',
   'get_journal_info',
+  'index_advice',
   'profile_table',
   'get_business_context',
   'search_ibmi_services',

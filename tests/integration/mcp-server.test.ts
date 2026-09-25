@@ -117,6 +117,7 @@ describe('MCP Server Integration', () => {
       expect(toolNames).toContain('get_object_ddl');
       expect(toolNames).toContain('get_related_objects');
       expect(toolNames).toContain('get_journal_info');
+      expect(toolNames).toContain('index_advice');
       expect(toolNames).toContain('profile_table');
       expect(toolNames).toContain('search_ibmi_services');
     });

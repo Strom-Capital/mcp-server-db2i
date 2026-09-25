@@ -17,7 +17,8 @@ With the server connected to Cursor or Claude Code, the agent does the discovery
 2. `describe_table` and `get_table_constraints` return the columns, types, and keys, so the agent knows that `MYLIB.ORDERS` joins to `MYLIB.ORDERHDR` on `ORDERNO`.
 3. The agent drafts the SQL and checks it with `validate_query`, which catches a wrong column or library name before anything runs.
 4. `execute_query` runs the statement against a few sample rows, so the response types match the real data.
-5. The agent writes the endpoint: the route, bound parameters, the SQL, and the response model.
+5. `index_advice` on the tables the endpoint reads shows whether the optimizer keeps asking for an index on the same keys. If it builds temporary indexes for them, every call to the endpoint may pay for a table scan. A person decides whether to add the index.
+6. The agent writes the endpoint: the route, bound parameters, the SQL, and the response model.
 
 A prompt that covers the whole flow:
 
@@ -35,6 +36,7 @@ The agent can do most of that groundwork:
 - **Build the staging tables.** `get_object_ddl` returns the DDL for a source table, which the agent translates to the target platform's types.
 - **Map the dependencies.** `get_related_objects` lists the views, indexes, and logical files that depend on a source table. That often points to a view someone already built for reporting.
 - **Draft the incremental extract.** The agent finds a change date or a sequence column and writes a watermark query, for example every `MYLIB.ORDERHDR` row changed since the last run.
+- **Check the extract's access paths.** `index_advice` lists the indexes the optimizer has asked for on the source tables, ranked by how often it built temporary indexes instead. A watermark query on a change date with no index behind it scans the whole file on every run.
 - **Map legacy codes to dimensions.** Status codes, order types, and warehouse codes become readable dimension attributes, using the annotations as the source of truth.
 
 A prompt to start with:

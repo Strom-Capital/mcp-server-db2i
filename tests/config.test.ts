@@ -1110,6 +1110,13 @@ describe('Config Module', () => {
       expect(getEnabledTools()).toEqual(['describe_table', 'get_journal_info']);
     });
 
+    it('should enable and disable index_advice by name', () => {
+      process.env.MCP_TOOLS_ENABLED = 'index_advice,describe_table';
+      expect(getEnabledTools()).toEqual(['describe_table', 'index_advice']);
+      process.env.MCP_TOOLS_DISABLED = 'index_advice';
+      expect(getEnabledTools()).toEqual(['describe_table']);
+    });
+
     it('should apply the denylist after the allowlist', () => {
       process.env.MCP_TOOLS_ENABLED = 'execute_query,list_tables';
       process.env.MCP_TOOLS_DISABLED = 'execute_query';
