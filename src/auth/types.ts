@@ -69,6 +69,8 @@ export interface TokenSession {
   config: DB2iConfig;
   /** System the credentials were checked on. Every call from this token runs there. */
   system: string;
+  /** OAuth client the token was issued to. Unset for tokens from POST /auth. */
+  clientId?: string;
   /** When the token was created */
   createdAt: Date;
   /** When the token expires */

@@ -212,9 +212,24 @@ Browser requests with an `Origin` header must be same-origin or listed in `MCP_C
 
 See [HTTP Transport](http-transport.md) for the request shapes. Protocol sessions (`Mcp-Session-Id`) are deprecated; pools stay isolated by auth token in the default stateless mode.
 
+### OAuth Authorization Server
+
+`MCP_OAUTH_ENABLED=true` adds a sign-in page and an OAuth 2.1 authorization server, so remote clients such as claude.ai can connect. See [Remote Clients (OAuth)](http-transport.md#remote-clients-oauth). The design choices that matter for security:
+
+- **Users sign in as themselves.** The page asks for an IBM i user profile and password and tests them on the chosen system. The token carries those credentials, like a `/auth` token, so object authority on the IBM i still applies. There is no shared service profile.
+- **The page is served by this server only.** It sends `Content-Security-Policy` with `default-src 'none'`, `frame-ancestors 'none'` and a `form-action` limited to this origin and the client's redirect origin, plus `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. The password is never echoed back, and a failed sign-in shows a generic message, not the driver error.
+- **Redirect URIs are allowlisted.** Dynamic registration accepts only URIs from `MCP_OAUTH_REDIRECT_URIS` (default: the Claude connector callbacks) and loopback. This stops a third party from registering a client that sends codes to their own site. The page names the client and the host it returns to, and asks the user to continue only if they started the connection. Prefix entries must end in `/*`, and URIs are compared after normalization.
+- **PKCE is mandatory.** Only `S256` is accepted. Codes are single use and expire after 60 seconds. The `resource` parameter, when sent, must name this server (RFC 8707).
+- **Signed state instead of stored state.** Client IDs and the pending sign-in request are HMAC-SHA256 signed with `MCP_OAUTH_SECRET`, each for its own purpose, and every registration gets a random nonce. A confidential client's secret is derived from its ID with the same key. Rotating `MCP_OAUTH_SECRET` invalidates every registration and every open sign-in page.
+- **Refresh tokens rotate and re-check.** Each refresh token works once. Each refresh opens a test connection with the stored credentials, so a disabled profile or a new password ends the grant. `MCP_OAUTH_REFRESH_EXPIRY=0` turns refresh tokens off, and users then sign in again when the access token expires (`MCP_TOKEN_EXPIRY`).
+- **Everything stays in memory.** Credentials, codes and refresh tokens are never written to disk. A restart signs everyone out.
+- **TLS is required** for `MCP_PUBLIC_URL`, except on loopback. Terminate TLS at a reverse proxy or tunnel and bind the server to loopback behind it.
+
+Before exposing the server on the internet, set `QUERY_ALLOWED_SCHEMAS` or a profile `allowedSchemas`, keep `MCP_TOOLS_ENABLED` to what users need, and limit what the IBM i user profiles can read.
+
 ### Auth Endpoint Rate Limiting
 
-The `/auth` endpoint has additional rate limiting to prevent brute-force attacks:
+The `/auth` endpoint and the OAuth sign-in form share additional rate limiting to prevent brute-force attacks:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
@@ -317,6 +332,7 @@ LOG_LEVEL=info
 - [ ] Set `secure=true` in `DB2I_JDBC_OPTIONS` (or `SSL=1` in `DB2I_ODBC_OPTIONS`) after the IBM i host servers are configured for SSL
 - [ ] With the `mapepire` driver, pin `hostKey` or keep the host in `known_hosts`, and leave `insecureHostKey` unset
 - [ ] Set `MCP_ALLOWED_HOSTS` to the public hostname when the HTTP server is not loopback-only
+- [ ] With `MCP_OAUTH_ENABLED`, set `MCP_OAUTH_SECRET`, serve `MCP_PUBLIC_URL` over HTTPS, and keep `MCP_OAUTH_REDIRECT_URIS` to the clients you use
 - [ ] Leave `access` (JDBC) and `CONNTYPE` (ODBC) unset so the connection stays read only, or treat an explicit value as a deliberate override
 - [ ] Set appropriate rate limits
 - [ ] Configure query limits

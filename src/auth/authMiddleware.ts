@@ -3,7 +3,8 @@
  * 
  * Express middleware to validate Bearer tokens on protected routes.
  * Supports multiple authentication modes:
- * - 'required': Full /auth flow with per-user DB credentials (default)
+ * - 'required': Full /auth flow with per-user DB credentials (default).
+ *   With MCP_OAUTH_ENABLED, 401 responses carry a WWW-Authenticate challenge.
  * - 'token': Pre-shared static token, uses env DB credentials
  * - 'none': No authentication required, uses env DB credentials
  */
@@ -122,6 +123,15 @@ export function authMiddleware(
   const authHeader = req.headers.authorization;
   const token = extractBearerToken(authHeader);
 
+  // With the OAuth server on, point clients at the protected resource metadata (RFC 9728)
+  if (httpConfig.oauth) {
+    res.setHeader(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="${httpConfig.oauth.publicUrl}/.well-known/oauth-protected-resource/mcp"` +
+        (token ? ', error="invalid_token"' : '')
+    );
+  }
+
   if (!token) {
     log.debug(
       { path: req.path, method: req.method },
@@ -219,6 +229,25 @@ export function authRateLimitMiddleware(
   res: Response,
   next: NextFunction
 ): void {
+  const retryAfter = consumeAuthAttempt(req);
+  if (retryAfter !== null) {
+    res.status(429).json({
+      error: 'too_many_requests',
+      error_description: `Too many authentication attempts. Try again in ${retryAfter} seconds.`,
+      retry_after: retryAfter,
+    });
+    return;
+  }
+  next();
+}
+
+/**
+ * Count one login attempt against the caller's IP, sharing the /auth budget.
+ * For handlers that answer a rate-limited request themselves, such as the OAuth login page.
+ *
+ * @returns null when the attempt is allowed, else seconds until the next one is
+ */
+export function consumeAuthAttempt(req: Request): number | null {
   const ip = getClientIp(req);
   const now = Date.now();
   if (authAttempts.size >= AUTH_ATTEMPTS_SWEEP_SIZE) {
@@ -232,18 +261,12 @@ export function authRateLimitMiddleware(
   }
 
   if (current.count >= AUTH_RATE_LIMIT.maxAttempts) {
-    const retryAfter = Math.ceil((current.resetAt - now) / 1000);
     log.warn({ ip, attempts: current.count }, 'Auth rate limit exceeded');
-    res.status(429).json({
-      error: 'too_many_requests',
-      error_description: `Too many authentication attempts. Try again in ${retryAfter} seconds.`,
-      retry_after: retryAfter,
-    });
-    return;
+    return Math.ceil((current.resetAt - now) / 1000);
   }
 
   current.count++;
-  next();
+  return null;
 }
 
 /**
@@ -252,4 +275,11 @@ export function authRateLimitMiddleware(
 export function clearAuthRateLimit(req: Request): void {
   const ip = getClientIp(req);
   authAttempts.delete(ip);
+}
+
+/**
+ * Forget all login attempts. Used by tests.
+ */
+export function resetAuthRateLimits(): void {
+  authAttempts.clear();
 }

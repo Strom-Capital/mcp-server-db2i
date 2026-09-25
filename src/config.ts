@@ -27,8 +27,14 @@
  * - MCP_ALLOWED_HOSTS: Extra Host header names, added to loopback (comma-separated)
  * - MCP_ALLOW_UNAUTHENTICATED_HTTP: Allow MCP_AUTH_MODE=none on a non-loopback bind
  * - MCP_AUTH_ALLOWED_DB_HOSTS: Hosts /auth may open a database connection to
+ * - MCP_OAUTH_ENABLED: Built-in OAuth authorization server (requires MCP_AUTH_MODE=required)
+ * - MCP_PUBLIC_URL: External origin of the server, the OAuth issuer
+ * - MCP_OAUTH_REDIRECT_URIS: Redirect URIs OAuth clients may register
+ * - MCP_OAUTH_SECRET: Key that signs OAuth client IDs and login requests
+ * - MCP_OAUTH_REFRESH_EXPIRY: OAuth refresh token lifetime in seconds (default: 7 days)
  */
 
+import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -1136,6 +1142,115 @@ export interface HttpConfig {
    * nor DB2I_HOSTNAME is set, so any host is accepted.
    */
   authAllowedDbHosts: string[] | null;
+  /** Built-in OAuth authorization server. Null when MCP_OAUTH_ENABLED is off. */
+  oauth: OAuthConfig | null;
+}
+
+/**
+ * Built-in OAuth 2.1 authorization server for remote MCP clients.
+ */
+export interface OAuthConfig {
+  /** External base URL (origin only). Issuer of the authorization server. */
+  publicUrl: string;
+  /** Protected resource identifier: `${publicUrl}/mcp`. */
+  resource: string;
+  /** Redirect URIs clients may register: exact URLs, or prefixes ending in `*`. */
+  redirectUris: string[];
+  /** Key that signs client IDs and login requests. */
+  secret: Buffer;
+  /** True when MCP_OAUTH_SECRET is unset and the key is random for this process. */
+  ephemeralSecret: boolean;
+  /** Refresh token lifetime in seconds. 0 turns refresh tokens off. */
+  refreshExpiry: number;
+}
+
+/** Callbacks of the Claude web and desktop connectors. */
+export const DEFAULT_OAUTH_REDIRECT_URIS = [
+  'https://claude.ai/api/mcp/auth_callback',
+  'https://claude.com/api/mcp/auth_callback',
+];
+
+/** Random signing key used when MCP_OAUTH_SECRET is unset. Stable for the process. */
+let ephemeralOAuthSecret: Buffer | undefined;
+
+/**
+ * Read the OAuth authorization server settings.
+ *
+ * - MCP_OAUTH_ENABLED: true or 1 turns it on. Requires MCP_AUTH_MODE=required.
+ * - MCP_PUBLIC_URL: external origin, https unless loopback. Required.
+ * - MCP_OAUTH_REDIRECT_URIS: comma-separated redirect URIs or `prefix*` entries.
+ * - MCP_OAUTH_SECRET: signing key, at least 32 characters.
+ * - MCP_OAUTH_REFRESH_EXPIRY: refresh token lifetime in seconds (default: 7 days).
+ *
+ * @param authMode - The configured MCP_AUTH_MODE
+ * @returns The settings, or null when OAuth is off
+ * @throws Error when OAuth is on and a setting is missing or invalid
+ */
+export function getOAuthConfig(authMode: AuthMode): OAuthConfig | null {
+  const enabled = process.env.MCP_OAUTH_ENABLED?.trim().toLowerCase();
+  if (enabled !== 'true' && enabled !== '1') {
+    return null;
+  }
+
+  if (authMode !== 'required') {
+    throw new Error('MCP_OAUTH_ENABLED requires MCP_AUTH_MODE=required');
+  }
+
+  const rawUrl = process.env.MCP_PUBLIC_URL?.trim();
+  if (!rawUrl) {
+    throw new Error('MCP_PUBLIC_URL is required when MCP_OAUTH_ENABLED is set, for example https://mcp.example.com');
+  }
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`MCP_PUBLIC_URL is not a valid URL: "${rawUrl}"`);
+  }
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackHost(url.hostname))) {
+    throw new Error('MCP_PUBLIC_URL must use https, except for a loopback address');
+  }
+  if ((url.pathname !== '/' && url.pathname !== '') || url.search || url.hash || url.username || url.password) {
+    throw new Error('MCP_PUBLIC_URL must be an origin only, without a path, query or credentials');
+  }
+  const publicUrl = url.origin;
+
+  const redirectUris = (process.env.MCP_OAUTH_REDIRECT_URIS ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  for (const entry of redirectUris) {
+    try {
+      new URL(entry.endsWith('*') ? entry.slice(0, -1) : entry);
+    } catch {
+      throw new Error(`MCP_OAUTH_REDIRECT_URIS has an invalid URL: "${entry}"`);
+    }
+    // Without a slash, https://app.example.com* would also match https://app.example.com.evil.net
+    if (entry.endsWith('*') && !entry.endsWith('/*')) {
+      throw new Error(`MCP_OAUTH_REDIRECT_URIS prefix must end with "/*": "${entry}"`);
+    }
+  }
+
+  const rawSecret = process.env.MCP_OAUTH_SECRET?.trim();
+  if (rawSecret && rawSecret.length < 32) {
+    throw new Error('MCP_OAUTH_SECRET must be at least 32 characters. Generate with: openssl rand -hex 32');
+  }
+  if (!rawSecret) {
+    ephemeralOAuthSecret ??= crypto.randomBytes(32);
+  }
+
+  const refreshExpiry = readIntEnv('MCP_OAUTH_REFRESH_EXPIRY', 7 * 24 * 3600);
+  if (refreshExpiry < 0) {
+    throw new Error('MCP_OAUTH_REFRESH_EXPIRY must be 0 or more seconds');
+  }
+
+  return {
+    publicUrl,
+    resource: `${publicUrl}/mcp`,
+    redirectUris: redirectUris.length > 0 ? redirectUris : DEFAULT_OAUTH_REDIRECT_URIS,
+    secret: rawSecret ? Buffer.from(rawSecret, 'utf8') : (ephemeralOAuthSecret as Buffer),
+    ephemeralSecret: !rawSecret,
+    refreshExpiry,
+  };
 }
 
 /**
@@ -1205,7 +1320,7 @@ export function isLoopbackHost(host: string): boolean {
  * Loopback is always included. The bind address is included unless it is
  * 0.0.0.0 or ::. MCP_ALLOWED_HOSTS adds more names.
  */
-function getAllowedHosts(bindHost: string): string[] {
+function getAllowedHosts(bindHost: string, publicUrl?: string): string[] {
   const configured = (process.env.MCP_ALLOWED_HOSTS ?? '')
     .split(',')
     .map((entry) => hostnameOf(entry))
@@ -1218,6 +1333,9 @@ function getAllowedHosts(bindHost: string): string[] {
   }
   for (const host of configured) {
     allowed.add(host);
+  }
+  if (publicUrl) {
+    allowed.add(new URL(publicUrl).hostname.replace(/^\[|\]$/g, '').toLowerCase());
   }
   return [...allowed];
 }
@@ -1353,6 +1471,7 @@ export function getHttpConfig(): HttpConfig {
   }
 
   const host = process.env.MCP_HTTP_HOST || '127.0.0.1';
+  const oauth = getOAuthConfig(authMode);
 
   return {
     transport: getTransportMode(),
@@ -1365,9 +1484,10 @@ export function getHttpConfig(): HttpConfig {
     tokenExpiry: readIntEnv('MCP_TOKEN_EXPIRY', 3600),
     maxSessions: readIntEnv('MCP_MAX_SESSIONS', 100),
     corsOrigins: getCorsOrigins(),
-    allowedHosts: getAllowedHosts(host),
+    allowedHosts: getAllowedHosts(host, oauth?.publicUrl),
     allowUnauthenticatedHttp: allowUnauthenticatedHttp(),
     authAllowedDbHosts: getAuthAllowedDbHosts(),
+    oauth,
   };
 }
 

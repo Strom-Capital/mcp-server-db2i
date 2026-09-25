@@ -65,6 +65,12 @@ services:
       - MCP_ALLOW_UNAUTHENTICATED_HTTP=${MCP_ALLOW_UNAUTHENTICATED_HTTP:-false}
       # Hosts POST /auth may connect to. Empty uses DB2I_HOSTNAME only.
       - MCP_AUTH_ALLOWED_DB_HOSTS=${MCP_AUTH_ALLOWED_DB_HOSTS:-}
+      # OAuth for remote clients such as claude.ai (required mode only)
+      - MCP_OAUTH_ENABLED=${MCP_OAUTH_ENABLED:-false}
+      - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-}
+      - MCP_OAUTH_REDIRECT_URIS=${MCP_OAUTH_REDIRECT_URIS:-}
+      - MCP_OAUTH_SECRET=${MCP_OAUTH_SECRET:-}
+      - MCP_OAUTH_REFRESH_EXPIRY=${MCP_OAUTH_REFRESH_EXPIRY:-604800}
       
       # CORS allowed origins (comma-separated, * for all, empty for same-origin only)
       - MCP_CORS_ORIGINS=${MCP_CORS_ORIGINS:-}

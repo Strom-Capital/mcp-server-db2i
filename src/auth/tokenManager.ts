@@ -61,12 +61,14 @@ class TokenManager {
    * @param config - DB2i configuration for this session
    * @param durationSeconds - Optional custom token duration
    * @param system - System the credentials were checked on
+   * @param clientId - OAuth client the token is issued to, if any
    * @returns The generated token and session info
    */
   createSession(
     config: DB2iConfig,
     durationSeconds?: number,
-    system: string = DEFAULT_SYSTEM_NAME
+    system: string = DEFAULT_SYSTEM_NAME,
+    clientId?: string
   ): { token: string; expiresAt: Date; expiresIn: number } {
     const httpConfig = getHttpConfig();
     
@@ -87,6 +89,7 @@ class TokenManager {
       token,
       config,
       system,
+      clientId,
       createdAt: now,
       expiresAt,
       lastUsedAt: now,

@@ -1,0 +1,742 @@
+/**
+ * Built-in OAuth 2.1 authorization server for remote MCP clients.
+ *
+ * Lets clients such as claude.ai custom connectors reach the HTTP transport
+ * without a static header. The user signs in with their own IBM i user profile
+ * on a page this server renders, and the access token is the same in-memory
+ * token POST /auth issues, so every query runs with that user's authority.
+ *
+ * Endpoints:
+ * - GET  /.well-known/oauth-protected-resource[/mcp]  RFC 9728
+ * - GET  /.well-known/oauth-authorization-server       RFC 8414
+ * - POST /oauth/register                               RFC 7591, stateless
+ * - GET  /oauth/authorize, POST /oauth/authorize       login page, code + PKCE (S256)
+ * - POST /oauth/token                                  authorization_code, refresh_token
+ * - POST /oauth/revoke                                 RFC 7009
+ *
+ * Client IDs are the registered metadata signed with MCP_OAUTH_SECRET, so
+ * registration keeps no state and survives a restart when the secret is set.
+ * Codes and refresh tokens live in memory.
+ */
+
+import crypto from 'node:crypto';
+import express, { type Request, type Response, type Router } from 'express';
+
+import { getHttpConfig, isLoopbackHost, type DB2iConfig, type OAuthConfig } from '../config.js';
+import { defaultSystem, getSystems } from '../systems.js';
+import { createChildLogger } from '../utils/logger.js';
+import { clearAuthRateLimit, consumeAuthAttempt } from './authMiddleware.js';
+import { testCredentials, verifyLogin } from './login.js';
+import { getTokenManager } from './tokenManager.js';
+
+const log = createChildLogger({ component: 'oauth' });
+
+/** How long an authorization code may wait for the token request. */
+const CODE_TTL_MS = 60_000;
+/** How long a rendered login page stays valid. */
+const LOGIN_TTL_MS = 10 * 60_000;
+/** Codes waiting for exchange, across all clients. */
+const MAX_PENDING_CODES = 1000;
+const MAX_REDIRECT_URIS = 10;
+const MAX_REDIRECT_URI_LENGTH = 2048;
+const MAX_CLIENT_NAME_LENGTH = 100;
+const MAX_SIGNED_VALUE_LENGTH = 16384;
+
+const TOKEN_AUTH_METHODS = ['none', 'client_secret_basic', 'client_secret_post'] as const;
+type TokenAuthMethod = (typeof TOKEN_AUTH_METHODS)[number];
+const GRANT_TYPES = ['authorization_code', 'refresh_token'] as const;
+
+/** S256 challenge: base64url of a SHA-256 digest, no padding. */
+const CODE_CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
+/** RFC 7636 code verifier. */
+const CODE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
+
+/** Client metadata carried inside the signed client ID. */
+interface RegisteredClient {
+  v: 1;
+  redirectUris: string[];
+  name?: string;
+  authMethod: TokenAuthMethod;
+  grantTypes: string[];
+  iat: number;
+  /** Makes every registration distinct, so identical metadata never yields the same ID or secret. */
+  nonce: string;
+}
+
+/** Authorization request carried by the login form. */
+interface LoginRequest {
+  clientId: string;
+  redirectUri: string;
+  redirectUriExplicit: boolean;
+  codeChallenge: string;
+  state?: string;
+  exp: number;
+}
+
+interface PendingCode {
+  clientId: string;
+  redirectUri: string;
+  redirectUriExplicit: boolean;
+  codeChallenge: string;
+  system: string;
+  config: DB2iConfig;
+  expiresAt: number;
+}
+
+interface RefreshGrant {
+  clientId: string;
+  system: string;
+  config: DB2iConfig;
+  expiresAt: number;
+}
+
+const pendingCodes = new Map<string, PendingCode>();
+const refreshGrants = new Map<string, RefreshGrant>();
+
+/**
+ * Drop pending codes and refresh tokens. Used at shutdown and by tests.
+ */
+export function resetOAuthState(): void {
+  pendingCodes.clear();
+  refreshGrants.clear();
+}
+
+function sweepExpired(map: Map<string, { expiresAt: number }>, now: number): void {
+  for (const [key, entry] of map) {
+    if (entry.expiresAt <= now) {
+      map.delete(key);
+    }
+  }
+}
+
+function randomToken(): string {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function sha256(value: string): Buffer {
+  return crypto.createHash('sha256').update(value).digest();
+}
+
+/** Compare two strings in constant time, whatever their lengths. */
+function safeEqual(a: string, b: string): boolean {
+  return crypto.timingSafeEqual(sha256(a), sha256(b));
+}
+
+function mac(secret: Buffer, purpose: string, body: string): string {
+  return crypto.createHmac('sha256', secret).update(`${purpose}.${body}`).digest('base64url');
+}
+
+/** Serialize a payload and sign it for one purpose, so a value signed for one use cannot pass as another. */
+function sign(secret: Buffer, purpose: string, payload: object): string {
+  const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  return `${body}.${mac(secret, purpose, body)}`;
+}
+
+/** Check a signed value and return its payload, or undefined when it was altered or signed for another purpose. */
+function verifySigned(secret: Buffer, purpose: string, value: unknown): unknown {
+  if (typeof value !== 'string' || value.length > MAX_SIGNED_VALUE_LENGTH) {
+    return undefined;
+  }
+  const dot = value.lastIndexOf('.');
+  if (dot <= 0) {
+    return undefined;
+  }
+  const body = value.slice(0, dot);
+  if (!safeEqual(value.slice(dot + 1), mac(secret, purpose, body))) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+/** The secret of a confidential client, derived from its ID. */
+function clientSecretFor(oauth: OAuthConfig, clientId: string): string {
+  return mac(oauth.secret, 'client-secret', clientId);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+/** Decode a client ID, or undefined when it was not issued by this server. */
+function readClient(oauth: OAuthConfig, clientId: unknown): RegisteredClient | undefined {
+  const payload = verifySigned(oauth.secret, 'client', clientId) as Partial<RegisteredClient> | undefined;
+  if (
+    !payload ||
+    payload.v !== 1 ||
+    !isStringArray(payload.redirectUris) ||
+    !isStringArray(payload.grantTypes) ||
+    !TOKEN_AUTH_METHODS.includes(payload.authMethod as TokenAuthMethod)
+  ) {
+    return undefined;
+  }
+  return payload as RegisteredClient;
+}
+
+/**
+ * Whether a client may use a redirect URI: a loopback URL on any port, for
+ * desktop clients, or an entry of MCP_OAUTH_REDIRECT_URIS.
+ */
+export function isRedirectUriAllowed(uri: string, allowlist: string[]): boolean {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return false;
+  }
+  if (url.hash || url.username || url.password) {
+    return false;
+  }
+  if ((url.protocol === 'http:' || url.protocol === 'https:') && isLoopbackHost(url.hostname)) {
+    return true;
+  }
+  // Compare the normalized URL, so `..` segments cannot step outside a prefix
+  const href = url.href;
+  return allowlist.some((entry) => (entry.endsWith('*') ? href.startsWith(entry.slice(0, -1)) : href === entry));
+}
+
+/** RFC 8707: the resource must be this server, as the MCP URL or the bare origin. */
+function isOwnResource(oauth: OAuthConfig, resource: string): boolean {
+  const normalized = resource.replace(/\/+$/, '');
+  return normalized === oauth.resource || normalized === oauth.publicUrl;
+}
+
+/** String fields of a query or form body. Repeated or non-string values are dropped. */
+function stringParams(source: unknown): Record<string, string | undefined> {
+  const params: Record<string, string | undefined> = {};
+  if (source && typeof source === 'object') {
+    for (const [key, value] of Object.entries(source)) {
+      if (typeof value === 'string') {
+        params[key] = value;
+      }
+    }
+  }
+  return params;
+}
+
+function noStore(res: Response): void {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+}
+
+function oauthError(res: Response, status: number, error: string, description: string): void {
+  noStore(res);
+  res.status(status).json({ error, error_description: description });
+}
+
+function redirectWith(res: Response, status: 302 | 303, redirectUri: string, params: Record<string, string | undefined>): void {
+  const url = new URL(redirectUri);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      url.searchParams.set(key, value);
+    }
+  }
+  noStore(res);
+  res.redirect(status, url.toString());
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const PAGE_STYLE = `
+  :root { color-scheme: light dark; --fg: #1f2328; --muted: #59636e; --bg: #f6f8fa; --card: #fff; --line: #d1d9e0; --accent: #0969da; --error: #cf222e; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f0f6fc; --muted: #9198a1; --bg: #0d1117; --card: #151b23; --line: #3d444d; --accent: #4493f8; --error: #f85149; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { margin: 0 0 16px; color: var(--muted); }
+  strong { color: var(--fg); }
+  label { display: block; font-weight: 600; margin: 14px 0 6px; }
+  input, select { width: 100%; padding: 9px 11px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 8px; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { width: 100%; margin-top: 22px; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
+  .error { color: var(--error); margin: 0 0 12px; }
+  .note { font-size: 13px; margin: 16px 0 0; }
+`;
+
+function sendPage(res: Response, status: number, title: string, body: string, formAction?: string): void {
+  noStore(res);
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'none'",
+      "style-src 'unsafe-inline'",
+      // A form post that answers with a redirect must be allowed to reach the client's origin
+      `form-action 'self'${formAction ? ` ${formAction}` : ''}`,
+      "frame-ancestors 'none'",
+      "base-uri 'none'",
+    ].join('; ')
+  );
+  res
+    .status(status)
+    .type('html')
+    .send(
+      `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+        `<meta name="viewport" content="width=device-width, initial-scale=1">` +
+        `<title>${escapeHtml(title)}</title><style>${PAGE_STYLE}</style></head>` +
+        `<body><main>${body}</main></body></html>`
+    );
+}
+
+function renderError(res: Response, status: number, message: string): void {
+  sendPage(res, status, 'Sign-in error', `<h1>Sign-in error</h1><p>${escapeHtml(message)}</p>`);
+}
+
+interface LoginPage {
+  client: RegisteredClient;
+  redirectUri: string;
+  request: string;
+  username?: string;
+  system?: string;
+  error?: string;
+}
+
+function renderLogin(res: Response, status: number, page: LoginPage): void {
+  const redirect = new URL(page.redirectUri);
+  const clientName = page.client.name ?? redirect.host;
+  const systems = getSystems();
+  const selected = page.system ?? defaultSystem().name;
+  const systemField =
+    systems.length > 1
+      ? `<label for="system">System</label><select id="system" name="system">` +
+        systems
+          .map(
+            (system) =>
+              `<option value="${escapeHtml(system.name)}"${system.name === selected ? ' selected' : ''}>` +
+              `${escapeHtml(system.name)}</option>`
+          )
+          .join('') +
+        `</select>`
+      : `<input type="hidden" name="system" value="${escapeHtml(systems[0].name)}">`;
+
+  sendPage(
+    res,
+    status,
+    'Sign in to IBM i',
+    `<h1>Sign in to IBM i</h1>` +
+      `<p><strong>${escapeHtml(clientName)}</strong> wants to query IBM i with your user profile. ` +
+      `After you sign in, you return to <strong>${escapeHtml(redirect.host)}</strong>.</p>` +
+      (page.error ? `<p class="error" role="alert">${escapeHtml(page.error)}</p>` : '') +
+      `<form method="post" action="/oauth/authorize">` +
+      `<input type="hidden" name="request" value="${escapeHtml(page.request)}">` +
+      systemField +
+      `<label for="username">User profile</label>` +
+      `<input id="username" name="username" autocomplete="username" autocapitalize="characters" required maxlength="128" value="${escapeHtml(page.username ?? '')}">` +
+      `<label for="password">Password</label>` +
+      `<input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">` +
+      `<button type="submit">Sign in</button>` +
+      `</form>` +
+      `<p class="note">Only continue if you started this connection yourself.</p>`,
+    redirect.origin
+  );
+}
+
+type ClientAuth = { ok: true; clientId: string; client: RegisteredClient } | { ok: false; basic: boolean; description: string };
+
+/**
+ * Authenticate the client of a token or revocation request:
+ * HTTP Basic, client_secret in the body, or client_id alone for public clients.
+ */
+function authenticateClient(oauth: OAuthConfig, req: Request, body: Record<string, string | undefined>): ClientAuth {
+  let clientId = body.client_id;
+  let clientSecret = body.client_secret;
+  const header = req.headers.authorization;
+  const basic = typeof header === 'string' && /^basic /i.test(header);
+
+  if (basic) {
+    const decoded = Buffer.from(header.slice(6).trim(), 'base64').toString('utf8');
+    const colon = decoded.indexOf(':');
+    if (colon < 0) {
+      return { ok: false, basic, description: 'Malformed Basic credentials' };
+    }
+    try {
+      clientId = decodeURIComponent(decoded.slice(0, colon));
+      clientSecret = decodeURIComponent(decoded.slice(colon + 1));
+    } catch {
+      return { ok: false, basic, description: 'Malformed Basic credentials' };
+    }
+  }
+
+  const client = clientId ? readClient(oauth, clientId) : undefined;
+  if (!clientId || !client) {
+    return { ok: false, basic, description: 'Unknown client. Register the client again.' };
+  }
+  if (client.authMethod !== 'none') {
+    if (!clientSecret || !safeEqual(clientSecret, clientSecretFor(oauth, clientId))) {
+      return { ok: false, basic, description: 'Client authentication failed' };
+    }
+  }
+  return { ok: true, clientId, client };
+}
+
+/** Issue an access token, plus a refresh token when the client and settings allow it. */
+function issueTokens(
+  res: Response,
+  oauth: OAuthConfig,
+  clientId: string,
+  client: RegisteredClient,
+  system: string,
+  config: DB2iConfig
+): void {
+  let access: { token: string; expiresIn: number };
+  try {
+    access = getTokenManager().createSession(config, undefined, system, clientId);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('Maximum concurrent sessions')) {
+      oauthError(res, 503, 'temporarily_unavailable', err.message);
+      return;
+    }
+    throw err;
+  }
+
+  const body: Record<string, string | number> = {
+    access_token: access.token,
+    token_type: 'Bearer',
+    expires_in: access.expiresIn,
+  };
+
+  if (oauth.refreshExpiry > 0 && client.grantTypes.includes('refresh_token')) {
+    const now = Date.now();
+    sweepExpired(refreshGrants, now);
+    // Keep the store bounded: past the session cap, the oldest grant goes first
+    const cap = getHttpConfig().maxSessions;
+    for (const key of refreshGrants.keys()) {
+      if (refreshGrants.size < cap) break;
+      refreshGrants.delete(key);
+    }
+    const refreshToken = randomToken();
+    refreshGrants.set(refreshToken, { clientId, system, config, expiresAt: now + oauth.refreshExpiry * 1000 });
+    body.refresh_token = refreshToken;
+  }
+
+  noStore(res);
+  res.json(body);
+}
+
+/**
+ * Build the router for the OAuth metadata, registration, login and token endpoints.
+ * Mount it only when MCP_OAUTH_ENABLED is on.
+ *
+ * @param oauth - OAuth settings from getHttpConfig()
+ * @param resourceName - Human-readable name for the protected resource metadata
+ */
+export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Router {
+  const router = express.Router();
+  const form = express.urlencoded({ extended: false, limit: '32kb' });
+  const issuer = oauth.publicUrl;
+
+  router.get(
+    ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'],
+    (_req: Request, res: Response) => {
+      res.json({
+        resource: oauth.resource,
+        authorization_servers: [issuer],
+        bearer_methods_supported: ['header'],
+        resource_name: resourceName,
+      });
+    }
+  );
+
+  router.get('/.well-known/oauth-authorization-server', (_req: Request, res: Response) => {
+    res.json({
+      issuer,
+      authorization_endpoint: `${issuer}/oauth/authorize`,
+      token_endpoint: `${issuer}/oauth/token`,
+      registration_endpoint: `${issuer}/oauth/register`,
+      revocation_endpoint: `${issuer}/oauth/revoke`,
+      response_types_supported: ['code'],
+      response_modes_supported: ['query'],
+      grant_types_supported: oauth.refreshExpiry > 0 ? [...GRANT_TYPES] : ['authorization_code'],
+      code_challenge_methods_supported: ['S256'],
+      token_endpoint_auth_methods_supported: [...TOKEN_AUTH_METHODS],
+      revocation_endpoint_auth_methods_supported: [...TOKEN_AUTH_METHODS],
+      authorization_response_iss_parameter_supported: true,
+    });
+  });
+
+  router.post('/oauth/register', (req: Request, res: Response) => {
+    const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+
+    const redirectUris = body.redirect_uris;
+    if (!isStringArray(redirectUris) || redirectUris.length === 0 || redirectUris.length > MAX_REDIRECT_URIS) {
+      oauthError(res, 400, 'invalid_redirect_uri', `redirect_uris must list 1 to ${MAX_REDIRECT_URIS} URLs`);
+      return;
+    }
+    const refused = redirectUris.find(
+      (uri) => uri.length > MAX_REDIRECT_URI_LENGTH || !isRedirectUriAllowed(uri, oauth.redirectUris)
+    );
+    if (refused !== undefined) {
+      log.warn({ redirectUri: refused.slice(0, 200) }, 'OAuth registration refused a redirect URI');
+      oauthError(res, 400, 'invalid_redirect_uri', 'A redirect URI is not allowed by MCP_OAUTH_REDIRECT_URIS');
+      return;
+    }
+
+    const authMethod = body.token_endpoint_auth_method ?? 'client_secret_basic';
+    if (!TOKEN_AUTH_METHODS.includes(authMethod as TokenAuthMethod)) {
+      oauthError(res, 400, 'invalid_client_metadata', `token_endpoint_auth_method must be one of: ${TOKEN_AUTH_METHODS.join(', ')}`);
+      return;
+    }
+
+    const grantTypes = body.grant_types ?? [...GRANT_TYPES];
+    if (!isStringArray(grantTypes) || !grantTypes.every((grant) => (GRANT_TYPES as readonly string[]).includes(grant))) {
+      oauthError(res, 400, 'invalid_client_metadata', `grant_types may contain: ${GRANT_TYPES.join(', ')}`);
+      return;
+    }
+
+    const responseTypes = body.response_types ?? ['code'];
+    if (!isStringArray(responseTypes) || !responseTypes.every((type) => type === 'code')) {
+      oauthError(res, 400, 'invalid_client_metadata', 'response_types may contain only code');
+      return;
+    }
+
+    if (body.client_name !== undefined && typeof body.client_name !== 'string') {
+      oauthError(res, 400, 'invalid_client_metadata', 'client_name must be a string');
+      return;
+    }
+    const name = body.client_name?.trim().slice(0, MAX_CLIENT_NAME_LENGTH) || undefined;
+
+    const client: RegisteredClient = {
+      v: 1,
+      redirectUris,
+      name,
+      authMethod: authMethod as TokenAuthMethod,
+      grantTypes: [...new Set(grantTypes)],
+      iat: Math.floor(Date.now() / 1000),
+      nonce: crypto.randomBytes(12).toString('base64url'),
+    };
+    const clientId = sign(oauth.secret, 'client', client);
+
+    log.info({ client: name, redirectUris }, 'OAuth client registered');
+    noStore(res);
+    res.status(201).json({
+      client_id: clientId,
+      client_id_issued_at: client.iat,
+      ...(client.authMethod === 'none'
+        ? {}
+        : { client_secret: clientSecretFor(oauth, clientId), client_secret_expires_at: 0 }),
+      redirect_uris: client.redirectUris,
+      ...(name ? { client_name: name } : {}),
+      token_endpoint_auth_method: client.authMethod,
+      grant_types: client.grantTypes,
+      response_types: ['code'],
+    });
+  });
+
+  router.get('/oauth/authorize', (req: Request, res: Response) => {
+    const params = stringParams(req.query);
+    const clientId = params.client_id;
+    const client = readClient(oauth, clientId);
+    if (!clientId || !client) {
+      renderError(res, 400, 'This client is not registered with this server. Remove the connector and add it again.');
+      return;
+    }
+
+    const redirectUriExplicit = params.redirect_uri !== undefined;
+    const redirectUri = params.redirect_uri ?? (client.redirectUris.length === 1 ? client.redirectUris[0] : undefined);
+    if (!redirectUri || !client.redirectUris.includes(redirectUri) || !isRedirectUriAllowed(redirectUri, oauth.redirectUris)) {
+      renderError(res, 400, 'The redirect URI is not registered for this client.');
+      return;
+    }
+
+    // From here on, errors go back to the client (RFC 6749 section 4.1.2.1)
+    const fail = (error: string, description: string): void =>
+      redirectWith(res, 302, redirectUri, { error, error_description: description, state: params.state, iss: issuer });
+
+    if (params.response_type !== 'code') {
+      fail('unsupported_response_type', 'response_type must be code');
+      return;
+    }
+    if (params.code_challenge_method !== 'S256' || !params.code_challenge || !CODE_CHALLENGE.test(params.code_challenge)) {
+      fail('invalid_request', 'PKCE with code_challenge_method=S256 is required');
+      return;
+    }
+    if (params.resource !== undefined && !isOwnResource(oauth, params.resource)) {
+      fail('invalid_target', `resource must be ${oauth.resource}`);
+      return;
+    }
+
+    const loginRequest: LoginRequest = {
+      clientId,
+      redirectUri,
+      redirectUriExplicit,
+      codeChallenge: params.code_challenge,
+      state: params.state,
+      exp: Date.now() + LOGIN_TTL_MS,
+    };
+    renderLogin(res, 200, { client, redirectUri, request: sign(oauth.secret, 'login', loginRequest) });
+  });
+
+  router.post('/oauth/authorize', form, async (req: Request, res: Response) => {
+    const body = stringParams(req.body);
+    const pending = verifySigned(oauth.secret, 'login', body.request) as LoginRequest | undefined;
+    if (!pending || typeof pending.exp !== 'number' || pending.exp < Date.now()) {
+      renderError(res, 400, 'This sign-in page has expired. Start the connection again from your client.');
+      return;
+    }
+    const client = readClient(oauth, pending.clientId);
+    if (!client || !client.redirectUris.includes(pending.redirectUri) || !isRedirectUriAllowed(pending.redirectUri, oauth.redirectUris)) {
+      renderError(res, 400, 'This client is no longer allowed. Remove the connector and add it again.');
+      return;
+    }
+
+    const username = (body.username ?? '').trim();
+    const password = body.password ?? '';
+    const system = body.system?.trim() || undefined;
+    const retry = (status: number, error: string): void =>
+      renderLogin(res, status, { client, redirectUri: pending.redirectUri, request: body.request as string, username, system, error });
+
+    if (!username || !password || username.length > 128 || password.length > 256) {
+      retry(400, 'Enter your user profile and password.');
+      return;
+    }
+
+    const retryAfter = consumeAuthAttempt(req);
+    if (retryAfter !== null) {
+      retry(429, `Too many sign-in attempts. Try again in ${retryAfter} seconds.`);
+      return;
+    }
+
+    const login = await verifyLogin({ username, password, system });
+    if (!login.ok) {
+      log.warn({ user: username, system, client: client.name, reason: login.description }, 'OAuth sign-in failed');
+      // Driver errors can describe the host; the page only says what the user can fix
+      retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user profile and password.');
+      return;
+    }
+    clearAuthRateLimit(req);
+
+    const now = Date.now();
+    sweepExpired(pendingCodes, now);
+    if (pendingCodes.size >= MAX_PENDING_CODES) {
+      retry(503, 'Too many sign-ins are in progress. Try again shortly.');
+      return;
+    }
+    const code = randomToken();
+    pendingCodes.set(code, {
+      clientId: pending.clientId,
+      redirectUri: pending.redirectUri,
+      redirectUriExplicit: pending.redirectUriExplicit,
+      codeChallenge: pending.codeChallenge,
+      system: login.system,
+      config: login.config,
+      expiresAt: now + CODE_TTL_MS,
+    });
+
+    log.info({ user: login.config.username, system: login.system, client: client.name }, 'OAuth sign-in succeeded');
+    redirectWith(res, 303, pending.redirectUri, { code, state: pending.state, iss: issuer });
+  });
+
+  router.post('/oauth/token', form, async (req: Request, res: Response) => {
+    try {
+      const body = stringParams(req.body);
+      const auth = authenticateClient(oauth, req, body);
+      if (!auth.ok) {
+        if (auth.basic) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="oauth"');
+        }
+        oauthError(res, 401, 'invalid_client', auth.description);
+        return;
+      }
+      if (body.resource !== undefined && !isOwnResource(oauth, body.resource)) {
+        oauthError(res, 400, 'invalid_target', `resource must be ${oauth.resource}`);
+        return;
+      }
+
+      if (body.grant_type === 'authorization_code') {
+        const code = body.code;
+        const pending = code ? pendingCodes.get(code) : undefined;
+        if (code) {
+          // Single use: a replayed code finds nothing
+          pendingCodes.delete(code);
+        }
+        if (!pending || pending.expiresAt <= Date.now() || pending.clientId !== auth.clientId) {
+          oauthError(res, 400, 'invalid_grant', 'The authorization code is invalid or expired');
+          return;
+        }
+        const redirectMatches =
+          body.redirect_uri === undefined ? !pending.redirectUriExplicit : body.redirect_uri === pending.redirectUri;
+        if (!redirectMatches) {
+          oauthError(res, 400, 'invalid_grant', 'redirect_uri does not match the authorization request');
+          return;
+        }
+        const verifier = body.code_verifier;
+        if (
+          !verifier ||
+          !CODE_VERIFIER.test(verifier) ||
+          !safeEqual(sha256(verifier).toString('base64url'), pending.codeChallenge)
+        ) {
+          oauthError(res, 400, 'invalid_grant', 'code_verifier does not match the code challenge');
+          return;
+        }
+        issueTokens(res, oauth, auth.clientId, auth.client, pending.system, pending.config);
+        return;
+      }
+
+      if (body.grant_type === 'refresh_token' && oauth.refreshExpiry > 0) {
+        const refreshToken = body.refresh_token;
+        const grant = refreshToken ? refreshGrants.get(refreshToken) : undefined;
+        if (refreshToken) {
+          // Rotation: every refresh token works once
+          refreshGrants.delete(refreshToken);
+        }
+        if (!grant || grant.expiresAt <= Date.now() || grant.clientId !== auth.clientId) {
+          oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
+          return;
+        }
+        // A disabled profile or a changed password ends the grant
+        const failure = await testCredentials(grant.system, grant.config);
+        if (failure !== null) {
+          log.warn({ user: grant.config.username, system: grant.system, reason: failure }, 'OAuth refresh refused');
+          oauthError(res, 400, 'invalid_grant', 'The IBM i credentials are no longer accepted. Sign in again.');
+          return;
+        }
+        issueTokens(res, oauth, auth.clientId, auth.client, grant.system, grant.config);
+        return;
+      }
+
+      oauthError(res, 400, 'unsupported_grant_type', 'grant_type is not supported');
+    } catch (err) {
+      log.error({ err }, 'Unexpected error in OAuth token handler');
+      oauthError(res, 500, 'server_error', 'An unexpected error occurred');
+    }
+  });
+
+  router.post('/oauth/revoke', form, async (req: Request, res: Response) => {
+    const body = stringParams(req.body);
+    const auth = authenticateClient(oauth, req, body);
+    if (!auth.ok) {
+      oauthError(res, 401, 'invalid_client', auth.description);
+      return;
+    }
+    const token = body.token;
+    if (token) {
+      const grant = refreshGrants.get(token);
+      if (grant) {
+        if (grant.clientId === auth.clientId) {
+          refreshGrants.delete(token);
+        }
+      } else {
+        const tokenManager = getTokenManager();
+        if (tokenManager.getSession(token)?.clientId === auth.clientId) {
+          await tokenManager.revokeToken(token);
+        }
+      }
+    }
+    // RFC 7009: the answer is the same whether or not the token was known
+    noStore(res);
+    res.status(200).end();
+  });
+
+  return router;
+}

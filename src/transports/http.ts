@@ -3,6 +3,7 @@
  * 
  * Express-based HTTP server with:
  * - OAuth-style token authentication (/auth)
+ * - Optional OAuth 2.1 authorization server for remote clients (/oauth/*)
  * - MCP protocol endpoints (/mcp)
  * - Health check endpoint (/health)
  * - Stateless MCP serving by default (stateful Mcp-Session-Id is deprecated)
@@ -12,29 +13,21 @@
 import express, { type Express, type Request, type Response } from 'express';
 import https from 'node:https';
 import http from 'node:http';
-import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createMcpHandler, isInitializeRequest, isLegacyRequest, type McpHttpHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler, toWebRequest } from '@modelcontextprotocol/node';
 
-import {
-  getHttpConfig,
-  hostnameOf,
-  isLoopbackHost,
-  loadPartialConfig,
-  normalizeDbHost,
-  withoutSshKeyLogin,
-  type DB2iConfig,
-} from '../config.js';
+import { getHttpConfig, hostnameOf, isLoopbackHost } from '../config.js';
 import { createChildLogger } from '../utils/logger.js';
 import {
   getTokenManager,
   authMiddleware,
   authRateLimitMiddleware,
   clearAuthRateLimit,
+  createOAuthRouter,
   extractBearerToken,
+  resetOAuthState,
   type AuthenticatedRequest,
-  type AuthRequest,
   type AuthResponse,
   type AuthValidationResult,
 } from '../auth/index.js';
@@ -42,15 +35,8 @@ import { getSessionManager } from './sessionManager.js';
 import { GLOBAL_SESSION_KEY, isSessionOwnedByCaller, resolveCallerSessionKey } from './sessionAuth.js';
 import { createServer as createMcpServer, SERVER_NAME, SERVER_VERSION, type SessionContext } from '../server.js';
 import { getOpenApiSpec } from '../openapi.js';
-import { initializeSessionPool, testConnection, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
-import {
-  DEFAULT_SYSTEM_NAME,
-  defaultSystem,
-  getSystem,
-  getSystems,
-  isProfilesFileConfigured,
-  unknownSystemMessage,
-} from '../systems.js';
+import { initializeSessionPool, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
+import { authAllowedDbHosts, verifyLogin } from '../auth/login.js';
 
 const log = createChildLogger({ component: 'http-transport' });
 
@@ -180,61 +166,6 @@ function createHttpMcpServer(request?: globalThis.Request): ReturnType<typeof cr
 
   initializeSessionPool(context.sessionId);
   return createMcpServer(context);
-}
-
-/**
- * Hosts /auth may connect to. With DB2I_PROFILES and no explicit
- * MCP_AUTH_ALLOWED_DB_HOSTS, the profile hosts.
- */
-function authAllowedDbHosts(httpConfig: ReturnType<typeof getHttpConfig>): string[] | null {
-  if (isProfilesFileConfigured() && !process.env.MCP_AUTH_ALLOWED_DB_HOSTS?.trim()) {
-    return [...new Set(getSystems().map((system) => normalizeDbHost(system.config.hostname)))];
-  }
-  return httpConfig.authAllowedDbHosts;
-}
-
-/**
- * The connection an /auth request asks for: a profile plus the caller's
- * credentials, or, without DB2I_PROFILES, the request's host over DB2I_*.
- * The caller's password is what logs in, so a mapepire privateKeyFile is
- * dropped: the server's key would accept any password.
- */
-function authConnection(authReq: AuthRequest): { system: string; config: DB2iConfig } {
-  if (!isProfilesFileConfigured()) {
-    if (authReq.system !== undefined && authReq.system !== DEFAULT_SYSTEM_NAME) {
-      throw new Error(unknownSystemMessage(authReq.system));
-    }
-    const config = loadPartialConfig({
-      hostname: authReq.host,
-      port: authReq.port,
-      username: authReq.username,
-      password: authReq.password,
-      database: authReq.database,
-      schema: authReq.schema,
-    });
-    return {
-      system: DEFAULT_SYSTEM_NAME,
-      config: { ...config, mapepireOptions: withoutSshKeyLogin(config.mapepireOptions) },
-    };
-  }
-
-  if (authReq.host !== undefined || authReq.port !== undefined || authReq.database !== undefined) {
-    throw new Error('host, port, and database come from DB2I_PROFILES. Choose a profile with system.');
-  }
-  const profile = authReq.system === undefined ? defaultSystem() : getSystem(authReq.system);
-  if (!profile) {
-    throw new Error(unknownSystemMessage(authReq.system ?? ''));
-  }
-  return {
-    system: profile.name,
-    config: {
-      ...profile.config,
-      username: authReq.username,
-      password: authReq.password,
-      schema: authReq.schema ?? profile.config.schema,
-      mapepireOptions: withoutSshKeyLogin(profile.config.mapepireOptions),
-    },
-  };
 }
 
 /**
@@ -494,6 +425,11 @@ export function createHttpApp(): Express {
     next();
   });
 
+  // OAuth authorization server for remote clients (MCP_OAUTH_ENABLED)
+  if (httpConfig.oauth) {
+    app.use(createOAuthRouter(httpConfig.oauth, SERVER_NAME));
+  }
+
   // OpenAPI specification endpoint
   app.get('/openapi.json', (req: Request, res: Response) => {
     const protocol = httpConfig.tls.enabled ? 'https' : 'http';
@@ -520,6 +456,7 @@ export function createHttpApp(): Express {
         authMode: httpConfig.authMode,
         sessionMode: httpConfig.sessionMode,
         tlsEnabled: httpConfig.tls.enabled,
+        oauthEnabled: httpConfig.oauth !== null,
       },
       sessions: {
         tokens: httpConfig.authMode === 'required' ? tokenManager.getStats() : undefined,
@@ -554,56 +491,17 @@ export function createHttpApp(): Express {
 
       const authReq = validation.request;
 
-      // A profile plus the caller's credentials, or the request's host with env fallbacks
-      let dbConfig: DB2iConfig;
-      let system: string;
-      try {
-        ({ config: dbConfig, system } = authConnection(authReq));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Configuration error';
-        res.status(400).json({
-          error: 'invalid_request',
-          error_description: message,
+      // A profile plus the caller's credentials, or the request's host with env fallbacks,
+      // proven with a test connection
+      const login = await verifyLogin(authReq);
+      if (!login.ok) {
+        res.status(login.status).json({
+          error: login.error,
+          error_description: login.description,
         });
         return;
       }
-
-      const allowedDbHosts = authAllowedDbHosts(httpConfig);
-      const requestedHost = normalizeDbHost(dbConfig.hostname);
-      if (allowedDbHosts && !allowedDbHosts.includes(requestedHost)) {
-        res.status(400).json({
-          error: 'invalid_request',
-          error_description: 'Host is not allowed',
-        });
-        return;
-      }
-
-      // Test connection to validate credentials
-      log.debug({ host: dbConfig.hostname, user: dbConfig.username }, 'Testing credentials');
-      
-      // Use crypto random bytes for unique test pool ID (avoids collision with concurrent requests)
-      const testPoolId = `auth-test-${crypto.randomBytes(16).toString('hex')}`;
-      try {
-        initializeSessionPool(testPoolId);
-        const connected = await testConnection({ poolKey: testPoolId, system, config: dbConfig });
-        await closeSessionPool(testPoolId);
-
-        if (!connected) {
-          res.status(401).json({
-            error: 'invalid_credentials',
-            error_description: 'Authentication failed: unable to connect to database',
-          });
-          return;
-        }
-      } catch (err) {
-        await closeSessionPool(testPoolId);
-        const message = err instanceof Error ? err.message : 'Connection failed';
-        res.status(401).json({
-          error: 'invalid_credentials',
-          error_description: `Authentication failed: ${message}`,
-        });
-        return;
-      }
+      const { system, config: dbConfig } = login;
 
       // Create token session
       const tokenManager = getTokenManager();
@@ -709,10 +607,17 @@ export async function startHttpServer(): Promise<http.Server | https.Server> {
     );
   }
 
-  if (httpConfig.authMode === 'required' && authAllowedDbHosts(httpConfig) === null) {
+  if (httpConfig.authMode === 'required' && authAllowedDbHosts() === null) {
     log.warn(
       'MCP_AUTH_ALLOWED_DB_HOSTS and DB2I_HOSTNAME are unset. ' +
       '/auth will open a database connection to any host the client names.'
+    );
+  }
+
+  if (httpConfig.oauth?.ephemeralSecret) {
+    log.warn(
+      'MCP_OAUTH_SECRET is unset, so OAuth clients registered before a restart must register again. ' +
+      'Set it to a random value: openssl rand -hex 32'
     );
   }
 
@@ -806,6 +711,7 @@ export async function shutdownHttpServer(server: http.Server | https.Server): Pr
   // Close token manager (clears auth tokens and triggers pool cleanup via callback)
   const tokenManager = getTokenManager();
   await tokenManager.shutdown();
+  resetOAuthState();
 
   // Close all database connection pools
   await closeAllSessionPools();
