@@ -86,6 +86,7 @@ mcp-server-db2i/
 │   │   ├── driver.ts      # Driver interface
 │   │   ├── drivers/       # jt400, odbc and mapepire implementations
 │   │   ├── queries.ts     # Catalog queries
+│   │   ├── sqlErrorInfo.ts # Cause and recovery for failed statements
 │   │   ├── profile.ts     # profile_table statistics
 │   │   └── sqlServices.ts # PARSE_STATEMENT, GENERATE_SQL, RELATED_OBJECTS
 │   ├── customTools/       # YAML business SQL tools, annotations, masking, file watch
@@ -270,7 +271,28 @@ The `db/connection.ts` module manages connection pools. It does not know which d
 
 The `mapepire` driver keeps its own job pool (`JobPool`), which gets jobs from a `JobFactory`. Only the SSH factory exists today. A daemon transport would add a second factory and reuse the pool. `tests/db/mapepirePool.test.ts` tests the pool against a fake factory, and `db/drivers/sshHostKey.ts` holds the host key check.
 
-Pools:
+### Driver Errors
+
+When Db2 rejects a statement, a driver throws a `DbError` (`db/driver.ts`) instead of a plain `Error`. Its message keeps the `[SQLSTATE] text` shape, and it carries `sqlstate` and `sqlcode`:
+
+| Driver | Where the values come from |
+|--------|----------------------------|
+| `odbc` | The first diagnostic in `odbcErrors`: `state` and the native `code`. ODBC reports its own SQLSTATE mapping, such as `42S02` for `42704` |
+| `jt400` | `getSQLState()` and `getErrorCode()` of the Java `SQLException` behind node-jt400's error. If they cannot be read, the SQLCODE comes from the `[SQLnnnn]` message ID |
+| `mapepire` | The `message, SQLSTATE, SQLCODE` form mapepire-js reports |
+
+Other failures, such as a lost connection or a `QueryTimeoutError`, stay plain errors.
+
+`db/connection.ts` passes a `DbError` to `explainSqlError` in `db/sqlErrorInfo.ts`. It looks the SQLCODE up with `SYSTOOLS.SQLCODE_INFO` on the same pool, splits the second-level text into `cause` and `recovery`, and throws a `DatabaseQueryError` with those in `details`:
+
+- Each system and SQLCODE is looked up once and cached for the life of the process. A failed lookup is not cached, except when the function does not exist on that system; then the system is not asked again.
+- The lookup has a 5 second limit. If it fails for any reason, the error is reported as the driver gave it.
+- The second-level text keeps its `&1` placeholders. The first-level message in `error` has the values.
+- With the JDBC option `errors=full`, JT400 and Mapepire put the second-level text in the message, with the values filled in. That text is split instead, and no lookup runs.
+
+Tools spread `sqlErrorFields(error)` into their error result, and `withToolHandler` in `server.ts` returns `sqlstate`, `sqlcode`, `cause` and `recovery` in `structuredContent`, with cause and recovery also in the text. Rejections by the SQL validator, the schema allowlist or masking do not come from Db2 and carry none of these fields.
+
+### Pools
 
 - **Global pool**: For stdio transport
 - **Session pools**: For HTTP transport (per-authenticated user)

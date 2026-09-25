@@ -94,6 +94,40 @@ export function loadDriver(name: DbDriverName): Promise<DbDriver> {
   return pending;
 }
 
+/** What Db2 reported for a failed statement. Either field may be missing. */
+export type SqlDiagnostics = {
+  /** Five-character SQLSTATE. ODBC reports its own mapping (42S02 for 42704). */
+  sqlstate?: string;
+  /** Signed SQLCODE, such as -204 for SQL0204. */
+  sqlcode?: number;
+};
+
+/**
+ * A statement that Db2 rejected. Drivers throw this instead of a plain Error
+ * when they know the SQLSTATE or SQLCODE, so callers can look up the cause and
+ * recovery for the SQLCODE. The message keeps the `[SQLSTATE] text` shape.
+ */
+export class DbError extends Error implements SqlDiagnostics {
+  readonly sqlstate?: string;
+  readonly sqlcode?: number;
+
+  constructor(message: string, diagnostics: SqlDiagnostics, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'DbError';
+    this.sqlstate = diagnostics.sqlstate;
+    this.sqlcode = diagnostics.sqlcode;
+  }
+}
+
+/**
+ * The SQLCODE from a message that starts with a JT400 message ID, such as
+ * `[SQL0204] ...`. A statement that fails has a negative SQLCODE.
+ */
+export function sqlcodeFromMessageId(message: string): number | undefined {
+  const match = /^\[SQL(\d{4,5})\]/.exec(message);
+  return match ? -Number(match[1]) : undefined;
+}
+
 /** How long a cancelled statement gets to end before the caller stops waiting. */
 export const CANCEL_GRACE_MS = 10_000;
 

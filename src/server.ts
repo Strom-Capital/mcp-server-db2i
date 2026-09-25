@@ -48,6 +48,7 @@ import { registerPrompts } from './prompts.js';
 import { registerResources } from './resources.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
 import { MAX_COMPUTED_COLUMNS } from './db/profile.js';
+import type { SqlErrorDetails } from './db/sqlErrorInfo.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { writeAudit, type AuditCall } from './utils/auditLog.js';
 import { formatToolText } from './utils/formatResult.js';
@@ -123,9 +124,18 @@ const READ_ONLY_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
+// Returned with `error` when Db2 rejected the statement (see src/db/sqlErrorInfo.ts)
+const sqlErrorOutputFields = {
+  sqlstate: z.string().optional().describe('SQLSTATE of the failed statement'),
+  sqlcode: z.number().int().optional().describe('SQLCODE of the failed statement, such as -204'),
+  cause: z.string().optional().describe('Why the statement failed. &1-style placeholders stand for values in error.'),
+  recovery: z.string().optional().describe('What to change before trying again'),
+};
+
 const queryOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
+  ...sqlErrorOutputFields,
   violations: z.array(z.string()).optional(),
   data: z.array(z.unknown()).optional(),
   rowCount: z.number().int().optional(),
@@ -237,6 +247,7 @@ const listIndexesOutputSchema = z.object({
 const validateQueryOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
+  ...sqlErrorOutputFields,
   valid: z.boolean().optional(),
   statementType: z.string().nullable().optional(),
   missingTables: z.array(z.string()).optional(),
@@ -314,6 +325,7 @@ const servicesOutputSchema = z.object({
 const profileTableOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
+  ...sqlErrorOutputFields,
   schema: z.string().optional(),
   table: z.string().optional(),
   mode: z.enum(['stored', 'computed']).optional(),
@@ -464,15 +476,17 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
         durationMs,
         rowCount: rowCountOf(result),
       });
+      const sqlError = sqlErrorFieldsOf(result);
       const structured = {
         success: false,
         error: message,
         ...('violations' in result && result.violations
           ? { violations: result.violations }
           : {}),
+        ...sqlError,
       };
       return {
-        content: [{ type: 'text', text: message }],
+        content: [{ type: 'text', text: withCauseAndRecovery(message, sqlError) }],
         structuredContent: structured,
         isError: true,
       };
@@ -489,6 +503,25 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       structuredContent: result,
     };
   };
+}
+
+/** The SQLSTATE, SQLCODE, cause and recovery a failed tool result carries. */
+function sqlErrorFieldsOf(result: object): SqlErrorDetails {
+  const fields: SqlErrorDetails = {};
+  const source = result as Record<string, unknown>;
+  if (typeof source.sqlstate === 'string') fields.sqlstate = source.sqlstate;
+  if (typeof source.sqlcode === 'number') fields.sqlcode = source.sqlcode;
+  if (typeof source.cause === 'string') fields.cause = source.cause;
+  if (typeof source.recovery === 'string') fields.recovery = source.recovery;
+  return fields;
+}
+
+/** The error text, followed by the cause and recovery when Db2 gave them. */
+function withCauseAndRecovery(message: string, fields: SqlErrorDetails): string {
+  const lines = [message];
+  if (fields.cause) lines.push(`Cause: ${fields.cause}`);
+  if (fields.recovery) lines.push(`Recovery: ${fields.recovery}`);
+  return lines.join('\n\n');
 }
 
 function systemArgOf(args: unknown): string | undefined {

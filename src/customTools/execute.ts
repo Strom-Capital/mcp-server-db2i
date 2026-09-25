@@ -3,6 +3,7 @@
  */
 
 import { executeQuery } from '../db/connection.js';
+import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import {
   isParseStatementMissing,
   PARSE_STATEMENT_UNAVAILABLE,
@@ -46,7 +47,7 @@ export function classifyParsedStatement(parsed: ParsedName[]): ParseOutcome {
   return { ok: true };
 }
 
-export interface CustomToolQueryResult {
+export interface CustomToolQueryResult extends SqlErrorDetails {
   success: boolean;
   data?: unknown[];
   rowCount?: number;
@@ -114,7 +115,7 @@ export async function executeCustomTool(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     log.debug({ err: error, tool: tool.name }, 'Custom tool failed');
-    return { success: false, error: message };
+    return { success: false, error: message, ...sqlErrorFields(error) };
   }
 }
 

@@ -21,7 +21,7 @@ import type { Client, ConnectConfig } from 'ssh2';
 import type { DB2iConfig, MapepireSettings, MapepireSshSettings } from '../../config.js';
 import { buildMapepireJdbcOptions, resolveMapepireSettings } from '../../config.js';
 import type { CreatePoolOptions, DbDriver, DbPool, DbQueryOptions, QueryParam } from '../driver.js';
-import { CANCEL_GRACE_MS, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
+import { CANCEL_GRACE_MS, DbError, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
 import { createHostKeyVerifier } from './sshHostKey.js';
 
 type MapepireModule = typeof import('@ibm/mapepire-js');
@@ -113,17 +113,37 @@ export interface JobFactory {
   onDead(listener: () => void): void;
 }
 
+const MAPEPIRE_SQL_ERROR = /^([\s\S]*), ([0-9A-Z]{5}), (-?\d+)$/;
+
 /**
  * mapepire-js reports a failed statement as `message, SQLSTATE, SQLCODE`.
  * Rewrite it as `[SQLSTATE] message`, the same shape as the ODBC driver.
  */
 export function describeMapepireError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  const match = /^([\s\S]*), ([0-9A-Z]{5}), (-?\d+)$/.exec(message);
+  const match = MAPEPIRE_SQL_ERROR.exec(message);
   if (match) {
     return `[${match[2]}] ${match[1]}`;
   }
   return message;
+}
+
+/**
+ * The error a failed request throws: a DbError with the SQLSTATE and SQLCODE
+ * when mapepire-js reported them, else a plain Error with the same message.
+ */
+export function toMapepireError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = MAPEPIRE_SQL_ERROR.exec(message);
+  if (match) {
+    const sqlcode = Number(match[3]);
+    return new DbError(
+      `[${match[2]}] ${match[1]}`,
+      { sqlstate: match[2], sqlcode: sqlcode !== 0 ? sqlcode : undefined },
+      { cause: error }
+    );
+  }
+  return new Error(message, { cause: error });
 }
 
 /** mapepire-js binds strings, numbers and null. */
@@ -262,7 +282,7 @@ export class JobPool implements DbPool {
         if (error instanceof QueryTimeoutError) {
           throw error;
         }
-        throw new Error(describeMapepireError(error), { cause: error });
+        throw toMapepireError(error);
       }
     } finally {
       slot.active -= 1;

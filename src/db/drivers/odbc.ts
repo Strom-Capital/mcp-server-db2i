@@ -9,7 +9,7 @@
 import type { DB2iConfig } from '../../config.js';
 import { buildOdbcConnectionConfig, serializeOdbcConnectionString } from '../../config.js';
 import type { CreatePoolOptions, DbDriver, DbPool, QueryParam } from '../driver.js';
-import { QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
+import { DbError, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
 
 /** One diagnostic record from the ODBC driver manager. */
 interface OdbcDiagnostic {
@@ -53,20 +53,22 @@ function bindParams(params: readonly QueryParam[]): Array<string | number> {
 
 /**
  * node-odbc errors carry the driver's diagnostics in `odbcErrors`. Surface the
- * first one so the message says what Db2 said (SQLSTATE and text).
+ * first one so the message says what Db2 said (SQLSTATE and text), and keep
+ * its SQLSTATE and native code (the SQLCODE) on the DbError.
  */
-function describeOdbcError(error: unknown): string {
+function toOdbcError(error: unknown): Error {
   if (error && typeof error === 'object' && 'odbcErrors' in error) {
     const diagnostics = (error as { odbcErrors?: unknown }).odbcErrors;
     if (Array.isArray(diagnostics) && diagnostics.length > 0) {
       const first = diagnostics[0] as OdbcDiagnostic;
       const parts = [first.state ? `[${first.state}]` : '', first.message ?? ''].filter(Boolean);
       if (parts.length > 0) {
-        return parts.join(' ');
+        const sqlcode = typeof first.code === 'number' && first.code !== 0 ? first.code : undefined;
+        return new DbError(parts.join(' '), { sqlstate: first.state || undefined, sqlcode }, { cause: error });
       }
     }
   }
-  return error instanceof Error ? error.message : String(error);
+  return new Error(error instanceof Error ? error.message : String(error), { cause: error });
 }
 
 export const odbcDriver: DbDriver = {
@@ -87,7 +89,7 @@ export const odbcDriver: DbDriver = {
         shrink: true,
       });
     } catch (error) {
-      throw new Error(describeOdbcError(error), { cause: error });
+      throw toOdbcError(error);
     }
     return {
       async query(sql, params, options) {
@@ -103,7 +105,7 @@ export const odbcDriver: DbDriver = {
           if (error instanceof QueryTimeoutError) {
             throw error;
           }
-          throw new Error(describeOdbcError(error), { cause: error });
+          throw toOdbcError(error);
         }
       },
       async close() {

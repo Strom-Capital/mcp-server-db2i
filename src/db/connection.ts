@@ -14,6 +14,7 @@ import { queryTimeoutMs } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
 import type { DbPool } from './driver.js';
 import { loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
+import { DatabaseQueryError, explainSqlError } from './sqlErrorInfo.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger({ component: 'database' });
@@ -308,13 +309,14 @@ async function run(
   const resolved = resolve(target);
   const slot = getSlot(resolved, procedure);
   const kind = procedure ? 'Procedure' : 'Query';
+  let db: DbPool | undefined;
 
   try {
     log.debug(
       { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
       procedure ? 'Executing procedure' : 'Executing query'
     );
-    const db = await acquire(slot, resolved);
+    db = await acquire(slot, resolved);
     const timeoutMs = queryTimeoutMs(slot.config);
     const warmUp = scheduleCancelWarmUp(slot, resolved, procedure, timeoutMs);
     let rawRows: Record<string, unknown>[];
@@ -334,9 +336,13 @@ async function run(
     if (error instanceof QueryTimeoutError) {
       logTimeout(error, resolved, slot.config.driver, sql);
     }
-    const message = error instanceof Error ? error.message : 'Unknown database error';
     log.debug({ err: error, sql: sql.substring(0, 200) }, procedure ? 'Procedure call failed' : 'Database query failed');
-    throw new Error(`Database query failed: ${message}`, { cause: error });
+    if (!db) {
+      const message = error instanceof Error ? error.message : 'Unknown database error';
+      throw new Error(`Database query failed: ${message}`, { cause: error });
+    }
+    const { message, details } = await explainSqlError(error, db, resolved.system);
+    throw new DatabaseQueryError(`Database query failed: ${message}`, details, { cause: error });
   }
 }
 

@@ -236,6 +236,7 @@ Once connected, you can ask the AI assistant:
 - `get_related_objects` needs IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release
 - `get_journal_info` needs the journal columns of `QSYS2.OBJECT_STATISTICS` (IBM i 7.3 Technology Refresh 2 or later)
 - `search_ibmi_services` needs `QSYS2.SERVICES_INFO`, which ships with the Db2 for i PTF group
+- The `cause` and `recovery` on a failed statement come from `SYSTOOLS.SQLCODE_INFO`. Without it, errors return the SQLSTATE, SQLCODE and message only
 - Node.js 22 or higher
 - unixODBC with the IBM i Access ODBC Driver for the default `odbc` driver, a JDK at install time and a JRE 11 or higher at runtime for the optional `jt400` driver, or SSH access and Java 8 or higher on the IBM i for the optional `mapepire` driver (see [Database Drivers](docs/configuration.md#database-drivers))
 - MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)
