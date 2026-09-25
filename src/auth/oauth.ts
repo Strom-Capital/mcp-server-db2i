@@ -252,25 +252,30 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Project logo (docs/assets/logo.svg). The strokes follow the page's text color, so it works in both themes. */
-const LOGO_SVG =
-  '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="54 42 160 142" width="60" height="53" fill="none" aria-hidden="true">' +
-  '<g stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">' +
+/** Shapes of the project logo (docs/assets/logo.svg). The stroke color is set by each use. */
+const LOGO_SHAPES =
+  '<g stroke-width="12" stroke-linecap="round" stroke-linejoin="round">' +
   '<ellipse cx="116" cy="96" rx="54" ry="20"/>' +
   '<path d="M62 96v30c0 11 24 20 54 20s54-9 54-20V96"/>' +
   '<path d="M62 126c0 11 24 20 54 20s54-9 54-20"/>' +
   '<path d="M62 126v30c0 11 24 20 54 20s54-9 54-20v-30"/>' +
   '<path d="M62 156c0 11 24 20 54 20s54-9 54-20"/>' +
   '</g>' +
-  '<path d="M184 48C184 62 192 70 206 70C192 70 184 78 184 92C184 78 176 70 162 70C176 70 184 62 184 48Z" fill="#22C55E"/>' +
+  '<path d="M184 48C184 62 192 70 206 70C192 70 184 78 184 92C184 78 176 70 162 70C176 70 184 62 184 48Z" fill="#22C55E"/>';
+
+/** Page logo, cropped to the artwork. The strokes follow the page's text color, so it works in both themes. */
+const LOGO_SVG =
+  '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="54 42 160 142" width="60" height="53" fill="none" aria-hidden="true">' +
+  '<style>g{stroke:currentColor}</style>' +
+  LOGO_SHAPES +
   '</svg>';
 
 /** The same logo as a favicon. Its own style switches the stroke for dark browser chrome. */
 const FAVICON_HREF = `data:image/svg+xml,${encodeURIComponent(
-  LOGO_SVG.replace(' class="logo"', '')
-    .replace('viewBox="54 42 160 142" width="60" height="53"', 'viewBox="0 0 256 256"')
-    .replace(' aria-hidden="true"', '')
-    .replace('>', '><style>g{stroke:#0F172A}@media (prefers-color-scheme:dark){g{stroke:#E6EDF3}}</style>')
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">' +
+    '<style>g{stroke:#0F172A}@media (prefers-color-scheme:dark){g{stroke:#E6EDF3}}</style>' +
+    LOGO_SHAPES +
+    '</svg>'
 )}`;
 
 const PAGE_STYLE = `
