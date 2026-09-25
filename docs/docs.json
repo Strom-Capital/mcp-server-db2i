@@ -12,7 +12,10 @@
     "light": "/assets/wordmark.svg",
     "dark": "/assets/wordmark-dark.svg"
   },
-  "favicon": "/assets/logo.svg",
+  "favicon": {
+    "light": "/assets/logo.svg",
+    "dark": "/assets/logo-dark.svg"
+  },
   "navigation": {
     "groups": [
       {
