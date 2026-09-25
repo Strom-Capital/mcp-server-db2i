@@ -23,6 +23,8 @@ profiles:
     passwordFile: /run/secrets/db2i_test_password
     schema: SALESTEST
     odbcOptions: "SSL=1"
+    # Seconds before a statement is cancelled; overrides QUERY_TIMEOUT here
+    queryTimeout: 30
 
   # A system reachable only over SSH: Mapepire runs inside the SSH session.
   # The host key must match ~/.ssh/known_hosts, or pin it with hostKey=SHA256:...
