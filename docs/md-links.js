@@ -17,7 +17,7 @@
       if (event.defaultPrevented || event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
-      if (!link || (link.target && link.target !== '_self')) return;
+      if (!link) return;
       const pageUrl = toPageUrl(link.getAttribute('href')) || toPageUrl(link.dataset.mdHref);
       if (!pageUrl) return;
       event.preventDefault();
@@ -29,13 +29,19 @@
 
   // React can put the original href back when it re-renders a page, so keep
   // the original in data-md-href for the click handler and rewrite on changes.
+  // The hosted site treats a `.md` href as external and adds target="_blank",
+  // so drop that too: these are pages on this site.
   function rewriteAll() {
-    document.querySelectorAll('a[href$=".md"], a[href*=".md#"], a[href*=".md?"]').forEach((link) => {
+    document.querySelectorAll('a[href$=".md"], a[href*=".md#"], a[href*=".md?"], a[data-md-href]').forEach((link) => {
       const href = link.getAttribute('href');
       const pageUrl = toPageUrl(href);
-      if (!pageUrl) return;
-      link.dataset.mdHref = href;
-      link.setAttribute('href', pageUrl);
+      if (pageUrl) {
+        link.dataset.mdHref = href;
+        link.setAttribute('href', pageUrl);
+      }
+      if (!link.dataset.mdHref) return;
+      if (link.hasAttribute('target')) link.removeAttribute('target');
+      if (link.hasAttribute('rel')) link.removeAttribute('rel');
     });
   }
 
@@ -44,6 +50,6 @@
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ['href'],
+    attributeFilter: ['href', 'target'],
   });
 })();
