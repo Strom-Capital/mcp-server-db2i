@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.10.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.9.0...v2.10.0) (2026-09-25)
+
+
+### Features
+
+* add search_ibmi_services from the IBM i service catalog ([#132](https://github.com/Strom-Capital/mcp-server-db2i/issues/132)) ([384bbdc](https://github.com/Strom-Capital/mcp-server-db2i/commit/384bbdc8cfcecbb45e956a5479a03c5135d33822)), closes [#115](https://github.com/Strom-Capital/mcp-server-db2i/issues/115)
+* cancel long-running queries on IBM i with QUERY_TIMEOUT ([#130](https://github.com/Strom-Capital/mcp-server-db2i/issues/130)) ([f6fa8d3](https://github.com/Strom-Capital/mcp-server-db2i/commit/f6fa8d394c76c460b57ce33824c832e743c9857b))
+* make the login and OAuth rate limits configurable ([#119](https://github.com/Strom-Capital/mcp-server-db2i/issues/119)) ([a6a63bd](https://github.com/Strom-Capital/mcp-server-db2i/commit/a6a63bde126ae5a7405a19f9746ba871e729caf4))
+
+
+### Bug Fixes
+
+* exit stdio servers when their client goes away ([#126](https://github.com/Strom-Capital/mcp-server-db2i/issues/126)) ([1e6b6ed](https://github.com/Strom-Capital/mcp-server-db2i/commit/1e6b6edd2f1902e6d3bde2cc8c65031a0eafa931)), closes [#123](https://github.com/Strom-Capital/mcp-server-db2i/issues/123)
+* return BIGINT values from the ODBC driver ([#128](https://github.com/Strom-Capital/mcp-server-db2i/issues/128)) ([3cc0053](https://github.com/Strom-Capital/mcp-server-db2i/commit/3cc0053d228356cabc4bd6d8d907e6e9b7cce9c9)), closes [#127](https://github.com/Strom-Capital/mcp-server-db2i/issues/127)
+
 ## [2.9.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.8.0...v2.9.0) (2026-09-25)
 
 
