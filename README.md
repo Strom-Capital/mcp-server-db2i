@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img src="docs/assets/logo.svg" alt="mcp-server-db2i logo: a database with an AI sparkle" width="128" height="128">
+  </picture>
+</p>
+
 # mcp-server-db2i
 
 [![CI](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml/badge.svg)](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml)

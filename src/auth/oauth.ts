@@ -247,12 +247,34 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Project logo (docs/assets/logo.svg). The strokes follow the page's text color, so it works in both themes. */
+const LOGO_SVG =
+  '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="54 42 160 142" width="60" height="53" fill="none" aria-hidden="true">' +
+  '<g stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">' +
+  '<ellipse cx="116" cy="96" rx="54" ry="20"/>' +
+  '<path d="M62 96v30c0 11 24 20 54 20s54-9 54-20V96"/>' +
+  '<path d="M62 126c0 11 24 20 54 20s54-9 54-20"/>' +
+  '<path d="M62 126v30c0 11 24 20 54 20s54-9 54-20v-30"/>' +
+  '<path d="M62 156c0 11 24 20 54 20s54-9 54-20"/>' +
+  '</g>' +
+  '<path d="M184 48C184 62 192 70 206 70C192 70 184 78 184 92C184 78 176 70 162 70C176 70 184 62 184 48Z" fill="#22C55E"/>' +
+  '</svg>';
+
+/** The same logo as a favicon. Its own style switches the stroke for dark browser chrome. */
+const FAVICON_HREF = `data:image/svg+xml,${encodeURIComponent(
+  LOGO_SVG.replace(' class="logo"', '')
+    .replace('viewBox="54 42 160 142" width="60" height="53"', 'viewBox="0 0 256 256"')
+    .replace(' aria-hidden="true"', '')
+    .replace('>', '><style>g{stroke:#0F172A}@media (prefers-color-scheme:dark){g{stroke:#E6EDF3}}</style>')
+)}`;
+
 const PAGE_STYLE = `
   :root { color-scheme: light dark; --fg: #1f2328; --muted: #59636e; --bg: #f6f8fa; --card: #fff; --line: #d1d9e0; --accent: #0969da; --error: #cf222e; }
   @media (prefers-color-scheme: dark) { :root { --fg: #f0f6fc; --muted: #9198a1; --bg: #0d1117; --card: #151b23; --line: #3d444d; --accent: #4493f8; --error: #f85149; } }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px; }
+  .logo { display: block; margin: 0 0 16px; color: var(--fg); }
   h1 { font-size: 20px; margin: 0 0 8px; }
   p { margin: 0 0 16px; color: var(--muted); }
   strong { color: var(--fg); }
@@ -272,6 +294,8 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
     [
       "default-src 'none'",
       "style-src 'unsafe-inline'",
+      // Only the inline favicon
+      'img-src data:',
       // A form post that answers with a redirect must be allowed to reach the client's origin
       `form-action 'self'${formAction ? ` ${formAction}` : ''}`,
       "frame-ancestors 'none'",
@@ -284,8 +308,9 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
     .send(
       `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
         `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-        `<title>${escapeHtml(title)}</title><style>${PAGE_STYLE}</style></head>` +
-        `<body><main>${body}</main></body></html>`
+        `<title>${escapeHtml(title)}</title><link rel="icon" type="image/svg+xml" href="${FAVICON_HREF}">` +
+        `<style>${PAGE_STYLE}</style></head>` +
+        `<body><main>${LOGO_SVG}${body}</main></body></html>`
     );
 }
 

@@ -276,7 +276,10 @@ describe('OAuth authorization server', () => {
     const csp = res.headers.get('content-security-policy') ?? '';
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("form-action 'self' https://claude.ai");
+    expect(csp).toContain('img-src data:');
     const html = await res.text();
+    expect(html).toContain('<svg class="logo"');
+    expect(html).toContain('rel="icon" type="image/svg+xml" href="data:image/svg+xml,');
     expect(html).toContain('<option value="prod" selected>prod</option>');
     expect(html).toContain('<option value="test">test</option>');
     expect(html).toContain('<strong>Claude</strong>');
