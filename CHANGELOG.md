@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.8.0...v2.9.0) (2026-09-25)
+
+
+### Features
+
+* add a built-in OAuth 2.1 authorization server with IBM i sign-in ([#122](https://github.com/Strom-Capital/mcp-server-db2i/issues/122)) ([d960444](https://github.com/Strom-Capital/mcp-server-db2i/commit/d960444d0f33f8369fac922049894754dbe943c5))
+
 ## [2.8.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.7.0...v2.8.0) (2026-09-24)
 
 
