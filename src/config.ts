@@ -879,11 +879,12 @@ export function readIntEnv(name: string, fallback: number): number {
  */
 export function readIntEnvInRange(name: string, fallback: number, min: number, max: number): number {
   const value = readIntEnv(name, fallback);
+  // The messages leave out the value, so config values never reach an error log
   if (value < min) {
-    throw new Error(`${name} must be at least ${min}, got ${value}`);
+    throw new Error(`${name} must be at least ${min}`);
   }
   if (value > max) {
-    throw new Error(`${name} must be at most ${max}, got ${value}`);
+    throw new Error(`${name} must be at most ${max}`);
   }
   return value;
 }
