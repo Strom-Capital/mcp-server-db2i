@@ -77,6 +77,7 @@ The same settings keep every use case safe:
 
 - Only SELECT and WITH statements run. Everything else is rejected before it reaches the database.
 - `QUERY_DEFAULT_LIMIT` and `QUERY_MAX_LIMIT` cap the rows a query returns.
+- `QUERY_TIMEOUT` cancels a statement on the IBM i once it runs too long, 120 seconds by default.
 - `QUERY_ALLOWED_SCHEMAS` keeps queries inside the libraries you list.
 - `MCP_AUDIT_LOG` records every tool call.
 - Connect with a user profile that has read access only to the data the agent needs.

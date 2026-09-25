@@ -258,6 +258,26 @@ profiles:
     expect(() => getSystems()).toThrow(SystemsError);
   });
 
+  it('reads a profile queryTimeout in seconds and refuses one out of range', () => {
+    useProfiles(`
+profiles:
+  - { name: prod, host: a.example.com, username: A, password: "\${PROD_PASSWORD}", queryTimeout: 30 }
+  - { name: test, host: b.example.com, username: B, password: "\${TEST_PASSWORD}" }
+`);
+    const [prod, test] = getSystems();
+    expect(prod.config.queryTimeout).toBe(30);
+    expect(test.config.queryTimeout).toBeUndefined();
+
+    for (const value of ['-1', '86401', '1.5', '"30"']) {
+      resetSystems();
+      useProfiles(`
+profiles:
+  - { name: prod, host: a.example.com, username: A, password: "\${PROD_PASSWORD}", queryTimeout: ${value} }
+`);
+      expect(() => getSystems()).toThrow(SystemsError);
+    }
+  });
+
   it('refuses an empty list and a missing file', () => {
     useProfiles('profiles: []\n');
     expect(() => getSystems()).toThrow(SystemsError);

@@ -5,7 +5,7 @@
  * checks the behaviour every driver must share: positional parameter binding,
  * the read-only default on the query connection, a separate connection
  * without the read-only setting for QSYS2.GENERATE_SQL, retry after a failed
- * pool creation, and shutdown.
+ * pool creation, shutdown, and the statement time limit (QUERY_TIMEOUT).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
@@ -27,11 +27,44 @@ const created = vi.hoisted(() => ({
   sshClients: [] as Array<{ config: Record<string, unknown>; end: Mock<() => void> }>,
   failNext: { jt400: false, odbc: false, mapepire: false },
   rows: [] as Record<string, unknown>[],
+  // Statement time limit: the next statement waits until something cancels it
+  hangNext: false,
+  hanging: [] as Array<(rows: Record<string, unknown>[]) => void>,
+  cancelFails: false,
+  odbcCancels: 0,
 }));
+
+const JOB_NAME = '123456/QUSER/QZDASOINIT';
+const CANCEL_REFUSED = '[42501] Not authorized to QSYS2.CANCEL_SQL';
+
+/** End every waiting statement the way a cancelled QCMDEXC wait ends: with -1. */
+function finishHanging(): void {
+  for (const finish of created.hanging.splice(0)) {
+    finish([{ '00001': -1 }]);
+  }
+}
 
 function makeFakePool(): FakePool {
   return {
-    query: vi.fn(async () => created.rows),
+    query: vi.fn(async (sql: unknown) => {
+      if (sql === 'CALL QSYS2.CANCEL_SQL(?)') {
+        if (created.cancelFails) {
+          throw new Error(CANCEL_REFUSED);
+        }
+        finishHanging();
+        return [];
+      }
+      if (sql === 'VALUES QSYS2.JOB_NAME') {
+        return [{ '00001': JOB_NAME }];
+      }
+      if (created.hangNext) {
+        created.hangNext = false;
+        return new Promise((resolve) => {
+          created.hanging.push(resolve);
+        });
+      }
+      return created.rows;
+    }),
     close: vi.fn(async () => undefined),
   };
 }
@@ -44,7 +77,28 @@ vi.mock('node-jt400', () => ({
     }
     const pool = makeFakePool();
     created.jt400.push({ config, pool });
-    return pool;
+    // transaction() keeps one connection for its callback
+    // update() is executeUpdate, for a CALL without a result set; it logs to query
+    const update = vi.fn(async (sql: string, params: unknown[]) => {
+      await pool.query(sql, params);
+      return 0;
+    });
+    // Like JT400, reading a CALL without a result set as a query fails after the CALL ran
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      const rows = await pool.query(sql, params);
+      if (sql === 'CALL QSYS2.CANCEL_SQL(?)') {
+        throw new Error('Cursor state not valid.');
+      }
+      return rows;
+    });
+    return {
+      query,
+      update,
+      close: pool.close,
+      transaction: vi.fn(async (fn: (t: { query: typeof query; update: typeof update }) => Promise<unknown>) =>
+        fn({ query, update })
+      ),
+    };
   }),
 }));
 
@@ -71,6 +125,32 @@ vi.mock('odbc', () => ({
         return result;
       }),
       close: inner.close,
+      // One connection per statement when a time limit is set; its statement
+      // runs through the pool's query fake so tests see one call log.
+      connect: vi.fn(async () => ({
+        async createStatement() {
+          let sql = '';
+          let params: unknown[] = [];
+          return {
+            async prepare(text: string) {
+              sql = text;
+            },
+            async bind(values: unknown[]) {
+              params = values;
+            },
+            execute: () => pool.query(sql, params),
+            async cancel() {
+              created.odbcCancels += 1;
+              if (created.cancelFails) {
+                throw new Error('[HY008] Operation canceled failed');
+              }
+              finishHanging();
+            },
+            async close() {},
+          };
+        },
+        async close() {},
+      })),
     };
     created.odbc.push({ connectionString: options.connectionString, options, pool: pool as FakePool });
     return pool;
@@ -99,12 +179,14 @@ vi.mock('@ibm/mapepire-js', () => ({
       const pool = makeFakePool();
       let status = 'notStarted';
       return {
+        id: undefined as string | undefined,
         async connect() {
           if (created.failNext.mapepire) {
             created.failNext.mapepire = false;
             throw new Error('mapepire job failed to start');
           }
           status = 'ready';
+          this.id = JOB_NAME;
           created.mapepire.push({ jdbcOptions, pool });
           return { success: true };
         },
@@ -202,12 +284,17 @@ describe.each(probes)('driver contract: $name', (probe) => {
     created.failNext.odbc = false;
     created.failNext.mapepire = false;
     created.rows = [{ SCHEMA_NAME: 'MYLIB', N: 1 }];
+    created.hangNext = false;
+    created.hanging.length = 0;
+    created.cancelFails = false;
+    created.odbcCancels = 0;
     // connection.ts keeps module state, so each test gets a fresh copy.
     vi.resetModules();
     connection = await import('../../src/db/connection.js');
   });
 
   afterEach(async () => {
+    finishHanging();
     await connection.closeGlobalPool();
     await connection.closeAllSessionPools();
   });
@@ -391,6 +478,67 @@ describe.each(probes)('driver contract: $name', (probe) => {
     await connection.closeGlobalPool();
     expect(pools[0].close).toHaveBeenCalledTimes(1);
     expect(pools[1].close).toHaveBeenCalledTimes(1);
+  });
+  describe('statement time limit', () => {
+    // queryTimeout is in whole seconds, so these tests wait about a second each.
+    const limited = (): DB2iConfig => ({ ...baseConfig(probe.name), queryTimeout: 1 });
+    const canceller = probe.name === 'odbc' ? 'SQLCancel' : 'QSYS2.CANCEL_SQL';
+
+    /** CANCEL_SQL calls, and the pools they ran on. */
+    function cancelCalls(): Array<{ pool: number; params: unknown[] }> {
+      return probe.pools().flatMap((pool, index) =>
+        pool.query.mock.calls
+          .filter(([sql]) => sql === 'CALL QSYS2.CANCEL_SQL(?)')
+          .map(([, params]) => ({ pool: index, params: params as unknown[] }))
+      );
+    }
+
+    it('returns the rows of a statement that ends in time', async () => {
+      connection.initializePool(limited());
+      const result = await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      expect(result.rows).toEqual([{ SCHEMA_NAME: 'MYLIB', N: 1 }]);
+      expect(cancelCalls()).toEqual([]);
+      expect(created.odbcCancels).toBe(0);
+    });
+
+    it(`cancels a statement that runs past the limit with ${canceller}, and the pool still works`, async () => {
+      connection.initializePool(limited());
+      created.hangNext = true;
+      await expect(connection.executeQuery('SELECT * FROM MYLIB.ORDERS')).rejects.toThrow(
+        'Database query failed: Query cancelled on the IBM i after 1 seconds (QUERY_TIMEOUT)'
+      );
+
+      if (probe.name === 'odbc') {
+        expect(created.odbcCancels).toBe(1);
+        expect(cancelCalls()).toEqual([]);
+      } else {
+        // On the connection without the read-only setting, which the CALL needs
+        const calls = cancelCalls();
+        expect(calls).toHaveLength(1);
+        expect(calls[0].params).toEqual([JOB_NAME]);
+        expect(probe.isReadOnly(calls[0].pool)).toBe(false);
+      }
+
+      const again = await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      expect(again.rows).toHaveLength(1);
+    });
+
+    it('says when the IBM i refused the cancel, and the pool still works', async () => {
+      connection.initializePool(limited());
+      created.hangNext = true;
+      created.cancelFails = true;
+      await expect(connection.executeQuery('SELECT * FROM MYLIB.ORDERS')).rejects.toThrow(
+        /^Database query failed: Query stopped after 1 seconds \(QUERY_TIMEOUT\), but it could not be cancelled and may still be running on the IBM i\./
+      );
+      if (probe.name === 'mapepire') {
+        // The job may still be running the statement, so it is not reused
+        expect(probe.pools()[0].close).toHaveBeenCalledTimes(1);
+      }
+
+      created.cancelFails = false;
+      const again = await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      expect(again.rows).toHaveLength(1);
+    });
   });
 });
 

@@ -10,9 +10,10 @@
  */
 
 import type { DB2iConfig } from '../config.js';
+import { queryTimeoutMs } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
 import type { DbPool } from './driver.js';
-import { loadDriver, toJsonSafeRows, toParams } from './driver.js';
+import { loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger({ component: 'database' });
@@ -42,6 +43,13 @@ const owners = new Map<string, Owner>();
 
 // Pools whose close() has started and not finished, for the shutdown deadline log
 const closingPools = new Set<string>();
+
+// Systems whose failed cancel was already logged, so a runaway query per call
+// does not repeat the same warning
+const cancelWarned = new Set<string>();
+
+/** Time limit for the QSYS2.CANCEL_SQL call itself. */
+const CANCEL_CALL_TIMEOUT_MS = 15_000;
 
 // The target used when a caller passes none: the stdio owner's default system.
 // Set by initializePool, for the CLI and code paths that predate systems.
@@ -307,15 +315,91 @@ async function run(
       procedure ? 'Executing procedure' : 'Executing query'
     );
     const db = await acquire(slot, resolved);
+    const timeoutMs = queryTimeoutMs(slot.config);
+    const warmUp = scheduleCancelWarmUp(slot, resolved, procedure, timeoutMs);
+    let rawRows: Record<string, unknown>[];
+    try {
+      rawRows = await db.query(sql, toParams(params), {
+        timeoutMs,
+        cancelJob: (jobName) => cancelSql(jobName, resolved),
+      });
+    } finally {
+      clearTimeout(warmUp);
+    }
     // BIGINT arrives as bigint from ODBC; convert it once, for every output path
-    const rows = toJsonSafeRows(await db.query(sql, toParams(params)));
+    const rows = toJsonSafeRows(rawRows);
     log.debug({ rowCount: rows.length }, `${kind} completed`);
     return { rows };
   } catch (error) {
+    if (error instanceof QueryTimeoutError) {
+      logTimeout(error, resolved, slot.config.driver, sql);
+    }
     const message = error instanceof Error ? error.message : 'Unknown database error';
     log.debug({ err: error, sql: sql.substring(0, 200) }, procedure ? 'Procedure call failed' : 'Database query failed');
     throw new Error(`Database query failed: ${message}`, { cause: error });
   }
+}
+
+/**
+ * Cancel the statement running in another job with QSYS2.CANCEL_SQL. A
+ * read-only connection rejects the CALL, so it runs on the procedure pool.
+ * It needs *JOBCTL special authority or the QIBM_DB_SQLADM function usage.
+ */
+async function cancelSql(jobName: string, target: DbTarget): Promise<void> {
+  const slot = getSlot(target, true);
+  const db = await acquire(slot, target);
+  await db.query('CALL QSYS2.CANCEL_SQL(?)', [jobName], {
+    timeoutMs: CANCEL_CALL_TIMEOUT_MS,
+    noResultSet: true,
+  });
+  log.debug({ job: jobName, ...logContext(target) }, 'Statement cancelled with QSYS2.CANCEL_SQL');
+}
+
+/**
+ * jt400 and mapepire cancel on the procedure pool, and a Mapepire job there
+ * takes seconds to start. Once a statement has used half its time limit, open
+ * that pool in the background so the cancel does not wait for it. ODBC cancels
+ * on the statement's own connection and needs nothing.
+ */
+function scheduleCancelWarmUp(
+  slot: PoolSlot,
+  target: DbTarget,
+  procedure: boolean,
+  timeoutMs: number
+): NodeJS.Timeout | undefined {
+  if (timeoutMs <= 0 || procedure || slot.config.driver === 'odbc') {
+    return undefined;
+  }
+  const timer = setTimeout(() => {
+    // getSlot throws once the session has closed, so it runs inside the chain
+    void Promise.resolve()
+      .then(() => acquire(getSlot(target, true), target))
+      .then((db) => db.query('VALUES 1', [], { timeoutMs: CANCEL_CALL_TIMEOUT_MS }))
+      .catch((err: unknown) => {
+        log.debug({ err, ...logContext(target) }, 'Could not open the pool QSYS2.CANCEL_SQL runs on');
+      });
+  }, timeoutMs / 2);
+  timer.unref();
+  return timer;
+}
+
+function logTimeout(error: QueryTimeoutError, target: DbTarget, driver: string, sql: string): void {
+  const context = { ...logContext(target), driver, timeoutMs: error.timeoutMs, sql: sql.substring(0, 200) };
+  if (error.cancelled) {
+    log.info(context, 'Statement cancelled after QUERY_TIMEOUT');
+    return;
+  }
+  if (cancelWarned.has(target.system)) {
+    log.info({ ...context, err: error.cause }, 'Statement passed QUERY_TIMEOUT and could not be cancelled');
+    return;
+  }
+  cancelWarned.add(target.system);
+  log.warn(
+    { ...context, err: error.cause },
+    'Statement passed QUERY_TIMEOUT and could not be cancelled, so it may still be running on the IBM i. ' +
+      'The jt400 and mapepire drivers cancel with QSYS2.CANCEL_SQL, which needs *JOBCTL special authority ' +
+      'or the QIBM_DB_SQLADM function usage. The odbc driver cancels without either.'
+  );
 }
 
 /**
