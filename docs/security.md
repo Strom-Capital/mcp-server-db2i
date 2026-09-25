@@ -249,7 +249,7 @@ The `/auth` endpoint and the OAuth sign-in form share additional rate limiting t
 
 Both limits use [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) with an in-memory store.
 
-> **Note:** These limits cannot be turned off, and `RATE_LIMIT_ENABLED=false` does not disable them. All values must be positive whole numbers. See [Rate Limiting](configuration.md#rate-limiting) in the configuration reference.
+> **Note:** These limits cannot be turned off, and `RATE_LIMIT_ENABLED=false` does not disable them. Each value must be a positive whole number, and a window can be at most `2147483647` ms (about 24.8 days). See [Rate Limiting](configuration.md#rate-limiting) in the configuration reference.
 
 ### TLS/HTTPS
 

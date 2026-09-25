@@ -24,7 +24,6 @@ vi.mock('node-jt400', () => ({
 
 import { createHttpApp } from '../src/transports/http.js';
 import { getTokenManager } from '../src/auth/tokenManager.js';
-import { resetAuthRateLimits } from '../src/auth/authMiddleware.js';
 import { isRedirectUriAllowed, resetOAuthState } from '../src/auth/oauth.js';
 import { isTransientConnectionError } from '../src/auth/login.js';
 import { getOAuthConfig } from '../src/config.js';
@@ -105,7 +104,6 @@ describe('OAuth authorization server', () => {
     delete process.env.MCP_OAUTH_REFRESH_EXPIRY;
     resetSystems();
     resetOAuthState();
-    await resetAuthRateLimits();
     ({ server, baseUrl } = await listen(createHttpApp()));
   });
 

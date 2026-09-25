@@ -201,8 +201,8 @@ describe('HTTP Configuration', () => {
 
       const { getAuthRateLimitConfig, getHttpConfig } = await import('../src/config.js');
 
-      expect(getAuthRateLimitConfig()).toEqual({ maxAttempts: 5, windowMs: 60000 });
-      expect(getHttpConfig().authRateLimit).toEqual({ maxAttempts: 5, windowMs: 60000 });
+      expect(getAuthRateLimitConfig()).toEqual({ limit: 5, windowMs: 60000 });
+      expect(getHttpConfig().authRateLimit).toEqual({ limit: 5, windowMs: 60000 });
     });
 
     it('reads custom values', async () => {
@@ -211,7 +211,7 @@ describe('HTTP Configuration', () => {
 
       const { getAuthRateLimitConfig } = await import('../src/config.js');
 
-      expect(getAuthRateLimitConfig()).toEqual({ maxAttempts: 20, windowMs: 300000 });
+      expect(getAuthRateLimitConfig()).toEqual({ limit: 20, windowMs: 300000 });
     });
 
     it('is not turned off by RATE_LIMIT_ENABLED=false', async () => {
@@ -221,7 +221,7 @@ describe('HTTP Configuration', () => {
 
       const { getAuthRateLimitConfig } = await import('../src/config.js');
 
-      expect(getAuthRateLimitConfig()).toEqual({ maxAttempts: 5, windowMs: 60000 });
+      expect(getAuthRateLimitConfig()).toEqual({ limit: 5, windowMs: 60000 });
     });
 
     it.each([
@@ -232,6 +232,7 @@ describe('HTTP Configuration', () => {
       ['AUTH_RATE_LIMIT_WINDOW_MS', '0', 'must be at least 1'],
       ['AUTH_RATE_LIMIT_WINDOW_MS', '-60000', 'must be at least 1'],
       ['AUTH_RATE_LIMIT_WINDOW_MS', '1e3', 'must be a whole number'],
+      ['AUTH_RATE_LIMIT_WINDOW_MS', '2147483648', 'must be at most 2147483647'],
     ])('rejects %s=%s', async (name, value, message) => {
       delete process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS;
       delete process.env.AUTH_RATE_LIMIT_WINDOW_MS;
@@ -253,8 +254,30 @@ describe('HTTP Configuration', () => {
     it('defaults to 120 requests per 60 seconds', async () => {
       const { getOAuthRateLimitConfig, getHttpConfig } = await import('../src/config.js');
 
-      expect(getOAuthRateLimitConfig()).toEqual({ maxRequests: 120, windowMs: 60000 });
-      expect(getHttpConfig().oauthRateLimit).toEqual({ maxRequests: 120, windowMs: 60000 });
+      expect(getOAuthRateLimitConfig()).toEqual({ limit: 120, windowMs: 60000 });
+      expect(getHttpConfig().oauthRateLimit).toEqual({ limit: 120, windowMs: 60000 });
+    });
+
+    it('is read by getHttpConfig when OAuth is on', async () => {
+      process.env.MCP_AUTH_MODE = 'required';
+      process.env.MCP_OAUTH_ENABLED = 'true';
+      process.env.MCP_PUBLIC_URL = 'https://mcp.example.com';
+      process.env.OAUTH_RATE_LIMIT_MAX_REQUESTS = '600';
+
+      const { getHttpConfig } = await import('../src/config.js');
+
+      expect(getHttpConfig().oauthRateLimit).toEqual({ limit: 600, windowMs: 60000 });
+      process.env.OAUTH_RATE_LIMIT_MAX_REQUESTS = '0';
+      expect(() => getHttpConfig()).toThrow('OAUTH_RATE_LIMIT_MAX_REQUESTS must be at least 1');
+    });
+
+    it('is ignored by getHttpConfig when OAuth is off', async () => {
+      delete process.env.MCP_OAUTH_ENABLED;
+      process.env.OAUTH_RATE_LIMIT_MAX_REQUESTS = '0';
+
+      const { getHttpConfig } = await import('../src/config.js');
+
+      expect(getHttpConfig().oauthRateLimit).toEqual({ limit: 120, windowMs: 60000 });
     });
 
     it('reads custom values', async () => {
@@ -263,7 +286,7 @@ describe('HTTP Configuration', () => {
 
       const { getOAuthRateLimitConfig } = await import('../src/config.js');
 
-      expect(getOAuthRateLimitConfig()).toEqual({ maxRequests: 600, windowMs: 300000 });
+      expect(getOAuthRateLimitConfig()).toEqual({ limit: 600, windowMs: 300000 });
     });
 
     it('is not turned off by RATE_LIMIT_ENABLED=false', async () => {
@@ -271,7 +294,7 @@ describe('HTTP Configuration', () => {
 
       const { getOAuthRateLimitConfig } = await import('../src/config.js');
 
-      expect(getOAuthRateLimitConfig()).toEqual({ maxRequests: 120, windowMs: 60000 });
+      expect(getOAuthRateLimitConfig()).toEqual({ limit: 120, windowMs: 60000 });
     });
 
     it.each([
@@ -280,13 +303,13 @@ describe('HTTP Configuration', () => {
       ['OAUTH_RATE_LIMIT_MAX_REQUESTS', '2.5', 'must be a whole number'],
       ['OAUTH_RATE_LIMIT_WINDOW_MS', '0', 'must be at least 1'],
       ['OAUTH_RATE_LIMIT_WINDOW_MS', '1e3', 'must be a whole number'],
+      ['OAUTH_RATE_LIMIT_WINDOW_MS', '2147483648', 'must be at most 2147483647'],
     ])('rejects %s=%s', async (name, value, message) => {
       process.env[name] = value;
 
-      const { getOAuthRateLimitConfig, getHttpConfig } = await import('../src/config.js');
+      const { getOAuthRateLimitConfig } = await import('../src/config.js');
 
       expect(() => getOAuthRateLimitConfig()).toThrow(`${name} ${message}`);
-      expect(() => getHttpConfig()).toThrow(name);
     });
   });
 

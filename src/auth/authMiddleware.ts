@@ -18,8 +18,7 @@ import {
   DEFAULT_AUTH_RATE_LIMIT,
   DEFAULT_OAUTH_RATE_LIMIT,
   getHttpConfig,
-  type AuthRateLimitConfig,
-  type OAuthRateLimitConfig,
+  type IpRateLimitConfig,
 } from '../config.js';
 import type { TokenSession } from './types.js';
 
@@ -188,18 +187,6 @@ export function authMiddleware(
 }
 
 /**
- * Stores of every limiter created in this process, so tests can reset them.
- * Each limiter needs its own store: express-rate-limit rejects a shared one.
- */
-const rateLimitStores = new Set<MemoryStore>();
-
-function createStore(): MemoryStore {
-  const store = new MemoryStore();
-  rateLimitStores.add(store);
-  return store;
-}
-
-/**
  * Get client IP from request
  * 
  * Uses Express's req.ip which respects the 'trust proxy' setting.
@@ -233,6 +220,23 @@ function retryAfterSeconds(req: Request): number {
 export type LoginRateLimitedHandler = (retryAfter: number) => void;
 
 /**
+ * Options both per-IP limiters share. Each call gets a new MemoryStore, because
+ * express-rate-limit rejects a store shared between limiters.
+ */
+function ipLimiterOptions(limit: IpRateLimitConfig) {
+  return {
+    windowMs: limit.windowMs,
+    limit: limit.limit,
+    store: new MemoryStore(),
+    keyGenerator: rateLimitKey,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    // X-Forwarded-For is ignored unless MCP_TRUST_PROXY is set; that is deliberate
+    validate: { xForwardedForHeader: false },
+  } as const;
+}
+
+/**
  * Create the login rate limiting middleware
  *
  * Limits login attempts per IP to prevent brute force. Create it once per app
@@ -247,19 +251,12 @@ export type LoginRateLimitedHandler = (retryAfter: number) => void;
  * @param limit - Attempts allowed per IP address and the window length
  */
 export function createAuthRateLimitMiddleware(
-  limit: AuthRateLimitConfig = DEFAULT_AUTH_RATE_LIMIT
+  limit: IpRateLimitConfig = DEFAULT_AUTH_RATE_LIMIT
 ): RequestHandler {
   return rateLimit({
-    windowMs: limit.windowMs,
-    limit: limit.maxAttempts,
-    store: createStore(),
-    keyGenerator: rateLimitKey,
+    ...ipLimiterOptions(limit),
     // Success is a 2xx from /auth or the 303 redirect from the sign-in form
     skipSuccessfulRequests: true,
-    standardHeaders: 'draft-8',
-    legacyHeaders: false,
-    // X-Forwarded-For is ignored unless MCP_TRUST_PROXY is set; that is deliberate
-    validate: { xForwardedForHeader: false },
     handler: (req: Request, res: Response) => {
       const retryAfter = retryAfterSeconds(req);
       log.warn({ ip: getClientIp(req) }, 'Auth rate limit exceeded');
@@ -285,16 +282,10 @@ export function createAuthRateLimitMiddleware(
  * @param limit - Requests allowed per IP address and the window length
  */
 export function createOAuthRateLimitMiddleware(
-  limit: OAuthRateLimitConfig = DEFAULT_OAUTH_RATE_LIMIT
+  limit: IpRateLimitConfig = DEFAULT_OAUTH_RATE_LIMIT
 ): RequestHandler {
   return rateLimit({
-    windowMs: limit.windowMs,
-    limit: limit.maxRequests,
-    store: createStore(),
-    keyGenerator: rateLimitKey,
-    standardHeaders: 'draft-8',
-    legacyHeaders: false,
-    validate: { xForwardedForHeader: false },
+    ...ipLimiterOptions(limit),
     handler: (req: Request, res: Response) => {
       const retryAfter = retryAfterSeconds(req);
       log.warn({ ip: getClientIp(req) }, 'OAuth rate limit exceeded');
@@ -305,11 +296,4 @@ export function createOAuthRateLimitMiddleware(
       });
     },
   });
-}
-
-/**
- * Forget all login attempts and OAuth request counts. Used by tests.
- */
-export async function resetAuthRateLimits(): Promise<void> {
-  await Promise.all([...rateLimitStores].map((store) => store.resetAll()));
 }

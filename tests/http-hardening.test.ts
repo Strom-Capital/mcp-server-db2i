@@ -290,8 +290,8 @@ describe('HTTP /auth database host allowlist', () => {
 
 describe('HTTP /auth rate limiting', () => {
   const originalEnv = process.env;
-  // The limiter is module state keyed by client IP, so each test starts in a
-  // later rate-limit window instead of relying on test order.
+  // Each app gets its own limiter. The fake clock moves forward per test so the
+  // window tests can set times relative to a known start.
   let clock = Date.now();
 
   beforeEach(() => {
