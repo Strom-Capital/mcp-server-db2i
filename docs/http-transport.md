@@ -24,12 +24,18 @@ MCP_TRANSPORT=stdio
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
 | `MCP_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` when Docker publishes the port or another container connects. Put TLS on this process or on the proxy in front of it |
+| `MCP_TRUST_PROXY` | `false` | Express `trust proxy`: `true`, a hop count such as `1`, or proxy addresses and subnets, comma-separated. Set it behind a reverse proxy or tunnel so rate limits key on the client address from `X-Forwarded-For`. Trust only proxies that overwrite that header |
 | `MCP_ALLOWED_HOSTS` | loopback | Extra `Host` names, comma-separated. Loopback is always allowed. Required for a public hostname when the process binds `0.0.0.0` |
 | `MCP_SESSION_MODE` | `stateless` | `stateless` (default) or deprecated `stateful` |
 | `MCP_AUTH_MODE` | `required` | Authentication mode: `required`, `token`, or `none` |
 | `MCP_AUTH_TOKEN` | - | Static token for `token` auth mode |
 | `MCP_ALLOW_UNAUTHENTICATED_HTTP` | `false` | Allow `none` when the bind address is not loopback |
-| `MCP_AUTH_ALLOWED_DB_HOSTS` | `DB2I_HOSTNAME` | Hosts `POST /auth` may connect to |
+| `MCP_AUTH_ALLOWED_DB_HOSTS` | `DB2I_HOSTNAME` | Hosts `POST /auth` and the OAuth login may connect to |
+| `MCP_OAUTH_ENABLED` | `false` | Built-in OAuth authorization server for remote clients. Needs `required` mode. See [Remote Clients (OAuth)](#remote-clients-oauth) |
+| `MCP_PUBLIC_URL` | - | External origin clients use, such as `https://mcp.example.com`. Required with OAuth. Its hostname is added to the `Host` allowlist |
+| `MCP_OAUTH_REDIRECT_URIS` | Claude and Cursor callbacks | Redirect URIs clients may register, comma-separated. Exact URLs, or prefixes ending in `/*` |
+| `MCP_OAUTH_SECRET` | random | Key that signs client IDs and login requests, at least 32 characters. Set it so registrations survive a restart |
+| `MCP_OAUTH_REFRESH_EXPIRY` | `604800` | Refresh token lifetime in seconds. `0` turns refresh tokens off |
 | `MCP_TLS_ENABLED` | `false` | Enable built-in TLS |
 | `MCP_TLS_CERT_PATH` | - | Path to TLS certificate (required if TLS enabled) |
 | `MCP_TLS_KEY_PATH` | - | Path to TLS private key (required if TLS enabled) |
@@ -192,6 +198,88 @@ The host, port, database, driver, and driver options come from the `test` profil
 
 In `token` and `none` modes there is no login, so every caller can reach every profile, and each call picks one with the `system` argument. Each caller runs as the profile's configured user.
 
+## Remote Clients (OAuth)
+
+Remote MCP clients, such as claude.ai custom connectors, cannot send a static header or call `POST /auth`. They follow the [MCP authorization spec](https://modelcontextprotocol.io/specification/latest/basic/authorization) instead. With `MCP_OAUTH_ENABLED=true`, the server acts as its own OAuth 2.1 authorization server:
+
+1. The client calls `/mcp`, gets `401` with `WWW-Authenticate: Bearer resource_metadata="..."`, and reads the protected resource and authorization server metadata.
+2. It registers itself at `/oauth/register` (dynamic client registration).
+3. The user's browser opens `/oauth/authorize`: a sign-in page for an IBM i user profile and password, with a system picker when `DB2I_PROFILES` lists more than one.
+4. The server checks the credentials with a test connection, like `/auth`, and redirects back with a one-time code.
+5. The client exchanges the code, with its PKCE verifier, at `/oauth/token` for an access token and a refresh token.
+
+The access token is the same kind of token `/auth` returns. It is bound to the user's credentials and the chosen system, so every query runs with that user's own IBM i authority, under the schema allowlist of that profile.
+
+```bash
+MCP_TRANSPORT=http
+MCP_AUTH_MODE=required
+MCP_OAUTH_ENABLED=true
+MCP_PUBLIC_URL=https://mcp.example.com
+MCP_OAUTH_SECRET=<openssl rand -hex 32>
+# Behind a TLS proxy or tunnel on the same host:
+MCP_HTTP_HOST=127.0.0.1
+# One proxy hop, so rate limits see each client's address:
+MCP_TRUST_PROXY=1
+```
+
+The server must be reachable over HTTPS at `MCP_PUBLIC_URL`, through a reverse proxy or a tunnel that keeps the `Host` header. `MCP_PUBLIC_URL` must be an origin only: serve the server at the root of its hostname, not under a path.
+
+To add it in Claude, open **Settings > Connectors > Add custom connector** and enter `https://mcp.example.com/mcp`. Choose **Sign in now** and **Register automatically**, and leave the request headers empty. When you connect, the sign-in page opens:
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/oauth-sign-in-dark.png">
+    <img src="assets/oauth-sign-in.png" alt="Sign-in page: the mcp-server-db2i logo, a system picker with prod selected, user profile and password fields, and a Sign in button" width="360">
+  </picture>
+</p>
+
+The page names the client and the site the user returns to. After sign-in, Claude holds a token bound to that user profile and system.
+
+Other clients sign in the same way. Each connection is bound to the system picked on the sign-in page, so add one entry per system you want to use.
+
+- **Cursor.** In `~/.cursor/mcp.json` (or a project's `.cursor/mcp.json`), add the URL only, with no command, environment or password:
+  ```json
+  "db2i": { "url": "https://mcp.example.com/mcp" }
+  ```
+  Cursor opens the sign-in page in the browser and returns through `cursor://anysphere.cursor-mcp/oauth/callback`, which is allowed by default.
+- **Claude Code.** `claude mcp add --transport http --scope user db2i https://mcp.example.com/mcp`, then sign in from `/mcp`. Claude Code uses a loopback callback, which is always accepted.
+
+Pointing every client at one server, instead of starting a stdio server per client, keeps one set of connection pools to the IBM i. Access tokens and refresh tokens live in memory, so clients sign in again after the server restarts.
+
+### Limiting who can reach the server
+
+OAuth decides who may query, but the sign-in page and token endpoint still face the internet. Put an IP allowlist in front of them as well. Claude connectors call from Anthropic's [published outbound range](https://platform.claude.com/docs/en/api/ip-addresses), `160.79.104.0/21`. The sign-in page opens in the user's own browser, so the networks your users sign in from must be allowed too.
+
+With an ngrok tunnel, a traffic policy on the endpoint does this before requests reach the server:
+
+```yaml
+version: 3
+endpoints:
+  - name: db2i-mcp
+    url: https://mcp.example.com
+    upstream:
+      url: http://127.0.0.1:3000
+    traffic_policy:
+      on_http_request:
+        - actions:
+            - type: restrict-ips
+              config:
+                enforce: true
+                allow:
+                  - 160.79.104.0/21     # Anthropic outbound (Claude connectors)
+                  - 203.0.113.10/32     # your office network
+```
+
+A reverse proxy can do the same, for example nginx `allow` and `deny` rules.
+
+Notes:
+
+- **Redirect URIs.** Registration is refused for a redirect URI outside `MCP_OAUTH_REDIRECT_URIS`, which defaults to the claude.ai and claude.com connector callbacks and Cursor's `cursor://anysphere.cursor-mcp/oauth/callback`. Setting it replaces the defaults, so list those you still need. Loopback redirects (`http://localhost:<port>/...`) are always accepted, for desktop clients. Without this list, anyone could register a client that sends codes to their own site and ask a user to sign in.
+- **Registrations are stateless.** A client ID is the client's metadata signed with `MCP_OAUTH_SECRET`. Nothing is stored, and a registration keeps working after a restart as long as the secret stays the same. Without the secret, a random one is used and clients must register again after a restart.
+- **Codes and refresh tokens live in memory.** A restart signs every user out. Refresh tokens rotate on every use, and each refresh repeats the test connection, so a disabled user profile or a changed password ends the grant. If the IBM i cannot be reached, the refresh answers 503 and the grant stays. Revoking an access or refresh token ends both.
+- **Rate limit.** Sign-in attempts share the `/auth` limit: 5 per minute per client IP. All `/oauth/*` endpoints together allow 120 requests per minute per IP. Behind a proxy, set `MCP_TRUST_PROXY` so the limits use the client address from `X-Forwarded-For`. Without it, all users share the proxy's budget. A successful sign-in does not count toward the limit.
+- **Scopes** are not used. A token can call every tool that `MCP_TOOLS_ENABLED` and `MCP_TOOLS_DISABLED` leave registered.
+
 ## API Endpoints
 
 | Method | Path | Auth | Description |
@@ -199,12 +287,19 @@ In `token` and `none` modes there is no login, so every caller can reach every p
 | GET | `/openapi.json` | None | OpenAPI 3.1 specification |
 | POST | `/auth` | None | Exchange credentials for token (`required` mode only) |
 | GET | `/health` | None | Health check with session stats and config |
+| GET | `/favicon.ico`, `/favicon.svg`, `/icon.png`, `/icon.svg` | None | Project icon. The MCP server info lists `/icon.png` and `/icon.svg` under `MCP_PUBLIC_URL` as its `icons`, so clients can show it in connector lists |
+| GET | `/.well-known/oauth-protected-resource[/mcp]` | None | Protected resource metadata (OAuth only) |
+| GET | `/.well-known/oauth-authorization-server` | None | Authorization server metadata (OAuth only) |
+| POST | `/oauth/register` | None | Dynamic client registration (OAuth only) |
+| GET, POST | `/oauth/authorize` | None | IBM i sign-in page (OAuth only) |
+| POST | `/oauth/token` | Client | Code and refresh token exchange (OAuth only) |
+| POST | `/oauth/revoke` | Client | Token revocation (OAuth only) |
 | POST | `/mcp` | Depends on mode* | MCP JSON-RPC requests (2026-07-28 and 2025-era) |
 | GET | `/mcp` | Depends on mode* | SSE stream (deprecated `stateful` mode only; otherwise 405) |
 | DELETE | `/mcp` | Depends on mode* | Close MCP session (deprecated `stateful` mode only; otherwise 405) |
 
 *Authentication depends on `MCP_AUTH_MODE`:
-- `required`: Bearer token from `/auth`
+- `required`: Bearer token from `/auth` or from the OAuth flow
 - `token`: Static Bearer token from `MCP_AUTH_TOKEN`
 - `none`: No authentication required
 
@@ -255,7 +350,8 @@ MCP_HTTP_PORT=3000
 - **Use `required` mode in production**: Provides per-user authentication and database permissions
 - **Use HTTPS in production**: Enable TLS or run behind a reverse proxy
 - **Token expiry**: In `required` mode, tokens expire after 1 hour by default (configurable via `MCP_TOKEN_EXPIRY`)
-- **Rate limiting**: The `/auth` endpoint has built-in rate limiting to prevent brute force attacks
+- **Rate limiting**: The `/auth` endpoint and the OAuth sign-in page share built-in rate limiting to prevent brute force attacks
+- **OAuth**: Keep `MCP_OAUTH_REDIRECT_URIS` to the clients you use, and set `MCP_OAUTH_SECRET`
 - **Token mode requires HTTPS**: When using `token` mode, always enable TLS to protect the static token
 - **None mode for trusted networks only**: Only use `none` mode on localhost or secure internal networks
 - **Session limits**: Maximum concurrent sessions configurable via `MCP_MAX_SESSIONS`

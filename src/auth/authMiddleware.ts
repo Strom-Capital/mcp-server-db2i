@@ -3,13 +3,15 @@
  * 
  * Express middleware to validate Bearer tokens on protected routes.
  * Supports multiple authentication modes:
- * - 'required': Full /auth flow with per-user DB credentials (default)
+ * - 'required': Full /auth flow with per-user DB credentials (default).
+ *   With MCP_OAUTH_ENABLED, 401 responses carry a WWW-Authenticate challenge.
  * - 'token': Pre-shared static token, uses env DB credentials
  * - 'none': No authentication required, uses env DB credentials
  */
 
 import type { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { ipKeyGenerator, MemoryStore, rateLimit } from 'express-rate-limit';
 import { getTokenManager } from './tokenManager.js';
 import { createChildLogger } from '../utils/logger.js';
 import { getHttpConfig } from '../config.js';
@@ -122,11 +124,23 @@ export function authMiddleware(
   const authHeader = req.headers.authorization;
   const token = extractBearerToken(authHeader);
 
+  // With the OAuth server on, a 401 points clients at the protected resource metadata (RFC 9728)
+  const challenge = (error?: string): void => {
+    if (httpConfig.oauth) {
+      res.setHeader(
+        'WWW-Authenticate',
+        `Bearer resource_metadata="${httpConfig.oauth.publicUrl}/.well-known/oauth-protected-resource/mcp"` +
+          (error ? `, error="${error}"` : '')
+      );
+    }
+  };
+
   if (!token) {
     log.debug(
       { path: req.path, method: req.method },
       'Missing or invalid Authorization header'
     );
+    challenge();
     res.status(401).json({
       error: 'unauthorized',
       error_description: 'Missing or invalid Authorization header. Use: Authorization: Bearer <token>',
@@ -142,6 +156,7 @@ export function authMiddleware(
       { path: req.path, method: req.method, error: result.error },
       'Token validation failed'
     );
+    challenge('invalid_token');
     res.status(401).json({
       error: 'invalid_token',
       error_description: result.error ?? 'Token validation failed',
@@ -166,30 +181,20 @@ export function authMiddleware(
   next();
 }
 
-/**
- * Rate limiting middleware for auth endpoints
- * 
- * Simple in-memory rate limiter to prevent brute force attacks.
- * Tracks attempts by IP address. Each attempt is counted when it arrives,
- * because failures are only known after a slow database connection test and
- * parallel requests would otherwise all pass the check.
- */
-const authAttempts = new Map<string, { count: number; resetAt: number }>();
+/** Login attempts per IP: POST /auth and the OAuth sign-in form share this budget. */
 const AUTH_RATE_LIMIT = {
   maxAttempts: 5,
   windowMs: 60000, // 1 minute
 };
 
-/** Past this many tracked addresses, expired entries are dropped before adding more. */
-const AUTH_ATTEMPTS_SWEEP_SIZE = 1000;
+/** Requests per IP across the OAuth endpoints. Generous, because hosted clients such as claude.ai share egress addresses. */
+const OAUTH_RATE_LIMIT = {
+  maxRequests: 120,
+  windowMs: 60000,
+};
 
-function sweepAuthAttempts(now: number): void {
-  for (const [ip, entry] of authAttempts) {
-    if (entry.resetAt <= now) {
-      authAttempts.delete(ip);
-    }
-  }
-}
+const loginAttemptStore = new MemoryStore();
+const oauthRequestStore = new MemoryStore();
 
 /**
  * Get client IP from request
@@ -198,8 +203,8 @@ function sweepAuthAttempts(now: number): void {
  * If proxy is trusted, req.ip will contain the client IP from X-Forwarded-For.
  * If proxy is not trusted, req.ip will be the direct connection IP.
  * 
- * To trust proxy headers, set app.set('trust proxy', true) or configure
- * specific trusted proxies. Without this, X-Forwarded-For headers are ignored.
+ * MCP_TRUST_PROXY sets Express's 'trust proxy'. Without it, X-Forwarded-For
+ * headers are ignored and every request behind a proxy shares the proxy's address.
  */
 function getClientIp(req: Request): string {
   // Use Express's req.ip which respects 'trust proxy' setting
@@ -207,49 +212,88 @@ function getClientIp(req: Request): string {
   return req.ip ?? req.socket.remoteAddress ?? 'unknown';
 }
 
+/** Rate limit key: the client IP, with IPv6 addresses grouped by /56 so one host cannot rotate through its range. */
+function rateLimitKey(req: Request): string {
+  return ipKeyGenerator(getClientIp(req));
+}
+
+/** Seconds until the caller's window resets. */
+function retryAfterSeconds(req: Request): number {
+  const resetTime = (req as Request & { rateLimit?: { resetTime?: Date } }).rateLimit?.resetTime;
+  return resetTime ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000)) : 60;
+}
+
+/**
+ * Handler a route can set on `res.locals.onLoginRateLimited` to answer a
+ * rate-limited login itself, such as the OAuth sign-in page rendering HTML.
+ */
+export type LoginRateLimitedHandler = (retryAfter: number) => void;
+
 /**
  * Auth rate limiting middleware
- * 
- * Limits authentication attempts per IP to prevent brute force.
- * Should be applied to the /auth endpoint. Call clearAuthRateLimit
- * after a successful authentication.
+ *
+ * Limits login attempts per IP to prevent brute force. Applied to POST /auth
+ * and the OAuth sign-in form, which share one budget. Each attempt is counted
+ * when it arrives, because failures are only known after a slow database
+ * connection test and parallel requests would otherwise all pass the check.
+ * A successful login gives back only its own attempt. It never clears earlier
+ * failures, so a caller with one valid profile cannot use it to reset the count
+ * while guessing the password of another.
  */
-export function authRateLimitMiddleware(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
-  const ip = getClientIp(req);
-  const now = Date.now();
-  if (authAttempts.size >= AUTH_ATTEMPTS_SWEEP_SIZE) {
-    sweepAuthAttempts(now);
-  }
-
-  let current = authAttempts.get(ip);
-  if (!current || current.resetAt <= now) {
-    current = { count: 0, resetAt: now + AUTH_RATE_LIMIT.windowMs };
-    authAttempts.set(ip, current);
-  }
-
-  if (current.count >= AUTH_RATE_LIMIT.maxAttempts) {
-    const retryAfter = Math.ceil((current.resetAt - now) / 1000);
-    log.warn({ ip, attempts: current.count }, 'Auth rate limit exceeded');
+export const authRateLimitMiddleware = rateLimit({
+  windowMs: AUTH_RATE_LIMIT.windowMs,
+  limit: AUTH_RATE_LIMIT.maxAttempts,
+  store: loginAttemptStore,
+  keyGenerator: rateLimitKey,
+  // Success is a 2xx from /auth or the 303 redirect from the sign-in form
+  skipSuccessfulRequests: true,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  // X-Forwarded-For is ignored unless MCP_TRUST_PROXY is set; that is deliberate
+  validate: { xForwardedForHeader: false },
+  handler: (req: Request, res: Response) => {
+    const retryAfter = retryAfterSeconds(req);
+    log.warn({ ip: getClientIp(req) }, 'Auth rate limit exceeded');
+    const custom = res.locals.onLoginRateLimited as LoginRateLimitedHandler | undefined;
+    if (custom) {
+      custom(retryAfter);
+      return;
+    }
     res.status(429).json({
       error: 'too_many_requests',
       error_description: `Too many authentication attempts. Try again in ${retryAfter} seconds.`,
       retry_after: retryAfter,
     });
-    return;
-  }
-
-  current.count++;
-  next();
-}
+  },
+});
 
 /**
- * Clear rate limit for an IP (on successful auth)
+ * Per-IP request limit for the OAuth endpoints (registration, sign-in, token, revoke).
+ * Sign-in attempts are limited further by authRateLimitMiddleware.
  */
-export function clearAuthRateLimit(req: Request): void {
-  const ip = getClientIp(req);
-  authAttempts.delete(ip);
+export const oauthRateLimitMiddleware = rateLimit({
+  windowMs: OAUTH_RATE_LIMIT.windowMs,
+  limit: OAUTH_RATE_LIMIT.maxRequests,
+  store: oauthRequestStore,
+  keyGenerator: rateLimitKey,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  handler: (req: Request, res: Response) => {
+    const retryAfter = retryAfterSeconds(req);
+    log.warn({ ip: getClientIp(req) }, 'OAuth rate limit exceeded');
+    res.setHeader('Retry-After', String(retryAfter));
+    res.status(429).json({
+      error: 'too_many_requests',
+      error_description: `Too many requests. Try again in ${retryAfter} seconds.`,
+    });
+  },
+});
+
+/**
+ * Forget all login attempts and OAuth request counts. Used by tests.
+ */
+export async function resetAuthRateLimits(): Promise<void> {
+  await loginAttemptStore.resetAll();
+  await oauthRequestStore.resetAll();
 }

@@ -16,6 +16,23 @@ describe('HTTP Configuration', () => {
     process.env = originalEnv;
   });
 
+  describe('trustProxy', () => {
+    it('trusts no proxy by default, and parses hop counts and address lists', async () => {
+      process.env.MCP_AUTH_MODE = 'none';
+      const { getHttpConfig } = await import('../src/config.js');
+      delete process.env.MCP_TRUST_PROXY;
+      expect(getHttpConfig().trustProxy).toBe(false);
+      process.env.MCP_TRUST_PROXY = '0';
+      expect(getHttpConfig().trustProxy).toBe(false);
+      process.env.MCP_TRUST_PROXY = 'true';
+      expect(getHttpConfig().trustProxy).toBe(true);
+      process.env.MCP_TRUST_PROXY = '1';
+      expect(getHttpConfig().trustProxy).toBe(1);
+      process.env.MCP_TRUST_PROXY = 'loopback, 10.0.0.0/8';
+      expect(getHttpConfig().trustProxy).toBe('loopback, 10.0.0.0/8');
+    });
+  });
+
   describe('getTransportMode', () => {
     it('should default to stdio', async () => {
       delete process.env.MCP_TRANSPORT;

@@ -47,6 +47,7 @@
     "@modelcontextprotocol/node": "^2.1.0",
     "@modelcontextprotocol/server": "^2.1.0",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
     "hono": "^4.13.8",
     "node-sql-parser": "^5.4.0",
     "pino": "^10.3.1",

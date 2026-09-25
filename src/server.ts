@@ -16,6 +16,7 @@ import { createRequire } from 'module';
 import { McpServer, type RegisteredTool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
+import { serverIcons } from './branding.js';
 import { getEnabledTools, getResponseFormat } from './config.js';
 import { resolveTarget, STDIO_POOL_KEY, systemNames, type DbTarget, type SystemBinding } from './systems.js';
 import { executeQueryTool } from './tools/query.js';
@@ -530,6 +531,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
   const server = new McpServer({
     name: SERVER_NAME,
     version: SERVER_VERSION,
+    icons: serverIcons(),
   });
 
   const system = systemShape(sessionContext);
