@@ -12,6 +12,9 @@ import type { Icon } from '@modelcontextprotocol/server';
 
 import { isLoopbackHost } from './config.js';
 
+/** Product name as the README heading and the docs site show it. */
+export const DISPLAY_NAME = 'Db2 for i MCP Server';
+
 /** Shapes of the project logo (docs/assets/logo.svg). The stroke color is set by each use. */
 export const LOGO_SHAPES =
   '<g stroke-width="12" stroke-linecap="round" stroke-linejoin="round">' +

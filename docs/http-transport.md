@@ -233,7 +233,7 @@ To add it in Claude, open **Settings > Connectors > Add custom connector** and e
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/oauth-sign-in-dark.png" />
-    <img src="assets/oauth-sign-in.png" alt="Sign-in page: the mcp-server-db2i logo, a system picker with prod selected, user profile and password fields, and a Sign in button" width="360" />
+    <img src="assets/oauth-sign-in.png" alt="Sign-in page: the Db2 for i MCP Server logo and name, a system picker with prod selected, user profile and password fields, and a Sign in button" width="360" />
   </picture>
 </p>
 

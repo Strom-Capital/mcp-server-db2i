@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { createMcpHandler, isInitializeRequest, isLegacyRequest, type McpHttpHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler, toWebRequest } from '@modelcontextprotocol/node';
 
-import { FAVICON_ICO, FAVICON_SVG, ICON_PNG, ICON_TILE_SVG } from '../branding.js';
+import { DISPLAY_NAME, FAVICON_ICO, FAVICON_SVG, ICON_PNG, ICON_TILE_SVG } from '../branding.js';
 import { getHttpConfig, hostnameOf, isLoopbackHost } from '../config.js';
 import { createChildLogger } from '../utils/logger.js';
 import {
@@ -445,7 +445,7 @@ export function createHttpApp(): Express {
 
   // OAuth authorization server for remote clients (MCP_OAUTH_ENABLED)
   if (httpConfig.oauth) {
-    app.use(createOAuthRouter(httpConfig.oauth, SERVER_NAME, {
+    app.use(createOAuthRouter(httpConfig.oauth, DISPLAY_NAME, {
       requests: createOAuthRateLimitMiddleware(httpConfig.oauthRateLimit),
       login: authRateLimitMiddleware,
     }));
