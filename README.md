@@ -157,6 +157,8 @@ See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, C
 | `list_views` | List views in a schema (with optional filter) |
 | `list_indexes` | List SQL indexes for a table |
 | `get_table_constraints` | Get primary keys, foreign keys, unique constraints |
+| `list_routines` | List SQL procedures and functions in a library, with language, external program, and SQL data access |
+| `describe_routine` | Parameters, return value or result columns, and a call template for a procedure or function |
 | `validate_query` | Check a statement without running it, including catalog names |
 | `get_object_ddl` | Return the SQL DDL that recreates an object |
 | `get_related_objects` | List objects that depend on a table |

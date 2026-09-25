@@ -88,6 +88,7 @@ mcp-server-db2i/
 │   │   ├── queries.ts     # Catalog queries
 │   │   ├── sqlErrorInfo.ts # Cause and recovery for failed statements
 │   │   ├── indexAdvice.ts # index_advice from SYSIXADV
+│   │   ├── routines.ts    # list_routines and describe_routine from SYSROUTINES and SYSPARMS
 │   │   ├── profile.ts     # profile_table statistics
 │   │   └── sqlServices.ts # PARSE_STATEMENT, GENERATE_SQL, RELATED_OBJECTS
 │   ├── customTools/       # YAML business SQL tools, annotations, masking, file watch
@@ -96,6 +97,7 @@ mcp-server-db2i/
 │   │   ├── sqlLimit.ts    # FETCH FIRST row cap
 │   │   ├── metadata.ts    # Schema, table, and catalog search tools
 │   │   ├── indexAdvice.ts # index_advice
+│   │   ├── routines.ts    # list_routines, describe_routine
 │   │   ├── profile.ts     # profile_table
 │   │   └── sqlServices.ts # validate_query, DDL, related objects, journals
 │   ├── transports/        # HTTP transport

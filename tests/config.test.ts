@@ -1110,6 +1110,13 @@ describe('Config Module', () => {
       expect(getEnabledTools()).toEqual(['describe_table', 'get_journal_info']);
     });
 
+    it('should enable and disable list_routines and describe_routine by name', () => {
+      process.env.MCP_TOOLS_ENABLED = 'describe_routine,list_routines,describe_table';
+      expect(getEnabledTools()).toEqual(['describe_table', 'list_routines', 'describe_routine']);
+      process.env.MCP_TOOLS_DISABLED = 'list_routines';
+      expect(getEnabledTools()).toEqual(['describe_table', 'describe_routine']);
+    });
+
     it('should enable and disable index_advice by name', () => {
       process.env.MCP_TOOLS_ENABLED = 'index_advice,describe_table';
       expect(getEnabledTools()).toEqual(['describe_table', 'index_advice']);
