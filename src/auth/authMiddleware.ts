@@ -9,12 +9,17 @@
  * - 'none': No authentication required, uses env DB credentials
  */
 
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { ipKeyGenerator, MemoryStore, rateLimit } from 'express-rate-limit';
 import { getTokenManager } from './tokenManager.js';
 import { createChildLogger } from '../utils/logger.js';
-import { getHttpConfig } from '../config.js';
+import {
+  DEFAULT_AUTH_RATE_LIMIT,
+  DEFAULT_OAUTH_RATE_LIMIT,
+  getHttpConfig,
+  type IpRateLimitConfig,
+} from '../config.js';
 import type { TokenSession } from './types.js';
 
 const log = createChildLogger({ component: 'auth-middleware' });
@@ -181,21 +186,6 @@ export function authMiddleware(
   next();
 }
 
-/** Login attempts per IP: POST /auth and the OAuth sign-in form share this budget. */
-const AUTH_RATE_LIMIT = {
-  maxAttempts: 5,
-  windowMs: 60000, // 1 minute
-};
-
-/** Requests per IP across the OAuth endpoints. Generous, because hosted clients such as claude.ai share egress addresses. */
-const OAUTH_RATE_LIMIT = {
-  maxRequests: 120,
-  windowMs: 60000,
-};
-
-const loginAttemptStore = new MemoryStore();
-const oauthRequestStore = new MemoryStore();
-
 /**
  * Get client IP from request
  * 
@@ -230,70 +220,80 @@ function retryAfterSeconds(req: Request): number {
 export type LoginRateLimitedHandler = (retryAfter: number) => void;
 
 /**
- * Auth rate limiting middleware
+ * Options both per-IP limiters share. Each call gets a new MemoryStore, because
+ * express-rate-limit rejects a store shared between limiters.
+ */
+function ipLimiterOptions(limit: IpRateLimitConfig) {
+  return {
+    windowMs: limit.windowMs,
+    limit: limit.limit,
+    store: new MemoryStore(),
+    keyGenerator: rateLimitKey,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    // X-Forwarded-For is ignored unless MCP_TRUST_PROXY is set; that is deliberate
+    validate: { xForwardedForHeader: false },
+  } as const;
+}
+
+/**
+ * Create the login rate limiting middleware
  *
- * Limits login attempts per IP to prevent brute force. Applied to POST /auth
- * and the OAuth sign-in form, which share one budget. Each attempt is counted
- * when it arrives, because failures are only known after a slow database
- * connection test and parallel requests would otherwise all pass the check.
+ * Limits login attempts per IP to prevent brute force. Create it once per app
+ * and apply the same instance to POST /auth and the OAuth sign-in form, so they
+ * share one budget. Each attempt is counted when it arrives, because failures
+ * are only known after a slow database connection test and parallel requests
+ * would otherwise all pass the check.
  * A successful login gives back only its own attempt. It never clears earlier
  * failures, so a caller with one valid profile cannot use it to reset the count
  * while guessing the password of another.
+ *
+ * @param limit - Attempts allowed per IP address and the window length
  */
-export const authRateLimitMiddleware = rateLimit({
-  windowMs: AUTH_RATE_LIMIT.windowMs,
-  limit: AUTH_RATE_LIMIT.maxAttempts,
-  store: loginAttemptStore,
-  keyGenerator: rateLimitKey,
-  // Success is a 2xx from /auth or the 303 redirect from the sign-in form
-  skipSuccessfulRequests: true,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  // X-Forwarded-For is ignored unless MCP_TRUST_PROXY is set; that is deliberate
-  validate: { xForwardedForHeader: false },
-  handler: (req: Request, res: Response) => {
-    const retryAfter = retryAfterSeconds(req);
-    log.warn({ ip: getClientIp(req) }, 'Auth rate limit exceeded');
-    const custom = res.locals.onLoginRateLimited as LoginRateLimitedHandler | undefined;
-    if (custom) {
-      custom(retryAfter);
-      return;
-    }
-    res.status(429).json({
-      error: 'too_many_requests',
-      error_description: `Too many authentication attempts. Try again in ${retryAfter} seconds.`,
-      retry_after: retryAfter,
-    });
-  },
-});
+export function createAuthRateLimitMiddleware(
+  limit: IpRateLimitConfig = DEFAULT_AUTH_RATE_LIMIT
+): RequestHandler {
+  return rateLimit({
+    ...ipLimiterOptions(limit),
+    // Success is a 2xx from /auth or the 303 redirect from the sign-in form
+    skipSuccessfulRequests: true,
+    handler: (req: Request, res: Response) => {
+      const retryAfter = retryAfterSeconds(req);
+      log.warn({ ip: getClientIp(req) }, 'Auth rate limit exceeded');
+      const custom = res.locals.onLoginRateLimited as LoginRateLimitedHandler | undefined;
+      if (custom) {
+        custom(retryAfter);
+        return;
+      }
+      res.status(429).json({
+        error: 'too_many_requests',
+        error_description: `Too many authentication attempts. Try again in ${retryAfter} seconds.`,
+        retry_after: retryAfter,
+      });
+    },
+  });
+}
 
 /**
- * Per-IP request limit for the OAuth endpoints (registration, sign-in, token, revoke).
- * Sign-in attempts are limited further by authRateLimitMiddleware.
+ * Create the per-IP request limit for the OAuth endpoints (registration,
+ * sign-in, token, revoke). Sign-in attempts are limited further by the login
+ * limiter from createAuthRateLimitMiddleware.
+ *
+ * @param limit - Requests allowed per IP address and the window length
  */
-export const oauthRateLimitMiddleware = rateLimit({
-  windowMs: OAUTH_RATE_LIMIT.windowMs,
-  limit: OAUTH_RATE_LIMIT.maxRequests,
-  store: oauthRequestStore,
-  keyGenerator: rateLimitKey,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  validate: { xForwardedForHeader: false },
-  handler: (req: Request, res: Response) => {
-    const retryAfter = retryAfterSeconds(req);
-    log.warn({ ip: getClientIp(req) }, 'OAuth rate limit exceeded');
-    res.setHeader('Retry-After', String(retryAfter));
-    res.status(429).json({
-      error: 'too_many_requests',
-      error_description: `Too many requests. Try again in ${retryAfter} seconds.`,
-    });
-  },
-});
-
-/**
- * Forget all login attempts and OAuth request counts. Used by tests.
- */
-export async function resetAuthRateLimits(): Promise<void> {
-  await loginAttemptStore.resetAll();
-  await oauthRequestStore.resetAll();
+export function createOAuthRateLimitMiddleware(
+  limit: IpRateLimitConfig = DEFAULT_OAUTH_RATE_LIMIT
+): RequestHandler {
+  return rateLimit({
+    ...ipLimiterOptions(limit),
+    handler: (req: Request, res: Response) => {
+      const retryAfter = retryAfterSeconds(req);
+      log.warn({ ip: getClientIp(req) }, 'OAuth rate limit exceeded');
+      res.setHeader('Retry-After', String(retryAfter));
+      res.status(429).json({
+        error: 'too_many_requests',
+        error_description: `Too many requests. Try again in ${retryAfter} seconds.`,
+      });
+    },
+  });
 }

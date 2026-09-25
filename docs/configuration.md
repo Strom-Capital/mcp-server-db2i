@@ -149,6 +149,14 @@ The server reads these files before it accepts connections. A statement that is 
 | `RATE_LIMIT_WINDOW_MS` | `900000` | Rate limit time window in milliseconds (15 min) |
 | `RATE_LIMIT_MAX_REQUESTS` | `100` | Maximum requests allowed per window |
 | `RATE_LIMIT_ENABLED` | `true` | Set to `false` or `0` to disable rate limiting |
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `5` | Login attempts allowed per IP address in the window, for `POST /auth` and the OAuth sign-in form together |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | `60000` | Login rate limit window in milliseconds (1 min) |
+| `OAUTH_RATE_LIMIT_MAX_REQUESTS` | `120` | Requests allowed per IP address in the window, across all `/oauth/*` endpoints |
+| `OAUTH_RATE_LIMIT_WINDOW_MS` | `60000` | OAuth endpoint rate limit window in milliseconds (1 min) |
+
+The login limit guards against password guessing. `POST /auth` and the OAuth sign-in form share it. The OAuth limit covers registration, sign-in, token and revocation requests. Its variables are only read with `MCP_OAUTH_ENABLED`. Neither limit has an off switch, and `RATE_LIMIT_ENABLED` does not affect them. Each value must be a positive whole number, and a window can be at most `2147483647` ms (about 24.8 days), or the HTTP server does not start.
+
+Both limits count per client address. Raise them when many users arrive from one address: behind NAT or a proxy, or through a hosted client such as claude.ai, whose requests come from a shared outbound range (`160.79.104.0/21`).
 
 ### Logging
 

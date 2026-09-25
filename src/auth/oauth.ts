@@ -21,17 +21,13 @@
  */
 
 import crypto from 'node:crypto';
-import express, { type Request, type Response, type Router } from 'express';
+import express, { type Request, type RequestHandler, type Response, type Router } from 'express';
 
 import { FAVICON_SVG, LOGO_SHAPES } from '../branding.js';
 import { getHttpConfig, isLoopbackHost, type DB2iConfig, type OAuthConfig } from '../config.js';
 import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
-import {
-  authRateLimitMiddleware,
-  oauthRateLimitMiddleware,
-  type LoginRateLimitedHandler,
-} from './authMiddleware.js';
+import type { LoginRateLimitedHandler } from './authMiddleware.js';
 import { testCredentials, verifyLogin } from './login.js';
 import { getTokenManager } from './tokenManager.js';
 
@@ -536,20 +532,29 @@ function issueTokens(
   res.json(body);
 }
 
+/** Rate limiters the OAuth router applies. */
+export interface OAuthRouterLimits {
+  /** Per-IP limit across all /oauth/* endpoints */
+  requests: RequestHandler;
+  /** Login limiter, the same instance POST /auth uses, so both share one budget */
+  login: RequestHandler;
+}
+
 /**
  * Build the router for the OAuth metadata, registration, login and token endpoints.
  * Mount it only when MCP_OAUTH_ENABLED is on.
  *
  * @param oauth - OAuth settings from getHttpConfig()
  * @param resourceName - Server name for the protected resource metadata and the sign-in pages
+ * @param limits - Rate limiters for the OAuth endpoints and the sign-in form
  */
-export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Router {
+export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limits: OAuthRouterLimits): Router {
   const router = express.Router();
   const form = express.urlencoded({ extended: false, limit: '32kb' });
   const issuer = oauth.publicUrl;
   // Refresh grants are bounded like access tokens
   const maxRefreshGrants = getHttpConfig().maxSessions;
-  router.use('/oauth', oauthRateLimitMiddleware);
+  router.use('/oauth', limits.requests);
   router.use('/oauth', (_req: Request, res: Response, next: express.NextFunction) => {
     res.locals.pageBrand = resourceName;
     next();
@@ -743,7 +748,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
       }
       next();
     },
-    authRateLimitMiddleware,
+    limits.login,
     async (_req: Request, res: Response) => {
       const { pending, client, username, password, system } = res.locals.signIn as SignInForm;
       const retry = (status: number, error: string): void => renderSignIn(res, res.locals.signIn as SignInForm, status, error);

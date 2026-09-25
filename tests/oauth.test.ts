@@ -24,7 +24,6 @@ vi.mock('node-jt400', () => ({
 
 import { createHttpApp } from '../src/transports/http.js';
 import { getTokenManager } from '../src/auth/tokenManager.js';
-import { resetAuthRateLimits } from '../src/auth/authMiddleware.js';
 import { isRedirectUriAllowed, resetOAuthState } from '../src/auth/oauth.js';
 import { isTransientConnectionError } from '../src/auth/login.js';
 import { getOAuthConfig } from '../src/config.js';
@@ -105,7 +104,6 @@ describe('OAuth authorization server', () => {
     delete process.env.MCP_OAUTH_REFRESH_EXPIRY;
     resetSystems();
     resetOAuthState();
-    await resetAuthRateLimits();
     ({ server, baseUrl } = await listen(createHttpApp()));
   });
 
@@ -416,6 +414,24 @@ describe('OAuth authorization server', () => {
     expect((await postLogin(request, { username: 'VICTIM', password: 'wrong', system: 'prod' })).status).toBe(429);
   });
 
+  it('shares the configured login limit between the sign-in form and /auth', async () => {
+    process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS = '2';
+    await restart();
+    const client = await register();
+    const page = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    const request = hiddenRequest(await page.text());
+    expect((await postLogin(request, { username: 'CALLER', password: 'wrong', system: 'prod' })).status).toBe(401);
+    expect((await postLogin(request, { username: 'CALLER', password: 'wrong', system: 'prod' })).status).toBe(401);
+
+    // The third attempt goes to /auth and finds the budget already spent
+    const auth = await fetch(`${baseUrl}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'CALLER', password: 'wrong', system: 'prod' }),
+    });
+    expect(auth.status).toBe(429);
+  });
+
   it('refuses registrations whose client ID would be too long to use', async () => {
     const uris = Array.from({ length: 10 }, (_, i) => `http://127.0.0.1:${9000 + i}/${'a'.repeat(2000)}`);
     const res = await fetch(`${baseUrl}/oauth/register`, {
@@ -669,6 +685,18 @@ describe('OAuth authorization server', () => {
     expect(last).toBe(429);
     // Metadata stays reachable
     expect((await fetch(`${baseUrl}/.well-known/oauth-authorization-server`)).status).toBe(200);
+  });
+
+  it('uses the configured OAuth request limit', async () => {
+    process.env.OAUTH_RATE_LIMIT_MAX_REQUESTS = '3';
+    process.env.OAUTH_RATE_LIMIT_WINDOW_MS = '120000';
+    await restart();
+    for (let i = 0; i < 3; i++) {
+      expect((await fetch(`${baseUrl}/oauth/revoke`, { method: 'POST' })).status).not.toBe(429);
+    }
+    const limited = await fetch(`${baseUrl}/oauth/revoke`, { method: 'POST' });
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get('Retry-After'))).toBeGreaterThan(60);
   });
 
   it('keeps client registrations across a restart when the secret is set', async () => {

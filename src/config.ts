@@ -772,6 +772,82 @@ export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
 };
 
 /**
+ * A per-client-IP request limit over a fixed window
+ */
+export interface IpRateLimitConfig {
+  /** Requests allowed per IP address in the window */
+  limit: number;
+  /** Window length in milliseconds */
+  windowMs: number;
+}
+
+/**
+ * Longest window the in-memory rate limit store accepts. Its cleanup timer uses
+ * setInterval, which fires every millisecond for larger delays and would clear
+ * the counts almost at once.
+ */
+export const MAX_RATE_LIMIT_WINDOW_MS = 2 ** 31 - 1;
+
+/**
+ * Default login rate limit: POST /auth and the OAuth sign-in form share it.
+ *
+ * Environment variables:
+ * - AUTH_RATE_LIMIT_MAX_ATTEMPTS: Attempts per IP address in the window (default: 5)
+ * - AUTH_RATE_LIMIT_WINDOW_MS: Window length in milliseconds (default: 60000)
+ */
+export const DEFAULT_AUTH_RATE_LIMIT: IpRateLimitConfig = {
+  limit: 5,
+  windowMs: 60_000, // 1 minute
+};
+
+/**
+ * Default request limit across all /oauth/* endpoints. Generous, because
+ * hosted clients such as claude.ai share egress addresses.
+ *
+ * Environment variables:
+ * - OAUTH_RATE_LIMIT_MAX_REQUESTS: Requests per IP address in the window (default: 120)
+ * - OAUTH_RATE_LIMIT_WINDOW_MS: Window length in milliseconds (default: 60000)
+ */
+export const DEFAULT_OAUTH_RATE_LIMIT: IpRateLimitConfig = {
+  limit: 120,
+  windowMs: 60_000, // 1 minute
+};
+
+/**
+ * Read a per-IP rate limit from a count variable and a window variable.
+ *
+ * @throws Error if either value is not a whole number from 1 up to its maximum
+ */
+function readIpRateLimit(limitVar: string, windowVar: string, defaults: IpRateLimitConfig): IpRateLimitConfig {
+  return {
+    limit: readIntEnvInRange(limitVar, defaults.limit, 1, Number.MAX_SAFE_INTEGER),
+    windowMs: readIntEnvInRange(windowVar, defaults.windowMs, 1, MAX_RATE_LIMIT_WINDOW_MS),
+  };
+}
+
+/**
+ * Get the login rate limit (POST /auth and the OAuth sign-in form) from
+ * environment variables. There is deliberately no switch to turn this limit
+ * off, and RATE_LIMIT_ENABLED does not affect it, because it guards against
+ * password guessing.
+ *
+ * @throws Error if either value is out of range
+ */
+export function getAuthRateLimitConfig(): IpRateLimitConfig {
+  return readIpRateLimit('AUTH_RATE_LIMIT_MAX_ATTEMPTS', 'AUTH_RATE_LIMIT_WINDOW_MS', DEFAULT_AUTH_RATE_LIMIT);
+}
+
+/**
+ * Get the OAuth endpoint rate limit from environment variables. Like the login
+ * limit, it has no off switch and RATE_LIMIT_ENABLED does not affect it.
+ *
+ * @throws Error if either value is out of range
+ */
+export function getOAuthRateLimitConfig(): IpRateLimitConfig {
+  return readIpRateLimit('OAUTH_RATE_LIMIT_MAX_REQUESTS', 'OAUTH_RATE_LIMIT_WINDOW_MS', DEFAULT_OAUTH_RATE_LIMIT);
+}
+
+/**
  * Query limit configuration interface
  */
 export interface QueryLimitConfig {
@@ -794,6 +870,23 @@ export function readIntEnv(name: string, fallback: number): number {
     throw new Error(`${name} must be a whole number, got "${raw}"`);
   }
   return Number.parseInt(raw, 10);
+}
+
+/**
+ * Read an integer environment variable that must fall within [min, max].
+ *
+ * @throws Error if the value is not a whole number or is out of range
+ */
+export function readIntEnvInRange(name: string, fallback: number, min: number, max: number): number {
+  const value = readIntEnv(name, fallback);
+  // The messages leave out the value, so config values never reach an error log
+  if (value < min) {
+    throw new Error(`${name} must be at least ${min}`);
+  }
+  if (value > max) {
+    throw new Error(`${name} must be at most ${max}`);
+  }
+  return value;
 }
 
 /**
@@ -1143,6 +1236,10 @@ export interface HttpConfig {
    * nor DB2I_HOSTNAME is set, so any host is accepted.
    */
   authAllowedDbHosts: string[] | null;
+  /** Login attempt limit for POST /auth and the OAuth sign-in form */
+  authRateLimit: IpRateLimitConfig;
+  /** Request limit across the /oauth/* endpoints. The defaults, unread, when MCP_OAUTH_ENABLED is off. */
+  oauthRateLimit: IpRateLimitConfig;
   /** Built-in OAuth authorization server. Null when MCP_OAUTH_ENABLED is off. */
   oauth: OAuthConfig | null;
   /**
@@ -1538,6 +1635,9 @@ export function getHttpConfig(): HttpConfig {
     allowedHosts: getAllowedHosts(host, oauth?.publicUrl),
     allowUnauthenticatedHttp: allowUnauthenticatedHttp(),
     authAllowedDbHosts: getAuthAllowedDbHosts(),
+    authRateLimit: getAuthRateLimitConfig(),
+    // Read only with OAuth on, so an unused variable cannot stop startup
+    oauthRateLimit: oauth ? getOAuthRateLimitConfig() : DEFAULT_OAUTH_RATE_LIMIT,
     oauth,
     trustProxy: getTrustProxy(),
   };

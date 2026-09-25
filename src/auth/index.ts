@@ -20,8 +20,8 @@ export { getTokenManager, TokenManager, type SessionCleanupCallback } from './to
 export {
   authMiddleware,
   extractBearerToken,
-  authRateLimitMiddleware,
-  oauthRateLimitMiddleware,
+  createAuthRateLimitMiddleware,
+  createOAuthRateLimitMiddleware,
   type LoginRateLimitedHandler,
   type AuthenticatedRequest,
 } from './authMiddleware.js';
@@ -30,4 +30,4 @@ export {
 export { authAllowedDbHosts, authConnection, testCredentials, verifyLogin, type LoginResult } from './login.js';
 
 // OAuth authorization server
-export { createOAuthRouter, resetOAuthState } from './oauth.js';
+export { createOAuthRouter, resetOAuthState, type OAuthRouterLimits } from './oauth.js';

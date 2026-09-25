@@ -23,7 +23,8 @@ import { createChildLogger } from '../utils/logger.js';
 import {
   getTokenManager,
   authMiddleware,
-  authRateLimitMiddleware,
+  createAuthRateLimitMiddleware,
+  createOAuthRateLimitMiddleware,
   createOAuthRouter,
   extractBearerToken,
   resetOAuthState,
@@ -439,9 +440,15 @@ export function createHttpApp(): Express {
   app.get('/icon.png', sendIcon('image/png', ICON_PNG));
   app.get('/icon.svg', sendIcon('image/svg+xml', ICON_TILE_SVG));
 
+  // One login limiter for POST /auth and the OAuth sign-in form, so they share a budget
+  const authRateLimitMiddleware = createAuthRateLimitMiddleware(httpConfig.authRateLimit);
+
   // OAuth authorization server for remote clients (MCP_OAUTH_ENABLED)
   if (httpConfig.oauth) {
-    app.use(createOAuthRouter(httpConfig.oauth, SERVER_NAME));
+    app.use(createOAuthRouter(httpConfig.oauth, SERVER_NAME, {
+      requests: createOAuthRateLimitMiddleware(httpConfig.oauthRateLimit),
+      login: authRateLimitMiddleware,
+    }));
   }
 
   // OpenAPI specification endpoint

@@ -290,8 +290,8 @@ describe('HTTP /auth database host allowlist', () => {
 
 describe('HTTP /auth rate limiting', () => {
   const originalEnv = process.env;
-  // The limiter is module state keyed by client IP, so each test starts in a
-  // later rate-limit window instead of relying on test order.
+  // Each app gets its own limiter. The fake clock moves forward per test so the
+  // window tests can set times relative to a known start.
   let clock = Date.now();
 
   beforeEach(() => {
@@ -368,6 +368,29 @@ describe('HTTP /auth rate limiting', () => {
       await mockDbLogin(false);
       expect((await postAuth(baseUrl)).status).toBe(401);
       expect((await postAuth(baseUrl)).status).toBe(429);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it('uses the configured attempt count and window', async () => {
+    process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS = '2';
+    process.env.AUTH_RATE_LIMIT_WINDOW_MS = '120000';
+    await mockDbLogin(false);
+    const { server, baseUrl } = await listen(createHttpApp());
+    try {
+      expect((await postAuth(baseUrl)).status).toBe(401);
+      expect((await postAuth(baseUrl)).status).toBe(401);
+      const limited = await postAuth(baseUrl);
+      expect(limited.status).toBe(429);
+      expect(((await limited.json()) as { retry_after: number }).retry_after).toBe(120);
+
+      // Still inside the 2-minute window after the default 60 seconds
+      vi.setSystemTime(clock + 90_000);
+      expect((await postAuth(baseUrl)).status).toBe(429);
+
+      vi.setSystemTime(clock + 120_000);
+      expect((await postAuth(baseUrl)).status).toBe(401);
     } finally {
       await closeServer(server);
     }

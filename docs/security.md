@@ -232,22 +232,24 @@ Before exposing the server on the internet, set `QUERY_ALLOWED_SCHEMAS` or a pro
 
 The `/auth` endpoint and the OAuth sign-in form share additional rate limiting to prevent brute-force attacks:
 
-| Setting | Value | Description |
-|---------|-------|-------------|
-| Max attempts | 5 | Maximum attempts before lockout |
-| Window | 60 seconds | Time window for tracking attempts |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `5` | Maximum login attempts before lockout |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | `60000` | Time window for tracking login attempts, in milliseconds |
+| `OAUTH_RATE_LIMIT_MAX_REQUESTS` | `120` | Maximum requests across all `/oauth/*` endpoints |
+| `OAUTH_RATE_LIMIT_WINDOW_MS` | `60000` | Time window for the OAuth endpoint limit, in milliseconds |
 
 **Behavior:**
 - Authentication attempts are tracked per IP address and counted when they arrive, so parallel requests cannot get past the limit while earlier attempts are still testing their credentials
-- After 5 attempts within 60 seconds, further requests from that IP get 429 until the window ends
+- After the maximum number of attempts within the window (5 in 60 seconds by default), further requests from that IP get 429 until the window ends
 - A successful login does not count, but it does not clear earlier failures either, so one valid profile cannot be used to reset the count while guessing another profile's password
 - Lockout automatically expires after the window period
-- With OAuth on, the sign-in form uses the same budget, and all `/oauth/*` endpoints together are limited to 120 requests per minute per IP
+- With OAuth on, the sign-in form uses the same budget, and all `/oauth/*` endpoints together are limited to 120 requests per minute per IP by default
 - Behind a reverse proxy or tunnel, set `MCP_TRUST_PROXY` so the limits see each client's address instead of the proxy's. Without it, every client shares the proxy's budget
 
 Both limits use [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) with an in-memory store.
 
-> **Note:** These values are currently hardcoded. Environment variable configuration may be added in a future release.
+> **Note:** These limits cannot be turned off, and `RATE_LIMIT_ENABLED=false` does not disable them. Each value must be a positive whole number, and a window can be at most `2147483647` ms (about 24.8 days). See [Rate Limiting](configuration.md#rate-limiting) in the configuration reference.
 
 ### TLS/HTTPS
 
