@@ -1,6 +1,9 @@
-# Use cases
+---
+title: "Use cases"
+description: "REST APIs, BI pipelines, journal replication, and ad-hoc analysis on IBM i ERP data."
+---
 
-These patterns come from projects where the source system was the Iptor DC1 ERP on IBM i. Nothing in them depends on that ERP. They apply to any IBM i system where the business data lives in DB2 for i files with terse names, numeric dates, and single-letter status codes.
+These patterns come from projects where the source system was the Iptor DC1 ERP on IBM i. Nothing in them depends on that ERP. They apply to any IBM i system where the business data lives in Db2 for i files with terse names, numeric dates, and single-letter status codes.
 
 Every library, table, and column name below is a placeholder.
 
@@ -67,7 +70,7 @@ A sales manager asks which customers have open orders older than 30 days. Normal
 
 The agent finds the tables, writes the query, runs it, and summarizes the result. For questions people ask often, give the agent a vetted query instead of letting it write a new one each time:
 
-- **Business SQL tools** turn a reviewed SELECT into a named tool with typed parameters, such as `search_sales_orders`. See [Business SQL tools](custom-tools.md) and the example pack in [examples/erp-tools](../examples/erp-tools).
+- **Business SQL tools** turn a reviewed SELECT into a named tool with typed parameters, such as `search_sales_orders`. See [Business SQL tools](custom-tools.md) and the example pack in [examples/erp-tools](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/erp-tools).
 - **Column masking** hides fields such as email addresses or bank details from the agent. See [Masking](custom-tools.md#masking).
 - **The HTTP transport** serves shared or hosted agents with token authentication. See [HTTP Transport](http-transport.md).
 

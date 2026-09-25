@@ -1,5 +1,5 @@
 /**
- * Query helpers for IBM DB2i metadata and data access
+ * Query helpers for IBM Db2i metadata and data access
  */
 
 import { executeQuery } from './connection.js';

@@ -1,4 +1,7 @@
-# Development Guide
+---
+title: "Development"
+description: "Set up a development environment, run the tests, and add a tool."
+---
 
 This guide covers setting up a development environment and contributing to mcp-server-db2i.
 

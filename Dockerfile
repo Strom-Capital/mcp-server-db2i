@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
 
-# MCP Server for IBM DB2i
+# MCP Server for IBM Db2i
 # Multi-stage build with two runtime targets:
 #   odbc (default): IBM i Access ODBC driver, no Java
 #   jt400:          JDBC via node-jt400, ships OpenJDK 17 JRE

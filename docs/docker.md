@@ -1,4 +1,7 @@
-# Docker Guide
+---
+title: "Docker"
+description: "Run mcp-server-db2i in a container with Docker and docker-compose."
+---
 
 This guide covers running mcp-server-db2i with Docker and docker-compose.
 
@@ -82,11 +85,11 @@ For production deployments, use Docker secrets instead of environment variables.
 mkdir -p ./secrets
 
 # Securely prompt for username (doesn't leak to shell history)
-read -p "Enter DB2i username: " username
+read -p "Enter Db2i username: " username
 echo "$username" > ./secrets/db2i_username.txt
 
 # Securely prompt for password (hidden input)
-read -s -p "Enter DB2i password: " password
+read -s -p "Enter Db2i password: " password
 echo
 echo "$password" > ./secrets/db2i_password.txt
 

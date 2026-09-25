@@ -1,5 +1,5 @@
 /**
- * Connection pool manager for IBM DB2i.
+ * Connection pool manager for IBM Db2i.
  *
  * Pools are owned by a caller (`stdio`, or an HTTP session key) and kept per
  * IBM i system, so one caller can hold a pool on each configured system.

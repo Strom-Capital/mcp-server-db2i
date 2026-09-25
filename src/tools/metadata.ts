@@ -1,5 +1,5 @@
 /**
- * Metadata inspection tools for IBM DB2i MCP Server
+ * Metadata inspection tools for IBM Db2i MCP Server
  * 
  * Every tool takes an optional target: the caller and IBM i system to query,
  * with that system's allowlist and default schema. Omitted, a tool uses the

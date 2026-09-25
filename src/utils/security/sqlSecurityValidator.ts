@@ -1,5 +1,5 @@
 /**
- * SQL Security Validator for IBM DB2i MCP Server
+ * SQL Security Validator for IBM Db2i MCP Server
  * 
  * Provides comprehensive SQL query validation using both AST parsing
  * and regex-based fallback to detect dangerous operations.
@@ -217,7 +217,7 @@ export class SqlSecurityValidator {
 
     try {
       // Try to parse the SQL - use 'mysql' dialect as it's most compatible
-      // DB2 SQL is similar enough for security validation purposes
+      // Db2 SQL is similar enough for security validation purposes
       const ast = this.parser.astify(query, { database: 'mysql' });
       
       const statements = Array.isArray(ast) ? ast : [ast];
@@ -252,7 +252,7 @@ export class SqlSecurityValidator {
         validationMethod: 'ast',
       };
     } catch {
-      // AST parsing failed - this could be due to DB2-specific syntax
+      // AST parsing failed - this could be due to Db2-specific syntax
       // Fall back to regex validation (handled by caller)
       return {
         isValid: true, // Let regex handle it
