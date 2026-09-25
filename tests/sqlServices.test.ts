@@ -11,9 +11,21 @@ vi.mock('../src/db/connection.js', () => ({
 }));
 
 import { executeProcedure, executeQuery } from '../src/db/connection.js';
-import { clearRoutineCache, generateObjectDdl } from '../src/db/sqlServices.js';
+import {
+  clearRoutineCache,
+  clearServicesCache,
+  generateObjectDdl,
+  SERVICES_CACHE_TTL_MS,
+} from '../src/db/sqlServices.js';
+import type { DbTarget } from '../src/systems.js';
 import { executeQueryTool } from '../src/tools/query.js';
-import { getJournalInfoTool, getObjectDdlTool, getRelatedObjectsTool, validateQueryTool } from '../src/tools/sqlServices.js';
+import {
+  getJournalInfoTool,
+  getObjectDdlTool,
+  getRelatedObjectsTool,
+  searchIbmiServicesTool,
+  validateQueryTool,
+} from '../src/tools/sqlServices.js';
 
 const query = vi.mocked(executeQuery);
 const procedure = vi.mocked(executeProcedure);
@@ -35,6 +47,7 @@ describe('SQL service tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearRoutineCache();
+    clearServicesCache();
     process.env = { ...originalEnv };
     delete process.env.QUERY_ALLOWED_SCHEMAS;
     process.env.QUERY_PARSE_CHECK = 'false';
@@ -395,6 +408,156 @@ describe('SQL service tools', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('7.3 Technology Refresh 2');
+    });
+  });
+
+  describe('search_ibmi_services', () => {
+    function serviceRow(category: string, name: string, example: string | null = null) {
+      return {
+        SERVICE_CATEGORY: category,
+        SERVICE_SCHEMA_NAME: 'QSYS2',
+        SERVICE_NAME: name,
+        SQL_OBJECT_TYPE: 'TABLE FUNCTION',
+        SYSTEM_OBJECT_NAME: null,
+        EARLIEST_POSSIBLE_RELEASE: 'V7R3M0',
+        INITIAL_DB2_GROUP_LEVEL: '5',
+        LATEST_DB2_GROUP_LEVEL: null,
+        EXAMPLE: example,
+      };
+    }
+
+    const catalog = {
+      rows: [
+        serviceRow('JOURNAL', 'DISPLAY_JOURNAL', '-- Description: Read entries\r\nSELECT * FROM TABLE(QSYS2.DISPLAY_JOURNAL(\'MYLIB\', \'QSQJRN\')) X'),
+        serviceRow('JOURNAL', 'JOURNAL_INFO', 'SELECT * FROM QSYS2.JOURNAL_INFO'),
+        serviceRow('SECURITY', 'USER_INFO', 'SELECT * FROM QSYS2.USER_INFO'),
+        serviceRow('WORK MANAGEMENT', 'ACTIVE_JOB_INFO', 'SELECT * FROM TABLE(QSYS2.ACTIVE_JOB_INFO()) X'),
+      ],
+    };
+
+    function target(system: string, username = 'MCPUSER'): DbTarget {
+      return { poolKey: system, system, config: { username } } as unknown as DbTarget;
+    }
+
+    it('should list categories with counts when called with no filter', async () => {
+      query.mockResolvedValueOnce(catalog);
+
+      const result = await searchIbmiServicesTool({});
+
+      expect(result.success).toBe(true);
+      expect(result.categories).toEqual([
+        { category: 'JOURNAL', count: 2 },
+        { category: 'SECURITY', count: 1 },
+        { category: 'WORK MANAGEMENT', count: 1 },
+      ]);
+      expect(result.count).toBe(3);
+      expect(result.data).toBeUndefined();
+      expect(query.mock.calls[0][0]).toContain('QSYS2.SERVICES_INFO');
+    });
+
+    it('should match every keyword against name and category, ignoring case', async () => {
+      query.mockResolvedValueOnce(catalog);
+
+      const result = await searchIbmiServicesTool({ query: 'journal  display' });
+
+      expect(result.data?.map((row) => row.service_name)).toEqual(['DISPLAY_JOURNAL']);
+      expect(result.data?.[0]).toMatchObject({
+        category: 'JOURNAL',
+        schema: 'QSYS2',
+        sql_object_type: 'TABLE FUNCTION',
+        earliest_release: 'V7R3M0',
+        initial_db2_group_level: 5,
+        latest_db2_group_level: null,
+      });
+      expect(result.data?.[0].example).toBe("-- Description: Read entries\nSELECT * FROM TABLE(QSYS2.DISPLAY_JOURNAL('MYLIB', 'QSQJRN')) X");
+    });
+
+    it('should search examples only when asked', async () => {
+      query.mockResolvedValueOnce(catalog);
+
+      const plain = await searchIbmiServicesTool({ query: 'MYLIB' });
+      const withExamples = await searchIbmiServicesTool({ query: 'mylib', searchExamples: true });
+
+      expect(plain.data).toEqual([]);
+      expect(withExamples.data?.map((row) => row.service_name)).toEqual(['DISPLAY_JOURNAL']);
+    });
+
+    it('should filter by exact category, ignoring case', async () => {
+      query.mockResolvedValueOnce(catalog);
+
+      const result = await searchIbmiServicesTool({ category: 'work management' });
+      const partial = await searchIbmiServicesTool({ category: 'WORK' });
+
+      expect(result.data?.map((row) => row.service_name)).toEqual(['ACTIVE_JOB_INFO']);
+      expect(partial.data).toEqual([]);
+    });
+
+    it('should leave out examples when include_example is false', async () => {
+      query.mockResolvedValueOnce(catalog);
+
+      const result = await searchIbmiServicesTool({ category: 'SECURITY', includeExample: false });
+
+      expect(result.data?.[0].service_name).toBe('USER_INFO');
+      expect(result.data?.[0]).not.toHaveProperty('example');
+    });
+
+    it('should cap results at the limit and report truncation', async () => {
+      process.env.QUERY_MAX_LIMIT = '2';
+      query.mockResolvedValueOnce(catalog);
+
+      const result = await searchIbmiServicesTool({ query: 'info', limit: 10 });
+
+      expect(result.data?.map((row) => row.service_name)).toEqual(['JOURNAL_INFO', 'USER_INFO']);
+      expect(result.count).toBe(2);
+      expect(result.truncated).toBe(true);
+    });
+
+    it('should read the catalog once per system and user within the cache time', async () => {
+      query.mockResolvedValue(catalog);
+
+      await searchIbmiServicesTool({ target: target('prod') });
+      await searchIbmiServicesTool({ query: 'journal', target: target('prod') });
+      expect(query).toHaveBeenCalledTimes(1);
+
+      await searchIbmiServicesTool({ target: target('test') });
+      await searchIbmiServicesTool({ target: target('prod', 'OTHERUSER') });
+      expect(query).toHaveBeenCalledTimes(3);
+    });
+
+    it('should read the catalog again after the cache expires', async () => {
+      vi.useFakeTimers();
+      try {
+        query.mockResolvedValue(catalog);
+
+        await searchIbmiServicesTool({});
+        vi.advanceTimersByTime(SERVICES_CACHE_TTL_MS + 1);
+        await searchIbmiServicesTool({});
+
+        expect(query).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('should explain a missing SERVICES_INFO view and not cache the failure', async () => {
+      query.mockRejectedValueOnce(new Error('Database query failed: [42704] SQL0204 - SERVICES_INFO in QSYS2 type *FILE not found.'));
+      query.mockResolvedValueOnce(catalog);
+
+      const failed = await searchIbmiServicesTool({});
+      const retried = await searchIbmiServicesTool({});
+
+      expect(failed.success).toBe(false);
+      expect(failed.error).toContain('QSYS2.SERVICES_INFO is not available');
+      expect(retried.success).toBe(true);
+      expect(query).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return other database errors as they are', async () => {
+      query.mockRejectedValueOnce(new Error('Database query failed: connection reset'));
+
+      const result = await searchIbmiServicesTool({});
+
+      expect(result).toEqual({ success: false, error: 'Database query failed: connection reset' });
     });
   });
 

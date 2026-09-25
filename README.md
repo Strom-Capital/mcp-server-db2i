@@ -163,6 +163,7 @@ See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, C
 | `get_journal_info` | List journal, images, and primary key per table, and flag tables a replication tool cannot read |
 | `profile_table` | Row count, last change, and per-column distinct and null counts from stored statistics or a scan |
 | `get_business_context` | List business descriptions and relations loaded from YAML |
+| `search_ibmi_services` | Find IBM i services by keyword or category, with the release that added each one and an example query |
 
 ### Filter Syntax
 
@@ -233,6 +234,7 @@ Once connected, you can ask the AI assistant:
 - `validate_query` and the `execute_query` parse check need `QSYS2.PARSE_STATEMENT` (IBM i 7.3 with Db2 PTF group SF99703 level 3, or 7.4 and later)
 - `get_related_objects` needs IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release
 - `get_journal_info` needs the journal columns of `QSYS2.OBJECT_STATISTICS` (IBM i 7.3 Technology Refresh 2 or later)
+- `search_ibmi_services` needs `QSYS2.SERVICES_INFO`, which ships with the Db2 for i PTF group
 - Node.js 22 or higher
 - unixODBC with the IBM i Access ODBC Driver for the default `odbc` driver, a JDK at install time and a JRE 11 or higher at runtime for the optional `jt400` driver, or SSH access and Java 8 or higher on the IBM i for the optional `mapepire` driver (see [Database Drivers](docs/configuration.md#database-drivers))
 - MCP spec 2026-07-28, plus stateless clients from the 2025-era revisions (through 2025-11-25)

@@ -114,6 +114,9 @@ async function writeQueryPrompt(
   }
 
   const steps: string[] = [];
+  if (enabledTools.has('search_ibmi_services')) {
+    steps.push('If the question needs an IBM i service from QSYS2 or SYSTOOLS, find it with search_ibmi_services first instead of guessing its name and parameters.');
+  }
   if (enabledTools.has('validate_query')) {
     steps.push('Check the statement with validate_query and fix what it reports.');
   }

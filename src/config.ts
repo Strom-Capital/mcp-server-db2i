@@ -967,6 +967,7 @@ export const TOOL_NAMES = [
   'get_journal_info',
   'profile_table',
   'get_business_context',
+  'search_ibmi_services',
 ] as const;
 
 /**

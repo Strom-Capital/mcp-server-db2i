@@ -34,6 +34,7 @@ import {
   getJournalInfoTool,
   getObjectDdlTool,
   getRelatedObjectsTool,
+  searchIbmiServicesTool,
   validateQueryTool,
 } from './tools/sqlServices.js';
 import { profileTableTool } from './tools/profile.js';
@@ -285,6 +286,28 @@ const journalInfoOutputSchema = z.object({
   })).optional(),
   count: z.number().int().optional(),
   needsAttention: z.number().int().optional(),
+  truncated: z.boolean().optional(),
+});
+
+const servicesOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  categories: z.array(z.object({
+    category: z.string(),
+    count: z.number().int(),
+  })).optional(),
+  data: z.array(z.object({
+    service_name: z.string(),
+    category: z.string(),
+    schema: z.string(),
+    sql_object_type: z.string().nullable(),
+    system_object_name: z.string().nullable(),
+    earliest_release: z.string().nullable(),
+    initial_db2_group_level: z.number().int().nullable(),
+    latest_db2_group_level: z.number().int().nullable(),
+    example: z.string().nullable().optional(),
+  })).optional(),
+  count: z.number().int().optional(),
   truncated: z.boolean().optional(),
 });
 
@@ -898,6 +921,39 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         'Failed to read journal info',
         sessionContext,
         argsAudit('get_journal_info'),
+      )
+    );
+  }
+
+  if (enabledTools.has('search_ibmi_services')) {
+    server.registerTool(
+      'search_ibmi_services',
+      {
+        title: 'Search IBM i Services',
+        description: 'Find IBM i SQL services (views, table functions, procedures, and more in QSYS2 and SYSTOOLS) in the catalog QSYS2.SERVICES_INFO, with the release that added each one and an example query. Call it before writing SQL that uses an IBM i service, instead of guessing names and parameters. With no query and no category, it lists the categories with a count each. This tool only reads the catalog. Running an example with execute_query still needs the IBM i authority the service documents and, when QUERY_ALLOWED_SCHEMAS is set, the service\'s schema in that list; while the list is set, examples that call TABLE(...) table functions are rejected.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          ...system,
+          query: z.string().optional().describe('Keywords, all of which must appear in the service name or category (case-insensitive). Example: "journal entries"'),
+          category: z.string().optional().describe('Exact category, such as JOURNAL, SECURITY, or WORK MANAGEMENT. Call with no arguments to list them.'),
+          include_example: z.boolean().optional().describe('Include the example query for each service. Default true.'),
+          search_examples: z.boolean().optional().describe('Also match keywords against the example queries. Default false.'),
+          limit: z.number().int().positive().optional().describe('Maximum services to return. Capped by QUERY_MAX_LIMIT.'),
+        }),
+        outputSchema: servicesOutputSchema,
+      },
+      withToolHandler(
+        (args, target) => searchIbmiServicesTool({
+          query: args.query,
+          category: args.category,
+          includeExample: args.include_example,
+          searchExamples: args.search_examples,
+          limit: args.limit,
+          target,
+        }),
+        'Failed to search IBM i services',
+        sessionContext,
+        argsAudit('search_ibmi_services'),
       )
     );
   }
