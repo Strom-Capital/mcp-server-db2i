@@ -221,7 +221,16 @@ MCP_HTTP_HOST=127.0.0.1
 
 The server must be reachable over HTTPS at `MCP_PUBLIC_URL`, through a reverse proxy or a tunnel that keeps the `Host` header. `MCP_PUBLIC_URL` must be an origin only: serve the server at the root of its hostname, not under a path.
 
-To add it in Claude, open **Settings > Connectors > Add custom connector** and enter `https://mcp.example.com/mcp`. Leave the OAuth client fields empty; Claude registers itself.
+To add it in Claude, open **Settings > Connectors > Add custom connector** and enter `https://mcp.example.com/mcp`. Choose **Sign in now** and **Register automatically**, and leave the request headers empty. When you connect, the sign-in page opens:
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/oauth-sign-in-dark.png">
+    <img src="assets/oauth-sign-in.png" alt="Sign-in page: the mcp-server-db2i logo, a system picker with prod selected, user profile and password fields, and a Sign in button" width="360">
+  </picture>
+</p>
+
+The page names the client and the site the user returns to. After sign-in, Claude holds a token bound to that user profile and system.
 
 ### Limiting who can reach the server
 
