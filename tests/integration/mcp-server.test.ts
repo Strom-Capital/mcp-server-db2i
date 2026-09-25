@@ -316,6 +316,27 @@ describe('MCP Server Integration', () => {
       expect(text).toContain('| 1 | Alice |');
       expect(result.structuredContent).toMatchObject({ success: true, data: mockRows });
     });
+
+    // node-odbc returns BIGINT as bigint, which JSON.stringify rejects
+    it.each(['json', 'pretty', 'markdown'])('returns BIGINT columns in %s format', async (format) => {
+      process.env.MCP_RESPONSE_FORMAT = format;
+      mockQuery.mockResolvedValueOnce([{ ORDERNO: 1001n, ROWS_READ: 9007199254740993n }]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT ORDERNO, ROWS_READ FROM MYLIB.ORDERS' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBeUndefined();
+      const expected = [{ ORDERNO: 1001, ROWS_READ: '9007199254740993' }];
+      expect(result.structuredContent).toMatchObject({ success: true, data: expected });
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      if (format === 'markdown') {
+        expect(text).toContain('| 1001 | 9007199254740993 |');
+      } else {
+        expect((JSON.parse(text) as { data: unknown }).data).toEqual(expected);
+      }
+    });
   });
 
   describe('execute_query Tool', () => {
