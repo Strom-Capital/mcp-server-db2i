@@ -64,7 +64,28 @@ export function writeAudit(entry: AuditCall): void {
   if (!config) {
     return;
   }
-  const line = `${JSON.stringify(formatEntry(entry, config))}\n`;
+  writeLine(formatEntry(entry, config));
+}
+
+/** A server event that is not a tool call. */
+export interface AuditEvent {
+  event: 'shutdown';
+  reason: string;
+}
+
+/** Append one event line, such as why the server shut down. No-op when the audit log is off. Never throws. */
+export function writeAuditEvent(entry: AuditEvent): void {
+  if (!config) {
+    return;
+  }
+  writeLine({ time: new Date().toISOString(), event: entry.event, reason: entry.reason });
+}
+
+function writeLine(record: Record<string, unknown>): void {
+  if (!config) {
+    return;
+  }
+  const line = `${JSON.stringify(record)}\n`;
   try {
     if (config.target === 'stderr') {
       process.stderr.write(line);

@@ -16,9 +16,7 @@
  * - 'both': Both transports simultaneously
  */
 
-import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
-import type http from 'node:http';
-import type https from 'node:https';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 import {
   isHttpEnabled,
@@ -33,64 +31,24 @@ import {
   isQueryParseCheckEnabled,
   getQueryLimitConfig,
 } from './config.js';
-import { initializePool, testConnection, closeGlobalPool } from './db/connection.js';
+import { initializePool, testConnection, closeGlobalPool, pendingPoolCloses } from './db/connection.js';
 import { defaultSystem, getSystems, isProfilesFileConfigured, type SystemProfile } from './systems.js';
 import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { createServer, pinStdioServer, SERVER_NAME, SERVER_VERSION } from './server.js';
-import { startCustomToolsWatch, stopCustomToolsWatch } from './customTools/watch.js';
+import { startCustomToolsWatch } from './customTools/watch.js';
 import { parseCliArgs, runValidateTools } from './cli.js';
 import { loadCustomToolsFromEnv } from './customTools/loader.js';
-import { closeAuditLog, initAuditLog } from './utils/auditLog.js';
+import { initAuditLog } from './utils/auditLog.js';
 import { setCustomTools } from './customTools/registry.js';
 import { startHttpServer, shutdownHttpServer } from './transports/http.js';
+import { ClientAwareStdioTransport } from './transports/stdio.js';
+import { createLifecycle } from './lifecycle.js';
 
 /**
  * Main entry point
  */
 async function main(): Promise<void> {
-  let stdioServer: StdioServerHandle | null = null;
-  let httpServer: http.Server | https.Server | null = null;
-
-  /**
-   * Gracefully shutdown all servers
-   */
-  async function shutdown(signal: string): Promise<void> {
-    logger.info(`Received ${signal}, shutting down...`);
-    stopCustomToolsWatch();
-    closeAuditLog();
-
-    const shutdownPromises: Promise<void>[] = [];
-
-    // Shutdown HTTP server if running
-    if (httpServer) {
-      shutdownPromises.push(
-        shutdownHttpServer(httpServer).catch((err) => {
-          logger.error({ err }, 'Error shutting down HTTP server');
-        })
-      );
-    }
-
-    // Shutdown stdio server if running
-    if (stdioServer) {
-      shutdownPromises.push(
-        stdioServer.close().then(() => {
-          logger.info('Stdio MCP server closed');
-        }).catch((err) => {
-          logger.error({ err }, 'Error closing stdio MCP server');
-        })
-      );
-    }
-
-    await Promise.all(shutdownPromises);
-
-    // Close global DB pool (used by stdio transport)
-    await closeGlobalPool();
-    
-    flushLogger();
-    process.exit(0);
-  }
-
   try {
     const transportMode = getTransportMode();
     logger.info(
@@ -147,6 +105,12 @@ async function main(): Promise<void> {
     // Check which transports are enabled
     const stdioEnabled = isStdioEnabled();
     const httpEnabled = isHttpEnabled();
+    const lifecycle = createLifecycle({
+      httpEnabled,
+      closeStdioPools: closeGlobalPool,
+      pendingPools: pendingPoolCloses,
+      exit: (code) => process.exit(code),
+    });
 
     // For stdio mode, the default system's connection settings are required
     if (stdioEnabled) {
@@ -166,7 +130,8 @@ async function main(): Promise<void> {
       }
 
       // serveStdio pins one server per connection and speaks both 2025 and 2026-07-28
-      stdioServer = serveStdio(() => {
+      // The transport reports a closed stdin or a broken stdout: the client is gone
+      const stdioServer = serveStdio(() => {
         const server = createServer();
         const release = pinStdioServer(server);
         const close = server.close.bind(server);
@@ -175,7 +140,8 @@ async function main(): Promise<void> {
           return close();
         };
         return server;
-      });
+      }, { transport: new ClientAwareStdioTransport(() => lifecycle.onStdioClientGone()) });
+      lifecycle.setStdio(() => stdioServer.close());
       logger.info(
         { name: SERVER_NAME, version: SERVER_VERSION },
         'MCP server connected via stdio transport'
@@ -197,7 +163,8 @@ async function main(): Promise<void> {
         'Starting HTTP transport...'
       );
 
-      httpServer = await startHttpServer();
+      const httpServer = await startHttpServer();
+      lifecycle.setHttp(() => shutdownHttpServer(httpServer));
       
       logger.info(
         { name: SERVER_NAME, version: SERVER_VERSION },
@@ -214,19 +181,12 @@ async function main(): Promise<void> {
       logger.info('MCP server running with HTTP transport only');
     }
 
-    // Handle shutdown gracefully
-    process.on('SIGINT', () => {
-      shutdown('SIGINT').catch((err) => {
-        logger.error({ err }, 'Error during SIGINT shutdown');
-        process.exit(1);
+    // Handle shutdown gracefully. SIGHUP is what a closing terminal sends.
+    for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+      process.on(signal, () => {
+        void lifecycle.shutdown(signal);
       });
-    });
-    process.on('SIGTERM', () => {
-      shutdown('SIGTERM').catch((err) => {
-        logger.error({ err }, 'Error during SIGTERM shutdown');
-        process.exit(1);
-      });
-    });
+    }
 
   } catch (error) {
     logger.fatal({ err: error }, 'Failed to start MCP server');

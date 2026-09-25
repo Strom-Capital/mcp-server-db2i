@@ -40,6 +40,9 @@ interface Owner {
 
 const owners = new Map<string, Owner>();
 
+// Pools whose close() has started and not finished, for the shutdown deadline log
+const closingPools = new Set<string>();
+
 // The target used when a caller passes none: the stdio owner's default system.
 // Set by initializePool, for the CLI and code paths that predate systems.
 let globalTarget: DbTarget | null = null;
@@ -166,13 +169,25 @@ async function closeSlot(slot: PoolSlot, system: string, sessionId?: string): Pr
   const context = sessionId
     ? { sessionId: shortId(sessionId), system, poolCount: getSessionPoolCount() }
     : { system };
+  const name = sessionId ? `${slot.label} (${shortId(sessionId)}, ${system})` : `${slot.label} (${system})`;
+  closingPools.add(name);
   try {
     const pool = await pending;
     await pool.close();
     log.info(context, `${slot.label} closed`);
   } catch (err) {
     log.warn({ err, ...context }, `Error closing ${slot.label.toLowerCase()}`);
+  } finally {
+    closingPools.delete(name);
   }
+}
+
+/**
+ * Pools that started closing and have not finished, for example because a
+ * statement is still running on them.
+ */
+export function pendingPoolCloses(): string[] {
+  return [...closingPools];
 }
 
 /**

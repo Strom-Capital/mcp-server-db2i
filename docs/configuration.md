@@ -59,6 +59,8 @@ DB2I_PASSWORD=your-password
 | `MCP_TOKEN_EXPIRY` | `3600` | Token lifetime in seconds (for `required` auth mode) |
 | `MCP_MAX_SESSIONS` | `100` | Maximum concurrent sessions |
 
+Over stdio, the server exits when its client goes away: when stdin closes, or when writing to stdout fails. It closes its connection pools first, the same as on `SIGINT`, `SIGTERM`, or `SIGHUP`. Shutdown takes at most 5 seconds. A pool that is still waiting on a running statement after that is logged and left behind, and the process exits with code 1. In `both` mode, a closed stdin closes only the stdio connection pools, and the HTTP transport keeps serving.
+
 ### HTTP Authentication Settings
 
 | Variable | Default | Description |
