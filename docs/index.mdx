@@ -1,10 +1,10 @@
 ---
 title: "mcp-server-db2i"
 sidebarTitle: "Introduction"
-description: "A Model Context Protocol server that lets AI assistants query and inspect IBM DB2 for i."
+description: "A Model Context Protocol server that lets AI assistants query and inspect IBM Db2 for i."
 ---
 
-mcp-server-db2i gives Claude, Cursor, and other MCP clients read-only access to DB2 for i. The assistant can list libraries, describe tables, find columns across the catalog, check journaling, and run SELECT statements that the server validates first.
+mcp-server-db2i gives Claude, Cursor, and other MCP clients read-only access to Db2 for i. The assistant can list libraries, describe tables, find columns across the catalog, check journaling, and run SELECT statements that the server validates first.
 
 It connects through the IBM i Access ODBC driver by default. It can also use the JT400 JDBC driver, or Mapepire over SSH when only SSH reaches the IBM i. The server is listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.Strom-Capital/mcp-server-db2i`.
 
@@ -46,15 +46,15 @@ graph LR
     end
 
     subgraph prod ["IBM i: prod"]
-        db2prod[("DB2 for i")]
+        db2prod[("Db2 for i")]
     end
 
     subgraph test ["IBM i: test"]
-        db2test[("DB2 for i")]
+        db2test[("Db2 for i")]
     end
 
     subgraph dev ["IBM i: dev"]
-        db2dev[("DB2 for i")]
+        db2dev[("Db2 for i")]
     end
 
     local -->|local process| stdio

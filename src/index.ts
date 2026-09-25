@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * IBM DB2i MCP Server
+ * IBM Db2i MCP Server
  *
  * A Model Context Protocol server for querying and inspecting
- * IBM DB2 for i (DB2i) databases through JT400 (JDBC) or IBM i Access ODBC,
+ * IBM Db2 for i (Db2i) databases through JT400 (JDBC) or IBM i Access ODBC,
  * on one or more IBM i systems (DB2I_PROFILES).
  * 
  * Supports two transport modes:

@@ -65,7 +65,7 @@ export interface AuthResponse {
 export interface TokenSession {
   /** The access token */
   token: string;
-  /** DB2i configuration for this session */
+  /** Db2i configuration for this session */
   config: DB2iConfig;
   /** System the credentials were checked on. Every call from this token runs there. */
   system: string;

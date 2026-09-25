@@ -134,7 +134,7 @@ flowchart LR
     ast -->|"DDL/DML/DCL"| reject1[["REJECTED"]]
     regex -->|"Safe"| limit["Result Limiter"]
     regex -->|"Dangerous patterns"| reject2[["REJECTED"]]
-    limit --> db[("DB2 for i")]
+    limit --> db[("Db2 for i")]
 ```
 
 ### AST-based Validation

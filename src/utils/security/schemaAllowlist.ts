@@ -37,7 +37,7 @@ interface ParsedQuery {
 
 /**
  * Replace `?` parameter markers with NULL, leaving markers inside quotes alone.
- * The DB2 dialect rejects `?`, and real queries use it for prepared statements.
+ * The Db2 dialect rejects `?`, and real queries use it for prepared statements.
  */
 function replaceParameterMarkers(sql: string): string {
   let out = '';

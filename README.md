@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-# mcp-server-db2i
+# Db2 for i MCP Server
 
 [![CI](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml/badge.svg)](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/mcp-server-db2i)](https://www.npmjs.com/package/mcp-server-db2i)
@@ -18,13 +18,13 @@
 [![npm downloads](https://img.shields.io/npm/dm/mcp-server-db2i)](https://www.npmjs.com/package/mcp-server-db2i)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Strom-Capital)
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases through the IBM i Access ODBC driver, or optionally the JT400 JDBC driver or Mapepire over SSH.
+`mcp-server-db2i` is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM Db2 for i (Db2i) on IBM i (AS/400). It enables AI assistants like Claude and Cursor to query and inspect IBM i databases through the IBM i Access ODBC driver, or optionally the JT400 JDBC driver or Mapepire over SSH.
 
 Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.Strom-Capital/mcp-server-db2i`.
 
 ## Architecture
 
-AI clients connect to the MCP Server in one of two ways. Local clients such as Claude Desktop, Claude Code and Cursor can start it as a process and talk over stdio. Remote clients connect over Streamable HTTP at `/mcp`, signing in with OAuth 2.1 (claude.ai custom connectors) or a bearer token (custom agents). Local clients can also use the HTTP endpoint. The server executes read-only queries against DB2 for i using the IBM i Access ODBC driver (default, no Java), the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`), or Mapepire over SSH (`DB2I_DRIVER=mapepire`) for systems where only SSH is reachable. One server can reach several IBM i systems through connection profiles, each with its own driver.
+AI clients connect to the MCP Server in one of two ways. Local clients such as Claude Desktop, Claude Code and Cursor can start it as a process and talk over stdio. Remote clients connect over Streamable HTTP at `/mcp`, signing in with OAuth 2.1 (claude.ai custom connectors) or a bearer token (custom agents). Local clients can also use the HTTP endpoint. The server executes read-only queries against Db2 for i using the IBM i Access ODBC driver (default, no Java), the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`), or Mapepire over SSH (`DB2I_DRIVER=mapepire`) for systems where only SSH is reachable. One server can reach several IBM i systems through connection profiles, each with its own driver.
 
 ```mermaid
 graph LR
@@ -45,15 +45,15 @@ graph LR
     end
 
     subgraph prod ["IBM i: prod"]
-        db2prod[("DB2 for i")]
+        db2prod[("Db2 for i")]
     end
 
     subgraph test ["IBM i: test"]
-        db2test[("DB2 for i")]
+        db2test[("Db2 for i")]
     end
 
     subgraph dev ["IBM i: dev"]
-        db2dev[("DB2 for i")]
+        db2dev[("Db2 for i")]
     end
 
     local -->|local process| stdio
