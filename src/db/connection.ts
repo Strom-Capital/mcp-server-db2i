@@ -12,7 +12,7 @@
 import type { DB2iConfig } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
 import type { DbPool } from './driver.js';
-import { loadDriver, toParams } from './driver.js';
+import { loadDriver, toJsonSafeRows, toParams } from './driver.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger({ component: 'database' });
@@ -307,7 +307,8 @@ async function run(
       procedure ? 'Executing procedure' : 'Executing query'
     );
     const db = await acquire(slot, resolved);
-    const rows = await db.query(sql, toParams(params));
+    // BIGINT arrives as bigint from ODBC; convert it once, for every output path
+    const rows = toJsonSafeRows(await db.query(sql, toParams(params)));
     log.debug({ rowCount: rows.length }, `${kind} completed`);
     return { rows };
   } catch (error) {

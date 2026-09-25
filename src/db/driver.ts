@@ -98,3 +98,24 @@ export function toParams(params: readonly unknown[]): QueryParam[] {
 export function toDb2Timestamp(date: Date): string {
   return `${date.toISOString().slice(0, 23).replace('T', ' ')}000`;
 }
+
+const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER);
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * Make row values safe for JSON. node-odbc returns BIGINT as a `bigint`, which
+ * `JSON.stringify` rejects. A value within the safe integer range becomes a
+ * number, and a larger one an exact string, the same as Mapepire returns.
+ * Rows are changed in place; drivers hand over fresh row objects.
+ */
+export function toJsonSafeRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      const value = row[key];
+      if (typeof value === 'bigint') {
+        row[key] = value >= MIN_SAFE && value <= MAX_SAFE ? Number(value) : value.toString();
+      }
+    }
+  }
+  return rows;
+}

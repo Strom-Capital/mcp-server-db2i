@@ -280,6 +280,13 @@ describe.each(probes)('driver contract: $name', (probe) => {
     );
   });
 
+  it('returns BIGINT values as numbers, or exact strings beyond the safe range', async () => {
+    connection.initializePool(baseConfig(probe.name));
+    created.rows = [{ SMALL: 1n, BIG: 9007199254740993n }];
+    const { rows } = await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    expect(rows).toEqual([{ SMALL: 1, BIG: '9007199254740993' }]);
+  });
+
   it('closes both global connections on shutdown', async () => {
     connection.initializePool(baseConfig(probe.name));
     await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');

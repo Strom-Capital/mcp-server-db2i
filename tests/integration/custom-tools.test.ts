@@ -134,6 +134,22 @@ describe('Custom ERP tools', () => {
     expect(params).toContain('1001');
   });
 
+  it('returns BIGINT columns from a YAML tool', async () => {
+    mockQuery.mockResolvedValueOnce([
+      { ORDERNO: 1001n, CUSTNO: '1001', ORDERDATE: '2024-01-15', STATUS: 'O', LINES: 9007199254740993n },
+    ]);
+
+    const result = await client.callTool({
+      name: 'search_sales_orders',
+      arguments: { text: '1001' },
+    }) as CallToolResult;
+
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(textOf(result)) as { data: Record<string, unknown>[] };
+    expect(body.data[0]).toMatchObject({ ORDERNO: 1001, LINES: '9007199254740993' });
+    expect(result.structuredContent).toMatchObject({ data: [{ ORDERNO: 1001, LINES: '9007199254740993' }] });
+  });
+
   it('returns annotations from get_business_context and describe_table', async () => {
     const context = await client.callTool({
       name: 'get_business_context',
