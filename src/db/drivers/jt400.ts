@@ -8,8 +8,8 @@
 
 import type { DB2iConfig } from '../../config.js';
 import { buildConnectionConfig } from '../../config.js';
-import type { CreatePoolOptions, DbDriver, DbPool, DbQueryOptions, QueryParam } from '../driver.js';
-import { withQueryTimeout } from '../driver.js';
+import type { CreatePoolOptions, DbDriver, DbPool, DbQueryOptions, QueryParam, SqlDiagnostics } from '../driver.js';
+import { DbError, QueryTimeoutError, sqlcodeFromMessageId, withQueryTimeout } from '../driver.js';
 
 type Row = Record<string, unknown>;
 
@@ -61,7 +61,11 @@ export const jt400Driver: DbDriver = {
     const connection = pool(buildConnectionConfig(config, { readOnly: options.readOnly }));
     return {
       async query(sql, params, options) {
-        return runStatement(connection, sql, params, options);
+        try {
+          return await runStatement(connection, sql, params, options);
+        } catch (error) {
+          throw toJt400Error(error);
+        }
       },
       async close() {
         await connection.close();
@@ -69,6 +73,60 @@ export const jt400Driver: DbDriver = {
     };
   },
 };
+
+/** The part of a java.sql.SQLException proxy that node-java exposes. */
+interface JavaSqlException {
+  getSQLStateSync(): string | null;
+  getErrorCodeSync(): number;
+}
+
+function isJavaSqlException(value: unknown): value is JavaSqlException {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Partial<JavaSqlException>).getSQLStateSync === 'function' &&
+    typeof (value as Partial<JavaSqlException>).getErrorCodeSync === 'function'
+  );
+}
+
+/**
+ * The SQLSTATE and SQLCODE of a failed statement. node-jt400 throws an Oops
+ * error whose cause is node-java's error, whose cause in turn is the Java
+ * SQLException. If that cannot be read, the SQLCODE comes from the `[SQLnnnn]`
+ * message ID at the start of the message.
+ */
+function jt400Diagnostics(error: Error): SqlDiagnostics {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current; depth++) {
+    if (isJavaSqlException(current)) {
+      try {
+        const sqlstate = current.getSQLStateSync() ?? undefined;
+        const sqlcode = current.getErrorCodeSync();
+        return { sqlstate, sqlcode: sqlcode !== 0 ? sqlcode : undefined };
+      } catch {
+        break;
+      }
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return { sqlcode: sqlcodeFromMessageId(error.message) };
+}
+
+/**
+ * Rewrite a node-jt400 error as a DbError with `[SQLSTATE] message`, the same
+ * shape as the other drivers. Other errors pass through unchanged.
+ */
+function toJt400Error(error: unknown): unknown {
+  if (!(error instanceof Error) || error instanceof QueryTimeoutError) {
+    return error;
+  }
+  const diagnostics = jt400Diagnostics(error);
+  if (diagnostics.sqlstate === undefined && diagnostics.sqlcode === undefined) {
+    return error;
+  }
+  const message = diagnostics.sqlstate ? `[${diagnostics.sqlstate}] ${error.message}` : error.message;
+  return new DbError(message, diagnostics, { cause: error });
+}
 
 /**
  * Run a statement, cancelling it with QSYS2.CANCEL_SQL once it runs past the

@@ -29,13 +29,14 @@ import {
   type RelatedObject,
   type StatementInspection,
 } from '../db/sqlServices.js';
+import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { checkQuerySchemas, isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
 
 const RELATED_OBJECTS_UNAVAILABLE =
   'SYSTOOLS.RELATED_OBJECTS is not available. It requires IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release.';
 
-export type ValidateQueryResult = {
+export type ValidateQueryResult = SqlErrorDetails & {
   success: boolean;
   error?: string;
   valid?: boolean;
@@ -134,7 +135,7 @@ export async function validateQueryTool(input: {
     if (isParseStatementMissing(error)) {
       return { success: false, error: PARSE_STATEMENT_UNAVAILABLE };
     }
-    return { success: false, error: messageOf(error) };
+    return { success: false, error: messageOf(error), ...sqlErrorFields(error) };
   }
 
   violations.push(...inspection.violations);

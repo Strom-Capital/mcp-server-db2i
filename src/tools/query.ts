@@ -3,6 +3,7 @@
  */
 
 import { executeQuery } from '../db/connection.js';
+import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -46,7 +47,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   error?: string;
   violations?: string[];
   limitApplied?: number;
-}> {
+} & SqlErrorDetails> {
   const { sql, params = [], target, defaultSchema } = input;
   const queryConfig = getQueryLimitConfig();
   const effectiveLimit = applyQueryLimit(input.limit, queryConfig);
@@ -129,7 +130,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
       }
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       log.debug({ err: error }, 'PARSE_STATEMENT check failed');
-      return { success: false, error: message };
+      return { success: false, error: message, ...sqlErrorFields(error) };
     }
   }
 
@@ -156,6 +157,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
     return {
       success: false,
       error: message,
+      ...sqlErrorFields(error),
     };
   }
 }

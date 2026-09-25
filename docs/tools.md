@@ -29,6 +29,19 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 
 > **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included.
 
+### Failed statements
+
+When Db2 rejects a statement in `execute_query`, a business SQL tool, `validate_query` or `profile_table`, the error result also has these fields:
+
+| Field | Example |
+|-------|---------|
+| `sqlstate` | `42704` |
+| `sqlcode` | `-204` |
+| `cause` | `&1 in &2 type *&3 was not found. ...` |
+| `recovery` | `Change the name and try the request again. ...` |
+
+`cause` and `recovery` also follow the message in the text content, and come from the second-level text of the SQL message (`SYSTOOLS.SQLCODE_INFO`). `&1`, `&2` and so on stand for the values in the first-level message in `error`. With the JDBC option `errors=full`, the `jt400` and `mapepire` drivers return the text with the values filled in. If the text cannot be read, the error comes without `cause` and `recovery`. Rejections by the SQL validator, the schema allowlist or column masking explain themselves and have none of these fields.
+
 ## Filter syntax
 
 The list tools support pattern matching:

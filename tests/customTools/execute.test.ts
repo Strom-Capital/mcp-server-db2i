@@ -13,6 +13,7 @@ vi.mock('../../src/db/sqlServices.js', () => ({
 import { executeQuery } from '../../src/db/connection.js';
 import { isParseStatementMissing, parseStatement } from '../../src/db/sqlServices.js';
 import { executeCustomTool } from '../../src/customTools/execute.js';
+import { DatabaseQueryError } from '../../src/db/sqlErrorInfo.js';
 import type { StoredTool } from '../../src/customTools/loader.js';
 import { resetCustomTools } from '../../src/customTools/registry.js';
 
@@ -77,6 +78,27 @@ describe('executeCustomTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toEqual([{ EMAIL: '****', PHONE: '****0100' }]);
+  });
+
+  it('returns the SQLSTATE, SQLCODE, cause and recovery when the statement fails', async () => {
+    vi.mocked(executeQuery).mockRejectedValueOnce(
+      new DatabaseQueryError('Database query failed: [42704] [SQL0204] ORDERHDR in MYLIB type *FILE not found.', {
+        sqlstate: '42704',
+        sqlcode: -204,
+        cause: '&1 in &2 type *&3 was not found.',
+        recovery: 'Change the name and try the request again.',
+      })
+    );
+    const result = await executeCustomTool(tool, { customer: '1001' });
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Database query failed: [42704] [SQL0204] ORDERHDR in MYLIB type *FILE not found.',
+      sqlstate: '42704',
+      sqlcode: -204,
+      cause: '&1 in &2 type *&3 was not found.',
+      recovery: 'Change the name and try the request again.',
+    });
   });
 
   it('rejects a missing required parameter before querying', async () => {

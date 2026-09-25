@@ -5,6 +5,7 @@
  */
 
 import { allowedSchemasFor, type DbTarget } from '../systems.js';
+import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import { getCustomTools } from '../customTools/registry.js';
 import type { MaskRule } from '../customTools/masking.js';
 import {
@@ -32,7 +33,7 @@ export type ColumnProfile = {
   masked?: MaskRule;
 };
 
-export type ProfileTableResult = {
+export type ProfileTableResult = SqlErrorDetails & {
   success: boolean;
   error?: string;
   schema?: string;
@@ -159,6 +160,6 @@ export async function profileTableTool(input: {
       sql: computed.sql,
     };
   } catch (error) {
-    return { success: false, error: messageOf(error) };
+    return { success: false, error: messageOf(error), ...sqlErrorFields(error) };
   }
 }

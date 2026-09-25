@@ -243,6 +243,8 @@ interface DriverProbe {
   pools(): FakePool[];
   isReadOnly(index: number): boolean;
   failNext(): void;
+  /** A failed statement, shaped the way this driver's package reports it. */
+  sqlError(sqlstate: string, sqlcode: number, text: string): Error;
 }
 
 const probes: DriverProbe[] = [
@@ -253,6 +255,13 @@ const probes: DriverProbe[] = [
     failNext: () => {
       created.failNext.jt400 = true;
     },
+    // node-jt400: Oops error, then node-java's error, then the Java SQLException
+    sqlError: (sqlstate, sqlcode, text) =>
+      new Error(`[SQL${String(-sqlcode).padStart(4, '0')}] ${text}`, {
+        cause: new Error('Error running instance method', {
+          cause: { getSQLStateSync: () => sqlstate, getErrorCodeSync: () => sqlcode },
+        }),
+      }),
   },
   {
     name: 'odbc',
@@ -261,6 +270,10 @@ const probes: DriverProbe[] = [
     failNext: () => {
       created.failNext.odbc = true;
     },
+    sqlError: (sqlstate, sqlcode, text) =>
+      Object.assign(new Error('[odbc] Error executing the sql statement'), {
+        odbcErrors: [{ state: sqlstate, code: sqlcode, message: text }],
+      }),
   },
   {
     name: 'mapepire',
@@ -269,6 +282,7 @@ const probes: DriverProbe[] = [
     failNext: () => {
       created.failNext.mapepire = true;
     },
+    sqlError: (sqlstate, sqlcode, text) => new Error(`${text}, ${sqlstate}, ${sqlcode}`),
   },
 ];
 
@@ -365,6 +379,55 @@ describe.each(probes)('driver contract: $name', (probe) => {
     await expect(connection.executeQuery('SELECT * FROM NOPE')).rejects.toThrow(
       'Database query failed: SQL0204 not found'
     );
+  });
+
+  it('reports the SQLSTATE, SQLCODE, cause and recovery of a failed statement', async () => {
+    connection.initializePool(baseConfig(probe.name));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    const [pool] = probe.pools();
+    pool.query.mockImplementation(async (sql: unknown) => {
+      if (typeof sql === 'string' && sql.includes('SQLCODE_INFO')) {
+        return [{
+          MESSAGE_SECOND_LEVEL_TEXT:
+            'Cause . . . . . :   &1 in &2 type *&3 was not found. Recovery  . . . :   Change the name and try the request again.',
+        }];
+      }
+      if (sql === 'VALUES QSYS2.JOB_NAME') {
+        return [{ '00001': JOB_NAME }];
+      }
+      throw probe.sqlError('42704', -204, 'ORDERS in MYLIB type *FILE not found.');
+    });
+
+    const error = await connection.executeQuery('SELECT * FROM MYLIB.ORDERS').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/^Database query failed: \[42704\] .*ORDERS in MYLIB type \*FILE not found\.$/);
+    expect((error as { details?: unknown }).details).toEqual({
+      sqlstate: '42704',
+      sqlcode: -204,
+      cause: '&1 in &2 type *&3 was not found.',
+      recovery: 'Change the name and try the request again.',
+    });
+    const lookup = pool.query.mock.calls.find(([sql]) => typeof sql === 'string' && sql.includes('SQLCODE_INFO'));
+    expect(lookup?.[1]).toEqual([-204]);
+  });
+
+  it('keeps the original error when the SQLCODE lookup fails', async () => {
+    connection.initializePool(baseConfig(probe.name));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    const [pool] = probe.pools();
+    pool.query.mockImplementation(async (sql: unknown) => {
+      if (typeof sql === 'string' && sql.includes('SQLCODE_INFO')) {
+        throw probe.sqlError('42704', -204, 'SQLCODE_INFO in SYSTOOLS type *N not found.');
+      }
+      if (sql === 'VALUES QSYS2.JOB_NAME') {
+        return [{ '00001': JOB_NAME }];
+      }
+      throw probe.sqlError('42601', -104, 'Token . was not valid.');
+    });
+
+    const error = await connection.executeQuery('SELECT FROM MYLIB.ORDERS').catch((e: unknown) => e);
+    expect((error as Error).message).toMatch(/^Database query failed: \[42601\] .*Token \. was not valid\.$/);
+    expect((error as { details?: unknown }).details).toEqual({ sqlstate: '42601', sqlcode: -104 });
   });
 
   it('returns BIGINT values as numbers, or exact strings beyond the safe range', async () => {
@@ -539,6 +602,41 @@ describe.each(probes)('driver contract: $name', (probe) => {
       const again = await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
       expect(again.rows).toHaveLength(1);
     });
+  });
+});
+
+describe('driver contract: jt400 specifics', () => {
+  let connection: Connection;
+
+  beforeEach(async () => {
+    created.jt400.length = 0;
+    created.failNext.jt400 = false;
+    created.rows = [];
+    vi.resetModules();
+    connection = await import('../../src/db/connection.js');
+  });
+
+  afterEach(async () => {
+    await connection.closeGlobalPool();
+  });
+
+  it('reads the SQLCODE from the message ID when the Java exception is not available', async () => {
+    connection.initializePool(baseConfig('jt400'));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    const [pool] = created.jt400.map((c) => c.pool);
+    pool.query.mockImplementation(async (sql: unknown) => {
+      if (sql === 'VALUES QSYS2.JOB_NAME') {
+        return [{ '00001': JOB_NAME }];
+      }
+      if (typeof sql === 'string' && sql.includes('SQLCODE_INFO')) {
+        return [];
+      }
+      throw new Error('[SQL0204] ORDERS in MYLIB type *FILE not found.');
+    });
+
+    const error = await connection.executeQuery('SELECT * FROM MYLIB.ORDERS').catch((e: unknown) => e);
+    expect((error as Error).message).toBe('Database query failed: [SQL0204] ORDERS in MYLIB type *FILE not found.');
+    expect((error as { details?: unknown }).details).toEqual({ sqlcode: -204 });
   });
 });
 

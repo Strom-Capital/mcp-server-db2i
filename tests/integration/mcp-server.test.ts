@@ -409,6 +409,36 @@ describe('MCP Server Integration', () => {
       expect(errorText).toContain('Connection timeout');
     });
 
+    it('returns the SQLSTATE, SQLCODE, cause and recovery of a failed statement', async () => {
+      mockQuery.mockRejectedValueOnce(new Error('[SQL0204] ORDERS in MYLIB type *FILE not found.'));
+      mockQuery.mockResolvedValueOnce([{
+        MESSAGE_SECOND_LEVEL_TEXT:
+          'Cause . . . . . :   &1 in &2 type *&3 was not found. Recovery  . . . :   Change the name and try the request again.',
+      }]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM MYLIB.ORDERS' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        success: false,
+        error: 'Database query failed: [SQL0204] ORDERS in MYLIB type *FILE not found.',
+        sqlcode: -204,
+        cause: '&1 in &2 type *&3 was not found.',
+        recovery: 'Change the name and try the request again.',
+      });
+      expect((result.content[0] as { type: 'text'; text: string }).text).toBe(
+        'Database query failed: [SQL0204] ORDERS in MYLIB type *FILE not found.\n\n' +
+          'Cause: &1 in &2 type *&3 was not found.\n\n' +
+          'Recovery: Change the name and try the request again.'
+      );
+      const [lookupSql, lookupParams] = mockQuery.mock.calls[1] as [string, unknown[]];
+      expect(lookupSql).toContain('SYSTOOLS.SQLCODE_INFO');
+      expect(lookupParams).toEqual([-204]);
+    });
+
     it('should apply FETCH FIRST limit to queries', async () => {
       mockQuery.mockResolvedValueOnce([{ ID: 1 }]);
 
