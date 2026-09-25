@@ -1,4 +1,7 @@
-# Client Setup
+---
+title: "Client setup"
+description: "Configure Cursor, Claude Desktop, and Claude Code to start mcp-server-db2i, with npx or Docker."
+---
 
 This guide covers setting up mcp-server-db2i with MCP-compatible clients. The JSON configuration format is the same for all clients - only the file location differs.
 

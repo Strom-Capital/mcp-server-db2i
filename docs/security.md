@@ -1,4 +1,7 @@
-# Security
+---
+title: "Security"
+description: "Credentials, query validation, the schema allowlist, rate limits, column masking, and the audit log."
+---
 
 This guide covers security features and best practices for mcp-server-db2i.
 

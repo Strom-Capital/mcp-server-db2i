@@ -1,4 +1,7 @@
-# Configuration
+---
+title: "Configuration"
+description: "Environment variables, database drivers, multiple systems, and connection options."
+---
 
 This guide covers all configuration options for mcp-server-db2i.
 
@@ -122,7 +125,7 @@ MCP_TOOLS_ENABLED=list_schemas,list_tables,describe_table
 
 Disabled tools are not listed by `tools/list` and cannot be called. The setting applies to both stdio and HTTP transports.
 
-Resources and prompts follow the tools they draw on. Disabling `describe_table` removes `db2i://{schema}/{table}` and all three prompts. Disabling `get_object_ddl` removes `db2i://{schema}/{table}/ddl`, and disabling `get_business_context` removes `db2i://business-context`. See [Resources and prompts](../README.md#resources-and-prompts).
+Resources and prompts follow the tools they draw on. Disabling `describe_table` removes `db2i://{schema}/{table}` and all three prompts. Disabling `get_object_ddl` removes `db2i://{schema}/{table}/ddl`, and disabling `get_business_context` removes `db2i://business-context`. See [Resources and prompts](tools.md#resources).
 
 ### Business SQL tools
 
@@ -366,7 +369,7 @@ DB2I_ODBC_OPTIONS=SSL=1
 
 ## Multiple Systems
 
-One server can reach several IBM i systems, for example production and test, or two partitions. Set `DB2I_PROFILES` to a YAML file with one profile per system ([example](../examples/profiles.yaml)). For a single system, the [environment variables](#database-connection) are simpler, so you don't need a profiles file.
+One server can reach several IBM i systems, for example production and test, or two partitions. Set `DB2I_PROFILES` to a YAML file with one profile per system ([example](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/profiles.yaml)). For a single system, the [environment variables](#database-connection) are simpler, so you don't need a profiles file.
 
 ```yaml
 profiles:

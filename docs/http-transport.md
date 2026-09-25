@@ -1,4 +1,7 @@
-# HTTP Transport
+---
+title: "HTTP transport"
+description: "Serve MCP over Streamable HTTP, with OAuth 2.1 for remote clients or bearer tokens for agents."
+---
 
 The server supports HTTP transport for web and agent integration, in addition to the default stdio transport.
 
@@ -229,8 +232,8 @@ To add it in Claude, open **Settings > Connectors > Add custom connector** and e
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/oauth-sign-in-dark.png">
-    <img src="assets/oauth-sign-in.png" alt="Sign-in page: the mcp-server-db2i logo, a system picker with prod selected, user profile and password fields, and a Sign in button" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/oauth-sign-in-dark.png" />
+    <img src="assets/oauth-sign-in.png" alt="Sign-in page: the mcp-server-db2i logo, a system picker with prod selected, user profile and password fields, and a Sign in button" width="360" />
   </picture>
 </p>
 

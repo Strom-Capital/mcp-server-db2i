@@ -1,4 +1,7 @@
-# Docker Guide
+---
+title: "Docker"
+description: "Run mcp-server-db2i in a container with Docker and docker-compose."
+---
 
 This guide covers running mcp-server-db2i with Docker and docker-compose.
 
