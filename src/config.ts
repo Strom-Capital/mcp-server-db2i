@@ -1170,10 +1170,15 @@ export interface OAuthConfig {
   refreshExpiry: number;
 }
 
-/** Callbacks of the Claude web and desktop connectors. */
+/**
+ * Callbacks of the Claude web and desktop connectors, and of Cursor. Cursor
+ * returns through its own URL scheme, so the code only reaches the Cursor app
+ * on the user's machine, like a loopback redirect.
+ */
 export const DEFAULT_OAUTH_REDIRECT_URIS = [
   'https://claude.ai/api/mcp/auth_callback',
   'https://claude.com/api/mcp/auth_callback',
+  'cursor://anysphere.cursor-mcp/oauth/callback',
 ];
 
 /** Random signing key used when MCP_OAUTH_SECRET is unset. Stable for the process. */

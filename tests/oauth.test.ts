@@ -434,6 +434,42 @@ describe('OAuth authorization server', () => {
     expect(res.headers.get('www-authenticate')).toBeNull();
   });
 
+  it('signs Cursor in through its cursor:// callback', async () => {
+    const CURSOR_CALLBACK = 'cursor://anysphere.cursor-mcp/oauth/callback';
+    const client = await register({ redirect_uris: [CURSOR_CALLBACK], client_name: 'Cursor' });
+    const { verifier, challenge } = pkce();
+    const page = await fetch(authorizeUrl(client.client_id as string, challenge, { redirect_uri: CURSOR_CALLBACK }));
+    expect(page.status).toBe(200);
+    // URL.origin is "null" for an app scheme, which is not a valid CSP source: allow the scheme
+    const csp = page.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain("form-action 'self' cursor:");
+    expect(csp).not.toContain('null');
+    const html = await page.text();
+    expect(html).toContain('you return to <strong>cursor://anysphere.cursor-mcp</strong>');
+
+    const res = await postLogin(hiddenRequest(html), { username: 'CALLER', password: 'callerpass', system: 'test' });
+    expect(res.status).toBe(303);
+    const location = new URL(res.headers.get('location') as string);
+    expect(`${location.protocol}//${location.host}${location.pathname}`).toBe(CURSOR_CALLBACK);
+    const tokens = await postToken({
+      grant_type: 'authorization_code',
+      code: location.searchParams.get('code') as string,
+      code_verifier: verifier,
+      client_id: client.client_id as string,
+      redirect_uri: CURSOR_CALLBACK,
+    });
+    expect(tokens.status).toBe(200);
+  });
+
+  it('refuses other app schemes unless configured', async () => {
+    const res = await fetch(`${baseUrl}/oauth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: ['otherapp://callback'] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('refuses a forged or expired login request', async () => {
     const res = await postLogin('eyJ4IjoxfQ.bad', { username: 'CALLER', password: 'callerpass' });
     expect(res.status).toBe(400);
@@ -712,6 +748,7 @@ describe('getOAuthConfig', () => {
     expect(config?.redirectUris).toEqual([
       'https://claude.ai/api/mcp/auth_callback',
       'https://claude.com/api/mcp/auth_callback',
+      'cursor://anysphere.cursor-mcp/oauth/callback',
     ]);
     expect(config?.ephemeralSecret).toBe(true);
     expect(config?.secret).toEqual(getOAuthConfig('required')?.secret);

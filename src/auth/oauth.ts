@@ -381,9 +381,17 @@ interface LoginPage {
   error?: string;
 }
 
+/** Whether a redirect goes to a web origin rather than an app's own URL scheme, such as cursor://. */
+function isWebRedirect(url: URL): boolean {
+  return url.protocol === 'http:' || url.protocol === 'https:';
+}
+
 function renderLogin(res: Response, status: number, page: LoginPage): void {
   const redirect = new URL(page.redirectUri);
   const clientName = page.client.name ?? redirect.host;
+  // An app scheme has no web origin (URL.origin is "null"), so name the scheme instead
+  const returnTo = isWebRedirect(redirect) ? redirect.host : `${redirect.protocol}//${redirect.host}`;
+  const formAction = isWebRedirect(redirect) ? redirect.origin : redirect.protocol;
   const systems = getSystems();
   const selected = page.system ?? defaultSystem().name;
   const systemField =
@@ -405,7 +413,7 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
     'Sign in to IBM i',
     `<h1>Sign in to IBM i</h1>` +
       `<p><strong>${escapeHtml(clientName)}</strong> wants to query IBM i with your user profile. ` +
-      `After you sign in, you return to <strong>${escapeHtml(redirect.host)}</strong>.</p>` +
+      `After you sign in, you return to <strong>${escapeHtml(returnTo)}</strong>.</p>` +
       (page.error ? `<p class="error" role="alert">${escapeHtml(page.error)}</p>` : '') +
       `<form method="post" action="/oauth/authorize">` +
       `<input type="hidden" name="request" value="${escapeHtml(page.request)}">` +
@@ -417,7 +425,7 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
       `<button type="submit">Sign in</button>` +
       `</form>` +
       `<p class="note">Only continue if you started this connection yourself.</p>`,
-    redirect.origin
+    formAction
   );
 }
 

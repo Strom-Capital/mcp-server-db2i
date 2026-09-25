@@ -33,7 +33,7 @@ MCP_TRANSPORT=stdio
 | `MCP_AUTH_ALLOWED_DB_HOSTS` | `DB2I_HOSTNAME` | Hosts `POST /auth` and the OAuth login may connect to |
 | `MCP_OAUTH_ENABLED` | `false` | Built-in OAuth authorization server for remote clients. Needs `required` mode. See [Remote Clients (OAuth)](#remote-clients-oauth) |
 | `MCP_PUBLIC_URL` | - | External origin clients use, such as `https://mcp.example.com`. Required with OAuth. Its hostname is added to the `Host` allowlist |
-| `MCP_OAUTH_REDIRECT_URIS` | Claude callbacks | Redirect URIs clients may register, comma-separated. Exact URLs, or prefixes ending in `/*` |
+| `MCP_OAUTH_REDIRECT_URIS` | Claude and Cursor callbacks | Redirect URIs clients may register, comma-separated. Exact URLs, or prefixes ending in `/*` |
 | `MCP_OAUTH_SECRET` | random | Key that signs client IDs and login requests, at least 32 characters. Set it so registrations survive a restart |
 | `MCP_OAUTH_REFRESH_EXPIRY` | `604800` | Refresh token lifetime in seconds. `0` turns refresh tokens off |
 | `MCP_TLS_ENABLED` | `false` | Enable built-in TLS |
@@ -235,6 +235,17 @@ To add it in Claude, open **Settings > Connectors > Add custom connector** and e
 
 The page names the client and the site the user returns to. After sign-in, Claude holds a token bound to that user profile and system.
 
+Other clients sign in the same way. Each connection is bound to the system picked on the sign-in page, so add one entry per system you want to use.
+
+- **Cursor.** In `~/.cursor/mcp.json` (or a project's `.cursor/mcp.json`), add the URL only, with no command, environment or password:
+  ```json
+  "db2i": { "url": "https://mcp.example.com/mcp" }
+  ```
+  Cursor opens the sign-in page in the browser and returns through `cursor://anysphere.cursor-mcp/oauth/callback`, which is allowed by default.
+- **Claude Code.** `claude mcp add --transport http --scope user db2i https://mcp.example.com/mcp`, then sign in from `/mcp`. Claude Code uses a loopback callback, which is always accepted.
+
+Pointing every client at one server, instead of starting a stdio server per client, keeps one set of connection pools to the IBM i. Access tokens and refresh tokens live in memory, so clients sign in again after the server restarts.
+
 ### Limiting who can reach the server
 
 OAuth decides who may query, but the sign-in page and token endpoint still face the internet. Put an IP allowlist in front of them as well. Claude connectors call from Anthropic's [published outbound range](https://platform.claude.com/docs/en/api/ip-addresses), `160.79.104.0/21`. The sign-in page opens in the user's own browser, so the networks your users sign in from must be allowed too.
@@ -263,7 +274,7 @@ A reverse proxy can do the same, for example nginx `allow` and `deny` rules.
 
 Notes:
 
-- **Redirect URIs.** Registration is refused for a redirect URI outside `MCP_OAUTH_REDIRECT_URIS`, which defaults to the claude.ai and claude.com connector callbacks. Loopback redirects (`http://localhost:<port>/...`) are always accepted, for desktop clients. Without this list, anyone could register a client that sends codes to their own site and ask a user to sign in.
+- **Redirect URIs.** Registration is refused for a redirect URI outside `MCP_OAUTH_REDIRECT_URIS`, which defaults to the claude.ai and claude.com connector callbacks and Cursor's `cursor://anysphere.cursor-mcp/oauth/callback`. Setting it replaces the defaults, so list those you still need. Loopback redirects (`http://localhost:<port>/...`) are always accepted, for desktop clients. Without this list, anyone could register a client that sends codes to their own site and ask a user to sign in.
 - **Registrations are stateless.** A client ID is the client's metadata signed with `MCP_OAUTH_SECRET`. Nothing is stored, and a registration keeps working after a restart as long as the secret stays the same. Without the secret, a random one is used and clients must register again after a restart.
 - **Codes and refresh tokens live in memory.** A restart signs every user out. Refresh tokens rotate on every use, and each refresh repeats the test connection, so a disabled user profile or a changed password ends the grant. If the IBM i cannot be reached, the refresh answers 503 and the grant stays. Revoking an access or refresh token ends both.
 - **Rate limit.** Sign-in attempts share the `/auth` limit: 5 per minute per client IP. All `/oauth/*` endpoints together allow 120 requests per minute per IP. Behind a proxy, set `MCP_TRUST_PROXY` so the limits use the client address from `X-Forwarded-For`. Without it, all users share the proxy's budget. A successful sign-in does not count toward the limit.
