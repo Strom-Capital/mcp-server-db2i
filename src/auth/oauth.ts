@@ -23,6 +23,7 @@
 import crypto from 'node:crypto';
 import express, { type Request, type Response, type Router } from 'express';
 
+import { FAVICON_SVG, LOGO_SHAPES } from '../branding.js';
 import { getHttpConfig, isLoopbackHost, type DB2iConfig, type OAuthConfig } from '../config.js';
 import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -283,17 +284,6 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Shapes of the project logo (docs/assets/logo.svg). The stroke color is set by each use. */
-const LOGO_SHAPES =
-  '<g stroke-width="12" stroke-linecap="round" stroke-linejoin="round">' +
-  '<ellipse cx="116" cy="96" rx="54" ry="20"/>' +
-  '<path d="M62 96v30c0 11 24 20 54 20s54-9 54-20V96"/>' +
-  '<path d="M62 126c0 11 24 20 54 20s54-9 54-20"/>' +
-  '<path d="M62 126v30c0 11 24 20 54 20s54-9 54-20v-30"/>' +
-  '<path d="M62 156c0 11 24 20 54 20s54-9 54-20"/>' +
-  '</g>' +
-  '<path d="M184 48C184 62 192 70 206 70C192 70 184 78 184 92C184 78 176 70 162 70C176 70 184 62 184 48Z" fill="#22C55E"/>';
-
 /** Page logo, cropped to the artwork. The strokes follow the page's text color, so it works in both themes. */
 const LOGO_SVG =
   '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="54 42 160 142" width="60" height="53" fill="none" aria-hidden="true">' +
@@ -301,13 +291,8 @@ const LOGO_SVG =
   LOGO_SHAPES +
   '</svg>';
 
-/** The same logo as a favicon. Its own style switches the stroke for dark browser chrome. */
-const FAVICON_HREF = `data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">' +
-    '<style>g{stroke:#0F172A}@media (prefers-color-scheme:dark){g{stroke:#E6EDF3}}</style>' +
-    LOGO_SHAPES +
-    '</svg>'
-)}`;
+/** The same logo as a favicon. */
+const FAVICON_HREF = `data:image/svg+xml,${encodeURIComponent(FAVICON_SVG)}`;
 
 const PAGE_STYLE = `
   :root { color-scheme: light dark; --fg: #1f2328; --muted: #59636e; --bg: #f6f8fa; --card: #fff; --line: #d1d9e0; --accent: #0969da; --error: #cf222e; }

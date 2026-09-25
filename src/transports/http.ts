@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { createMcpHandler, isInitializeRequest, isLegacyRequest, type McpHttpHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler, toWebRequest } from '@modelcontextprotocol/node';
 
+import { FAVICON_ICO, FAVICON_SVG, ICON_PNG, ICON_TILE_SVG } from '../branding.js';
 import { getHttpConfig, hostnameOf, isLoopbackHost } from '../config.js';
 import { createChildLogger } from '../utils/logger.js';
 import {
@@ -426,6 +427,17 @@ export function createHttpApp(): Express {
     }
     next();
   });
+
+  // Project icon for browser tabs, connector lists and the MCP server info. No auth:
+  // it is the same public logo for everyone.
+  const sendIcon = (type: string, body: Buffer | string) => (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.type(type).send(body);
+  };
+  app.get('/favicon.ico', sendIcon('image/x-icon', FAVICON_ICO));
+  app.get('/favicon.svg', sendIcon('image/svg+xml', FAVICON_SVG));
+  app.get('/icon.png', sendIcon('image/png', ICON_PNG));
+  app.get('/icon.svg', sendIcon('image/svg+xml', ICON_TILE_SVG));
 
   // OAuth authorization server for remote clients (MCP_OAUTH_ENABLED)
   if (httpConfig.oauth) {

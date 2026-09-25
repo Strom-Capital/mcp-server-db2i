@@ -287,6 +287,7 @@ Notes:
 | GET | `/openapi.json` | None | OpenAPI 3.1 specification |
 | POST | `/auth` | None | Exchange credentials for token (`required` mode only) |
 | GET | `/health` | None | Health check with session stats and config |
+| GET | `/favicon.ico`, `/favicon.svg`, `/icon.png`, `/icon.svg` | None | Project icon. The MCP server info lists `/icon.png` and `/icon.svg` under `MCP_PUBLIC_URL` as its `icons`, so clients can show it in connector lists |
 | GET | `/.well-known/oauth-protected-resource[/mcp]` | None | Protected resource metadata (OAuth only) |
 | GET | `/.well-known/oauth-authorization-server` | None | Authorization server metadata (OAuth only) |
 | POST | `/oauth/register` | None | Dynamic client registration (OAuth only) |

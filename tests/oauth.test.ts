@@ -242,6 +242,20 @@ describe('OAuth authorization server', () => {
     expect(bad.headers.get('www-authenticate')).toMatch(/error="invalid_token"/);
   });
 
+  it('serves the project icon without authentication', async () => {
+    for (const [path, type] of [
+      ['/favicon.ico', 'image/x-icon'],
+      ['/favicon.svg', 'image/svg+xml'],
+      ['/icon.png', 'image/png'],
+      ['/icon.svg', 'image/svg+xml'],
+    ]) {
+      const res = await fetch(`${baseUrl}${path}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain(type);
+      expect(res.headers.get('cache-control')).toBe('public, max-age=86400');
+    }
+  });
+
   it('accepts the public hostname in the Host allowlist', async () => {
     const res = await new Promise<number>((resolve, reject) => {
       const url = new URL(`${baseUrl}/.well-known/oauth-authorization-server`);
