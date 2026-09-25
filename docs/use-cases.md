@@ -3,7 +3,7 @@ title: "Use cases"
 description: "REST APIs, BI pipelines, journal replication, and ad-hoc analysis on IBM i ERP data."
 ---
 
-These patterns come from projects where the source system was the Iptor DC1 ERP on IBM i. Nothing in them depends on that ERP. They apply to any IBM i system where the business data lives in DB2 for i files with terse names, numeric dates, and single-letter status codes.
+These patterns come from projects where the source system was the Iptor DC1 ERP on IBM i. Nothing in them depends on that ERP. They apply to any IBM i system where the business data lives in Db2 for i files with terse names, numeric dates, and single-letter status codes.
 
 Every library, table, and column name below is a placeholder.
 

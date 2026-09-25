@@ -79,7 +79,7 @@ describe('SqlSecurityValidator', () => {
       expect(result.isValid).toBe(true);
     });
 
-    it('should allow SELECT with FETCH FIRST (DB2 pagination)', () => {
+    it('should allow SELECT with FETCH FIRST (Db2 pagination)', () => {
       const result = SqlSecurityValidator.validateQuery(`
         SELECT * FROM users ORDER BY created_at DESC FETCH FIRST 10 ROWS ONLY
       `);

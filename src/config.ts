@@ -1,5 +1,5 @@
 /**
- * Configuration module for IBM DB2i MCP Server
+ * Configuration module for IBM Db2i MCP Server
  * Handles environment variables and the JDBC / ODBC connection options
  *
  * Database driver:
@@ -1684,7 +1684,7 @@ export function isStdioEnabled(): boolean {
 }
 
 /**
- * Load partial DB2i config from optional parameters with env fallbacks.
+ * Load partial Db2i config from optional parameters with env fallbacks.
  * Used by HTTP auth to build session-specific configs.
  * 
  * @param overrides - Optional overrides for config values

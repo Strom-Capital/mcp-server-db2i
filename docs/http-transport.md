@@ -110,7 +110,7 @@ HTTP mode uses token-based authentication. You must first obtain a token by post
 sequenceDiagram
     participant Client
     participant Server as MCP Server
-    participant DB as DB2 for i
+    participant DB as Db2 for i
 
     Client->>Server: POST /auth (credentials)
     Server->>DB: Validate connection

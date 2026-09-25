@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Strom-Capital/mcp-server-db2i",
-  "title": "IBM DB2 for i",
+  "title": "IBM Db2 for i",
   "description": "Read-only SQL queries and schema inspection for IBM Db2 for i over ODBC, JT400 or Mapepire (SSH).",
   "repository": {
     "url": "https://github.com/Strom-Capital/mcp-server-db2i",

@@ -1,5 +1,5 @@
 /**
- * OpenAPI 3.1 Specification for IBM DB2i MCP Server HTTP Transport
+ * OpenAPI 3.1 Specification for IBM Db2i MCP Server HTTP Transport
  *
  * Provides machine-readable API documentation for:
  * - Authentication endpoint (/auth)
@@ -45,7 +45,7 @@ export function getOpenApiSpec(baseUrl?: string): OpenApiSpec {
       title: SERVER_NAME,
       version: SERVER_VERSION,
       description:
-        'IBM DB2 for i MCP Server HTTP API. Provides MCP protocol access for querying and inspecting DB2i databases.\n\n' +
+        'IBM Db2 for i MCP Server HTTP API. Provides MCP protocol access for querying and inspecting Db2i databases.\n\n' +
         '## Authentication Modes\n\n' +
         'The server supports three authentication modes (configured via `MCP_AUTH_MODE`):\n\n' +
         '- **required** (default): Full `/auth` flow with per-user DB credentials. Most secure.\n' +

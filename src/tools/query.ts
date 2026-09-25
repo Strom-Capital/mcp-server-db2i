@@ -1,5 +1,5 @@
 /**
- * Query execution tool for IBM DB2i MCP Server
+ * Query execution tool for IBM Db2i MCP Server
  */
 
 import { executeQuery } from '../db/connection.js';

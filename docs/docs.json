@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "mcp-server-db2i",
-  "description": "MCP server for IBM DB2 for i: read-only SQL and catalog metadata for AI assistants.",
+  "description": "MCP server for IBM Db2 for i: read-only SQL and catalog metadata for AI assistants.",
   "colors": {
     "primary": "#16A34A",
     "light": "#22C55E",

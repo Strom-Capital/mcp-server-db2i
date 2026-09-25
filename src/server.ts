@@ -567,7 +567,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'execute_query',
       {
         title: 'Execute SQL Query',
-        description: 'Execute a read-only SQL SELECT query against the IBM DB2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
+        description: 'Execute a read-only SQL SELECT query against the IBM Db2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
@@ -597,7 +597,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'list_schemas',
       {
         title: 'List Schemas',
-        description: 'List all schemas (libraries) in the IBM DB2i database. Optionally filter by name pattern using * as wildcard.',
+        description: 'List all schemas (libraries) in the IBM Db2i database. Optionally filter by name pattern using * as wildcard.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
