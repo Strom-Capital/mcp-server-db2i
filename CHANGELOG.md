@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.11.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.10.0...v2.11.0) (2026-09-25)
+
+
+### Features
+
+* add cause and recovery text to SQL errors ([#139](https://github.com/Strom-Capital/mcp-server-db2i/issues/139)) ([763cddc](https://github.com/Strom-Capital/mcp-server-db2i/commit/763cddc87543336ceebdbcaaf8f6870045bce93e)), closes [#116](https://github.com/Strom-Capital/mcp-server-db2i/issues/116)
+* add index_advice from the IBM i index advisor ([#142](https://github.com/Strom-Capital/mcp-server-db2i/issues/142)) ([6b31283](https://github.com/Strom-Capital/mcp-server-db2i/commit/6b3128355fc265659665297d8c1f6e0dfdc120ba))
+* add list_routines and describe_routine for procedures and functions ([#143](https://github.com/Strom-Capital/mcp-server-db2i/issues/143)) ([d4623c2](https://github.com/Strom-Capital/mcp-server-db2i/commit/d4623c260cd8083b2a7211814cef81bc75e3a5c1))
+
+
+### Bug Fixes
+
+* check schema-qualified function calls against the schema allowlist ([#145](https://github.com/Strom-Capital/mcp-server-db2i/issues/145)) ([480c8a5](https://github.com/Strom-Capital/mcp-server-db2i/commit/480c8a52624897fff94e436c5d22756003a4a2ea)), closes [#144](https://github.com/Strom-Capital/mcp-server-db2i/issues/144)
+* match the sign-in page to the README and docs branding ([#146](https://github.com/Strom-Capital/mcp-server-db2i/issues/146)) ([40c76c9](https://github.com/Strom-Capital/mcp-server-db2i/commit/40c76c9dab135f2d8ac09d3f002f760d2c893109))
+
 ## [2.10.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.9.0...v2.10.0) (2026-09-25)
 
 
