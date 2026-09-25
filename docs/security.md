@@ -11,7 +11,7 @@ This guide covers security features and best practices for mcp-server-db2i.
 - **SSH host key check**: The `mapepire` driver refuses an IBM i whose SSH host key does not match a pinned fingerprint or `known_hosts`, so a spoofed host never receives the password
 - **No credentials in code**: All sensitive data via environment variables or file-based secrets
 - **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
-- **Result limiting**: Default limit of 1000 rows, configurable max limit (default: 10000)
+- **Result limiting**: Queries return 1000 rows unless the caller asks for more (`QUERY_DEFAULT_LIMIT`), and never more than 10000 (`QUERY_MAX_LIMIT`)
 - **Query timeout**: A statement that runs longer than `QUERY_TIMEOUT` (default 120 seconds) is cancelled on the IBM i
 - **Rate limiting**: Configurable request throttling to prevent abuse (100 req/15 min default)
 - **Structured logging**: Automatic redaction of sensitive fields like passwords
