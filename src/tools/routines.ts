@@ -50,9 +50,11 @@ function messageOf(error: unknown): string {
  * Whether execute_query can run the routine, and the template to use.
  * execute_query runs SELECT only. With a schema allowlist set, statements
  * are parsed, and the parser reads neither TABLE(...) nor named arguments,
- * so a scalar function gets positional markers.
+ * so a scalar function gets positional markers. Its template reads
+ * SYSIBM.SYSDUMMY1, so SYSIBM must then be in the list too.
  */
-function describeCall(routine: RoutineDetail, allowlistSet: boolean): DescribedRoutine {
+function describeCall(routine: RoutineDetail, allowed: string[] | undefined): DescribedRoutine {
+  const allowlistSet = allowed !== undefined;
   const positional = allowlistSet && routine.type === 'SCALAR FUNCTION';
   const described: DescribedRoutine = {
     ...routine,
@@ -65,6 +67,8 @@ function describeCall(routine: RoutineDetail, allowlistSet: boolean): DescribedR
     described.note = 'The function modifies SQL data. execute_query is read-only and does not run it.';
   } else if (routine.type === 'TABLE FUNCTION' && allowlistSet) {
     described.note = 'TABLE(...) is not accepted by execute_query while QUERY_ALLOWED_SCHEMAS is set.';
+  } else if (routine.type === 'SCALAR FUNCTION' && allowed && !isSchemaAllowed('SYSIBM', allowed)) {
+    described.note = 'The template reads SYSIBM.SYSDUMMY1, and SYSIBM is not in QUERY_ALLOWED_SCHEMAS.';
   } else {
     described.callable_with_execute_query = true;
   }
@@ -145,7 +149,7 @@ export async function describeRoutineTool(input: {
       return { success: false, error: `Routine ${wanted} was not found in library ${schema}.` };
     }
 
-    const data = result.rows.map((routine) => describeCall(routine, allowed !== undefined));
+    const data = result.rows.map((routine) => describeCall(routine, allowed));
     return { success: true, schema, data, count: data.length, truncated: result.truncated };
   } catch (error) {
     return { success: false, error: messageOf(error), ...sqlErrorFields(error) };

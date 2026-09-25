@@ -55,7 +55,7 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 | `call_template` | A statement with a `?` marker per parameter, with named arguments when every parameter has a name |
 | `callable_with_execute_query` | Whether `execute_query` can run the template. `note` says why not |
 
-Templates look like `CALL MYLIB.GET_ORDER(ORDERNO => ?)`, `SELECT MYLIB.ORDER_TOTAL(ORDERNO => ?) FROM SYSIBM.SYSDUMMY1`, and `SELECT * FROM TABLE(MYLIB.OPEN_ORDERS(CUSTNO => ?)) X`. `execute_query` runs only `SELECT`, so procedures and functions that modify SQL data are never callable through it. While `QUERY_ALLOWED_SCHEMAS` is set, statements are parsed to check their libraries, and the parser reads neither `TABLE(...)` nor named arguments. A scalar function's template then uses positional markers, and table functions are marked not callable.
+Templates look like `CALL MYLIB.GET_ORDER(ORDERNO => ?)`, `SELECT MYLIB.ORDER_TOTAL(ORDERNO => ?) FROM SYSIBM.SYSDUMMY1`, and `SELECT * FROM TABLE(MYLIB.OPEN_ORDERS(CUSTNO => ?)) X`. `execute_query` runs only `SELECT`, so procedures and functions that modify SQL data are never callable through it. While `QUERY_ALLOWED_SCHEMAS` is set, statements are parsed to check their libraries, and the parser reads neither `TABLE(...)` nor named arguments. A scalar function's template then uses positional markers and is callable only when `SYSIBM` is in the list too, because it reads `SYSIBM.SYSDUMMY1`. Table functions are marked not callable.
 
 ### Index advice
 

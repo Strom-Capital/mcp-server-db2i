@@ -530,6 +530,7 @@ QUERY_ALLOWED_SCHEMAS=MYLIB,QSYS2
 When the list is set:
 
 - Every table reference must be in the list. An unqualified name counts as the effective default schema (the session schema, or `DB2I_SCHEMA`).
+- Every schema-qualified function call must be in the list too, so `OUTSIDELIB.F(ORDERNO)` is rejected unless `OUTSIDELIB` is listed. Unqualified functions are not checked: they resolve through the SQL path (the job's library list under the default system naming), which is how built-ins such as `UPPER` and `COALESCE` are found. Clients cannot change the path, because `SET` statements are rejected. Keep libraries outside the list off the user profile's library list.
 - Catalog libraries such as `QSYS2` and `SYSIBM` are not included automatically. Add them if clients should query the catalog.
 - A query the server cannot parse is rejected. That includes system naming (`LIB/FILE`) and `TABLE(...)` table functions.
 - Names defined in a `WITH` clause are not treated as tables.

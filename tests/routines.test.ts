@@ -310,7 +310,7 @@ describe('routines', () => {
     });
 
     it('should use positional markers for a scalar function while the allowlist is set', async () => {
-      process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
+      process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB,SYSIBM';
       query
         .mockResolvedValueOnce({ rows: [routineRow({ SPECIFIC_NAME: 'ORDER_TOTAL', ROUTINE_NAME: 'ORDER_TOTAL', ROUTINE_TYPE: 'FUNCTION', FUNCTION_TYPE: 'S' })] })
         .mockResolvedValueOnce({ rows: [parmRow({ SPECIFIC_NAME: 'ORDER_TOTAL' })] });
@@ -352,6 +352,19 @@ describe('routines', () => {
 
       const [, parmParams] = query.mock.calls[1];
       expect(parmParams).toEqual(['MYLIB', 'OPEN_ORD1', 'MYLIB', 'OPEN_ORD2']);
+    });
+
+    it('should not offer a scalar function to execute_query when SYSIBM is not in the allowlist', async () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
+      query
+        .mockResolvedValueOnce({ rows: [routineRow({ SPECIFIC_NAME: 'ORDER_TOTAL', ROUTINE_NAME: 'ORDER_TOTAL', ROUTINE_TYPE: 'FUNCTION', FUNCTION_TYPE: 'S' })] })
+        .mockResolvedValueOnce({ rows: [parmRow({ SPECIFIC_NAME: 'ORDER_TOTAL' })] });
+
+      const result = await describeRoutineTool({ schema: 'MYLIB', name: 'ORDER_TOTAL' });
+
+      expect(result.data?.[0].call_template).toBe('SELECT MYLIB.ORDER_TOTAL(?) FROM SYSIBM.SYSDUMMY1');
+      expect(result.data?.[0].callable_with_execute_query).toBe(false);
+      expect(result.data?.[0].note).toContain('SYSIBM');
     });
 
     it('should not offer a table function to execute_query while the allowlist is set', async () => {
