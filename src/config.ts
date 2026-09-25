@@ -961,6 +961,8 @@ export const TOOL_NAMES = [
   'list_views',
   'list_indexes',
   'get_table_constraints',
+  'list_routines',
+  'describe_routine',
   'validate_query',
   'get_object_ddl',
   'get_related_objects',

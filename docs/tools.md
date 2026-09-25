@@ -19,6 +19,8 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 | `list_views` | List views in a schema (with optional filter) |
 | `list_indexes` | List SQL indexes for a table |
 | `get_table_constraints` | Get primary keys, foreign keys, unique constraints |
+| `list_routines` | List SQL procedures and functions in a library, with language, external program, and SQL data access |
+| `describe_routine` | Parameters, return value or result columns, and a call template for a procedure or function |
 | `validate_query` | Check a statement without running it, including catalog names |
 | `get_object_ddl` | Return the SQL DDL that recreates an object |
 | `get_related_objects` | List objects that depend on a table |
@@ -29,6 +31,31 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 | `search_ibmi_services` | Find IBM i services by keyword or category, with the release that added each one and an example query |
 
 > **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included.
+
+### Procedures and functions
+
+`list_routines` reads `QSYS2.SYSROUTINES` for one library and returns one row per specific routine, so each overload of a name is its own row. `filter` uses the same wildcards as `list_tables`, and `type` narrows the list to `PROCEDURE` or `FUNCTION`.
+
+| Field | Meaning |
+|-------|---------|
+| `type` | `PROCEDURE`, `SCALAR FUNCTION`, or `TABLE FUNCTION` |
+| `language` | `SQL` for an SQL routine, otherwise the external language such as `RPGLE`, `CLLE`, or `C` |
+| `external_name` | The program or service program an external routine calls |
+| `sql_data_access` | `NO SQL`, `CONTAINS SQL`, `READS SQL DATA`, or `MODIFIES SQL DATA` |
+| `result_sets` | Result sets a procedure can return. Null for functions |
+| `parameter_count`, `text`, `last_altered` | Number of parameters, the routine's text, and when it last changed |
+
+`describe_routine` reads `QSYS2.SYSPARMS` for a routine. An overloaded name returns every overload unless `specific_name` picks one. Each result has the fields above plus:
+
+| Field | Meaning |
+|-------|---------|
+| `parameters` | In order, with `mode` (`IN`, `OUT`, or `INOUT`), `data_type`, `length`, `precision`, `scale`, `nullable`, and `default` as SQL text |
+| `returns` | The return value of a scalar function |
+| `result_columns` | The result columns of a table function |
+| `call_template` | A statement with a `?` marker per parameter, with named arguments when every parameter has a name |
+| `callable_with_execute_query` | Whether `execute_query` can run the template. `note` says why not |
+
+Templates look like `CALL MYLIB.GET_ORDER(ORDERNO => ?)`, `SELECT MYLIB.ORDER_TOTAL(ORDERNO => ?) FROM SYSIBM.SYSDUMMY1`, and `SELECT * FROM TABLE(MYLIB.OPEN_ORDERS(CUSTNO => ?)) X`. `execute_query` runs only `SELECT`, so procedures and functions that modify SQL data are never callable through it. While `QUERY_ALLOWED_SCHEMAS` is set, statements are parsed to check their libraries, and the parser reads neither `TABLE(...)` nor named arguments. A scalar function's template then uses positional markers, and table functions are marked not callable.
 
 ### Index advice
 

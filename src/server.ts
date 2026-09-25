@@ -38,6 +38,7 @@ import {
   validateQueryTool,
 } from './tools/sqlServices.js';
 import { indexAdviceTool } from './tools/indexAdvice.js';
+import { describeRoutineTool, listRoutinesTool } from './tools/routines.js';
 import { profileTableTool } from './tools/profile.js';
 import { getBusinessContextTool } from './customTools/context.js';
 import { bindCustomToolArgs, executeCustomTool } from './customTools/execute.js';
@@ -345,6 +346,63 @@ const indexAdviceOutputSchema = z.object({
       description: z.string().nullable(),
     })),
     rows_merged: z.number().int(),
+  })).optional(),
+  count: z.number().int().optional(),
+  truncated: z.boolean().optional(),
+});
+
+const routineShape = {
+  schema: z.string(),
+  name: z.string(),
+  specific_name: z.string(),
+  type: z.enum(['PROCEDURE', 'SCALAR FUNCTION', 'TABLE FUNCTION']),
+  language: z.string().nullable(),
+  external_name: z.string().nullable(),
+  sql_data_access: z.string().nullable(),
+  result_sets: z.number().int().nullable(),
+  parameter_count: z.number().int(),
+  text: z.string().nullable(),
+  last_altered: z.string().nullable(),
+};
+
+const routineColumnShape = {
+  position: z.number().int(),
+  name: z.string().nullable(),
+  data_type: z.string(),
+  length: z.number().nullable(),
+  precision: z.number().nullable(),
+  scale: z.number().nullable(),
+  nullable: z.boolean(),
+  text: z.string().nullable(),
+};
+
+const listRoutinesOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  ...sqlErrorOutputFields,
+  schema: z.string().optional(),
+  data: z.array(z.object(routineShape)).optional(),
+  count: z.number().int().optional(),
+  truncated: z.boolean().optional(),
+});
+
+const describeRoutineOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  ...sqlErrorOutputFields,
+  schema: z.string().optional(),
+  data: z.array(z.object({
+    ...routineShape,
+    parameters: z.array(z.object({
+      ...routineColumnShape,
+      mode: z.string(),
+      default: z.string().nullable(),
+    })),
+    returns: z.object(routineColumnShape).nullable().optional(),
+    result_columns: z.array(z.object(routineColumnShape)).optional(),
+    call_template: z.string(),
+    callable_with_execute_query: z.boolean(),
+    note: z.string().optional(),
   })).optional(),
   count: z.number().int().optional(),
   truncated: z.boolean().optional(),
@@ -868,6 +926,68 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         'Failed to get constraints',
         sessionContext,
         argsAudit('get_table_constraints'),
+      )
+    );
+  }
+
+  if (enabledTools.has('list_routines')) {
+    server.registerTool(
+      'list_routines',
+      {
+        title: 'List Routines',
+        description: `List SQL procedures and functions in a library from QSYS2.SYSROUTINES, one row per specific routine, so overloads appear once each. Shows the type (procedure, scalar function, or table function), language, external program, SQL data access, result sets, and text. Use describe_routine for parameters and a call template. ${SCHEMA_DEFAULT_HINT}`,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) to list routines in. ${SCHEMA_DEFAULT_HINT}`),
+          filter: z.string().optional().describe('Filter routine names. Use * as wildcard, e.g. "GET*". Without a wildcard, matches names containing the text.'),
+          type: z.enum(['PROCEDURE', 'FUNCTION']).optional().describe('Only procedures or only functions. Omit for both.'),
+          limit: z.number().int().positive().optional().describe('Maximum routines to return. Capped by QUERY_MAX_LIMIT.'),
+        }),
+        outputSchema: listRoutinesOutputSchema,
+      },
+      withToolHandler(
+        (args, target) => listRoutinesTool({
+          schema: args.schema,
+          filter: args.filter,
+          type: args.type,
+          limit: args.limit,
+          target,
+          defaultSchema: target.defaultSchema,
+        }),
+        'Failed to list routines',
+        sessionContext,
+        argsAudit('list_routines'),
+      )
+    );
+  }
+
+  if (enabledTools.has('describe_routine')) {
+    server.registerTool(
+      'describe_routine',
+      {
+        title: 'Describe Routine',
+        description: `Describe an SQL procedure or function from QSYS2.SYSPARMS: parameters in order with mode, data type, and default; the return value of a scalar function; and the result columns of a table function. An overloaded name returns every overload unless specific_name picks one. call_template is a statement with a ? marker per parameter. callable_with_execute_query says whether execute_query can run it: procedures (CALL) and functions that modify SQL data cannot, and note says why. ${SCHEMA_DEFAULT_HINT}`,
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) containing the routine. ${SCHEMA_DEFAULT_HINT}`),
+          name: z.string().optional().describe('Routine name. Required unless specific_name is given.'),
+          specific_name: z.string().optional().describe('Specific name of one overload, from list_routines.'),
+        }),
+        outputSchema: describeRoutineOutputSchema,
+      },
+      withToolHandler(
+        (args, target) => describeRoutineTool({
+          schema: args.schema,
+          name: args.name,
+          specificName: args.specific_name,
+          target,
+          defaultSchema: target.defaultSchema,
+        }),
+        'Failed to describe routine',
+        sessionContext,
+        argsAudit('describe_routine'),
       )
     );
   }

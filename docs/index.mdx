@@ -72,7 +72,7 @@ graph LR
 ## Features
 
 - **Read-only SQL.** SELECT and WITH only, checked by a SQL parser and by `QSYS2.PARSE_STATEMENT`, with a row limit and a query timeout that cancels runaway statements on the IBM i. See [Query validation](/security#query-validation).
-- **Catalog tools.** List schemas, tables, views, indexes, and constraints; describe columns; search tables and columns across libraries; return DDL; list dependent objects; check journaling; read index advice; and profile a table.
+- **Catalog tools.** List schemas, tables, views, indexes, constraints, procedures, and functions; describe columns and routine parameters; search tables and columns across libraries; return DDL; list dependent objects; check journaling; read index advice; and profile a table.
 - **Business SQL tools.** Load reviewed ERP queries and table notes from YAML, and check the files before the server starts. See [Business SQL tools](/custom-tools).
 - **Multiple systems.** Reach production, test, and other partitions from one server with `DB2I_PROFILES`, each with its own driver, credentials, and library allowlist. See [Multiple systems](/configuration#multiple-systems).
 - **Guardrails.** A library allowlist, per-tool enable and disable, column masking, rate limits, and a JSON audit log. See [Security](/security).
