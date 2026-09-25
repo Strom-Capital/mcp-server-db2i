@@ -24,19 +24,19 @@ Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.g
 
 ## Architecture
 
-AI clients connect to the MCP Server via stdio (IDEs) or HTTP (agents), which executes read-only queries against DB2 for i using the IBM i Access ODBC driver (default, no Java), the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`), or Mapepire over SSH (`DB2I_DRIVER=mapepire`) for systems where only SSH is reachable. One server can reach several IBM i systems through connection profiles, each with its own driver.
+AI clients connect to the MCP Server in one of two ways. Local clients such as Claude Desktop, Claude Code and Cursor can start it as a process and talk over stdio. Remote clients connect over Streamable HTTP at `/mcp`, signing in with OAuth 2.1 (claude.ai custom connectors) or a bearer token (custom agents). Local clients can also use the HTTP endpoint. The server executes read-only queries against DB2 for i using the IBM i Access ODBC driver (default, no Java), the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`), or Mapepire over SSH (`DB2I_DRIVER=mapepire`) for systems where only SSH is reachable. One server can reach several IBM i systems through connection profiles, each with its own driver.
 
 ```mermaid
 graph LR
     subgraph clients ["AI Clients"]
-        claude("Claude")
-        cursor("Cursor IDE")
+        local("Claude Desktop, Claude Code, Cursor")
+        remote("claude.ai connectors")
         agents("Custom Agents")
     end
 
     subgraph server ["MCP Server"]
         stdio["stdio"]
-        http["HTTP + Auth"]
+        http["Streamable HTTP + Auth"]
         tools[["MCP Tools"]]
         profiles{{"System profiles"}}
         odbc["IBM i Access ODBC"]
@@ -56,8 +56,10 @@ graph LR
         db2dev[("DB2 for i")]
     end
 
-    claude & cursor -->|MCP Protocol| stdio
-    agents -->|REST API| http
+    local -->|local process| stdio
+    local -.->|remote URL| http
+    remote -->|OAuth 2.1| http
+    agents -->|bearer token| http
     stdio & http --> tools
     tools --> profiles
     profiles --> odbc & jdbc & mapepire
@@ -74,7 +76,7 @@ graph LR
 - **View inspection** - List and explore database views
 - **Secure by design** - Only SELECT queries allowed, credentials via environment variables
 - **Docker support** - Run as a container for easy deployment
-- **HTTP Transport** - REST API with token authentication for web/agent integration
+- **HTTP Transport** - MCP over Streamable HTTP with token authentication for remote clients and agents
 - **OAuth for Remote Clients** - Built-in OAuth 2.1 sign-in with the user's own IBM i profile, so claude.ai custom connectors can connect
 - **Current MCP spec** - Speaks [2026-07-28](https://modelcontextprotocol.io/) and still serves stateless 2025-era clients
 - **Dual Transport** - Run stdio and HTTP simultaneously
