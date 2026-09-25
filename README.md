@@ -219,6 +219,7 @@ Once connected, you can ask the AI assistant:
 
 | Guide | Description |
 |-------|-------------|
+| [Tools, resources, and prompts](docs/tools.md) | Built-in tools, filter syntax, MCP resources, and prompts |
 | [HTTP Transport](docs/http-transport.md) | HTTP API, auth, and protocol versions |
 | [Configuration](docs/configuration.md) | All environment variables and driver options |
 | [Security](docs/security.md) | Credentials, rate limiting, query validation |

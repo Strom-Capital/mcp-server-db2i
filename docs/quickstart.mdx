@@ -1,0 +1,81 @@
+---
+title: "Quickstart"
+description: "Install mcp-server-db2i, point it at an IBM i, and connect an MCP client."
+---
+
+<Steps>
+  <Step title="Pick a driver and install its prerequisites">
+    The server needs Node.js 22 or higher. What else it needs depends on the driver.
+
+    | Driver | Set | Needs |
+    |--------|-----|-------|
+    | `odbc` (default) | nothing | unixODBC and the IBM i Access ODBC Driver on the machine that runs the server. No Java. |
+    | `jt400` | `DB2I_DRIVER=jt400` | A JDK when you run `npm install`, and a JRE 11 or higher at runtime. |
+    | `mapepire` | `DB2I_DRIVER=mapepire` | SSH access to the IBM i, and Java 8 or higher on the IBM i. Nothing to install on the IBM i. |
+
+    See [Database drivers](/configuration#database-drivers) for install steps per platform.
+  </Step>
+
+  <Step title="Install the server">
+    ```bash
+    npm install -g mcp-server-db2i
+    ```
+
+    Or run it with `npx mcp-server-db2i` from the client config, as in the next step. To run it in a container instead, see [Docker](/docker).
+  </Step>
+
+  <Step title="Add it to your MCP client">
+    Add the server to your client's config, for example `~/.cursor/mcp.json` in Cursor:
+
+    ```json
+    {
+      "mcpServers": {
+        "db2i": {
+          "command": "npx",
+          "args": ["mcp-server-db2i"],
+          "env": {
+            "DB2I_HOSTNAME": "${env:DB2I_HOSTNAME}",
+            "DB2I_USERNAME": "${env:DB2I_USERNAME}",
+            "DB2I_PASSWORD": "${env:DB2I_PASSWORD}"
+          }
+        }
+      }
+    }
+    ```
+
+    The `${env:...}` references keep credentials out of the config file. Set the variables in your shell profile (`~/.zshrc` or `~/.bashrc`). Claude Code uses `${VAR_NAME}` instead, and can add the server with:
+
+    ```bash
+    claude mcp add --scope user db2i -- npx mcp-server-db2i
+    ```
+
+    See [Client setup](/client-setup) for config paths in Cursor, Claude Desktop, and Claude Code, and for Docker-based setups.
+  </Step>
+
+  <Step title="Ask a question">
+    Restart the client, then try:
+
+    - "List all schemas that contain 'PROD'"
+    - "Show me the tables in schema MYLIB"
+    - "Describe the columns in MYLIB/CUSTOMERS"
+    - "What indexes exist on the ORDERS table?"
+    - "Find the order header and line tables in MYLIB and write a GET /orders/:orderNo endpoint"
+  </Step>
+</Steps>
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="Limit what the assistant can reach" icon="shield" href="/security#schema-allowlist">
+    Set `QUERY_ALLOWED_SCHEMAS`, disable tools, and mask sensitive columns.
+  </Card>
+  <Card title="Add business SQL tools" icon="file-code" href="/custom-tools">
+    Turn reviewed ERP queries into named tools with typed parameters.
+  </Card>
+  <Card title="Connect several systems" icon="server" href="/configuration#multiple-systems">
+    Reach production and test from one server with `DB2I_PROFILES`.
+  </Card>
+  <Card title="Serve remote clients" icon="globe" href="/http-transport#remote-clients-oauth">
+    Run over HTTP with OAuth so claude.ai connectors can sign in.
+  </Card>
+</Columns>

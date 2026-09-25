@@ -1,0 +1,61 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "mcp-server-db2i",
+  "description": "MCP server for IBM DB2 for i: read-only SQL and catalog metadata for AI assistants.",
+  "colors": {
+    "primary": "#16A34A",
+    "light": "#22C55E",
+    "dark": "#15803D"
+  },
+  "logo": {
+    "light": "/assets/wordmark.svg",
+    "dark": "/assets/wordmark-dark.svg"
+  },
+  "favicon": "/assets/logo.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting started",
+        "pages": ["index", "quickstart", "client-setup", "use-cases"]
+      },
+      {
+        "group": "Reference",
+        "pages": ["tools", "configuration", "custom-tools"]
+      },
+      {
+        "group": "Deployment",
+        "pages": ["http-transport", "docker", "security"]
+      },
+      {
+        "group": "Contributing",
+        "pages": ["development"]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "icon": "github",
+          "href": "https://github.com/Strom-Capital/mcp-server-db2i"
+        },
+        {
+          "anchor": "npm",
+          "icon": "npm",
+          "href": "https://www.npmjs.com/package/mcp-server-db2i"
+        }
+      ]
+    }
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Strom-Capital/mcp-server-db2i"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Strom-Capital/mcp-server-db2i"
+    }
+  }
+}

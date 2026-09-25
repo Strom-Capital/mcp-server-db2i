@@ -1,4 +1,7 @@
-# Business SQL tools
+---
+title: "Business SQL tools"
+description: "Add read-only ERP queries and table notes as MCP tools, defined in YAML."
+---
 
 Administrators can add read-only tools, and notes about tables the catalog does not explain, without changing the server code. The tools are SELECT and WITH statements. Parameter values are bound. They are never pasted into the SQL text.
 
@@ -6,7 +9,7 @@ Set `MCP_CUSTOM_TOOLS` to a YAML file, a directory, or a comma-separated list of
 
 An empty or unset `MCP_CUSTOM_TOOLS` loads nothing. The built-in tools keep working.
 
-See [examples/erp-tools](../examples/erp-tools) for a generic pack: sales orders, purchase orders, service orders, manufacturing orders, a bill of materials, the general ledger, and item and customer master data. The statements show patterns that show up on real order files: a numeric date, a derived status, a header with jobs and lines, and a text search. Every library, table, and column name in that pack is a placeholder. Point them at your own files before you load the directory.
+See [examples/erp-tools](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/erp-tools) for a generic pack: sales orders, purchase orders, service orders, manufacturing orders, a bill of materials, the general ledger, and item and customer master data. The statements show patterns that show up on real order files: a numeric date, a derived status, a header with jobs and lines, and a text search. Every library, table, and column name in that pack is a placeholder. Point them at your own files before you load the directory.
 
 ## File format
 
