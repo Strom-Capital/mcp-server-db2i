@@ -455,6 +455,16 @@ describe('OAuth authorization server', () => {
     expect(refresh.status).toBe(400);
   });
 
+  it('limits requests per IP across the OAuth endpoints', async () => {
+    let last = 0;
+    for (let i = 0; i < 121; i++) {
+      last = (await fetch(`${baseUrl}/oauth/revoke`, { method: 'POST' })).status;
+    }
+    expect(last).toBe(429);
+    // Metadata stays reachable
+    expect((await fetch(`${baseUrl}/.well-known/oauth-authorization-server`)).status).toBe(200);
+  });
+
   it('keeps client registrations across a restart when the secret is set', async () => {
     const client = await register();
     await restart();

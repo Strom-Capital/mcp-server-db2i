@@ -282,4 +282,45 @@ export function clearAuthRateLimit(req: Request): void {
  */
 export function resetAuthRateLimits(): void {
   authAttempts.clear();
+  oauthRequests.clear();
+}
+
+/** Requests per minute per IP across the OAuth endpoints. */
+const OAUTH_RATE_LIMIT = {
+  maxRequests: 120,
+  windowMs: 60000,
+};
+const oauthRequests = new Map<string, { count: number; resetAt: number }>();
+
+/**
+ * Per-IP request limit for the OAuth endpoints (registration, sign-in, token, revoke).
+ * Sign-in attempts are limited further by consumeAuthAttempt. The limit is
+ * generous because hosted clients such as claude.ai share egress addresses.
+ */
+export function oauthRateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const ip = getClientIp(req);
+  const now = Date.now();
+  if (oauthRequests.size >= AUTH_ATTEMPTS_SWEEP_SIZE) {
+    for (const [key, entry] of oauthRequests) {
+      if (entry.resetAt <= now) oauthRequests.delete(key);
+    }
+  }
+
+  let current = oauthRequests.get(ip);
+  if (!current || current.resetAt <= now) {
+    current = { count: 0, resetAt: now + OAUTH_RATE_LIMIT.windowMs };
+    oauthRequests.set(ip, current);
+  }
+  if (current.count >= OAUTH_RATE_LIMIT.maxRequests) {
+    const retryAfter = Math.ceil((current.resetAt - now) / 1000);
+    log.warn({ ip, requests: current.count }, 'OAuth rate limit exceeded');
+    res.setHeader('Retry-After', String(retryAfter));
+    res.status(429).json({
+      error: 'too_many_requests',
+      error_description: `Too many requests. Try again in ${retryAfter} seconds.`,
+    });
+    return;
+  }
+  current.count++;
+  next();
 }

@@ -1204,7 +1204,7 @@ export function getOAuthConfig(authMode: AuthMode): OAuthConfig | null {
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new Error(`MCP_PUBLIC_URL is not a valid URL: "${rawUrl}"`);
+    throw new Error('MCP_PUBLIC_URL is not a valid URL');
   }
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackHost(url.hostname))) {
     throw new Error('MCP_PUBLIC_URL must use https, except for a loopback address');
@@ -1218,17 +1218,18 @@ export function getOAuthConfig(authMode: AuthMode): OAuthConfig | null {
     .split(',')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
-  for (const entry of redirectUris) {
+  // Errors name the entry by position, so the configured value never reaches a log line
+  redirectUris.forEach((entry, index) => {
     try {
       new URL(entry.endsWith('*') ? entry.slice(0, -1) : entry);
     } catch {
-      throw new Error(`MCP_OAUTH_REDIRECT_URIS has an invalid URL: "${entry}"`);
+      throw new Error(`MCP_OAUTH_REDIRECT_URIS entry ${index + 1} is not a valid URL`);
     }
     // Without a slash, https://app.example.com* would also match https://app.example.com.evil.net
     if (entry.endsWith('*') && !entry.endsWith('/*')) {
-      throw new Error(`MCP_OAUTH_REDIRECT_URIS prefix must end with "/*": "${entry}"`);
+      throw new Error(`MCP_OAUTH_REDIRECT_URIS entry ${index + 1}: a prefix must end with "/*"`);
     }
-  }
+  });
 
   const rawSecret = process.env.MCP_OAUTH_SECRET?.trim();
   if (rawSecret && rawSecret.length < 32) {

@@ -25,7 +25,7 @@ import express, { type Request, type Response, type Router } from 'express';
 import { getHttpConfig, isLoopbackHost, type DB2iConfig, type OAuthConfig } from '../config.js';
 import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
-import { clearAuthRateLimit, consumeAuthAttempt } from './authMiddleware.js';
+import { clearAuthRateLimit, consumeAuthAttempt, oauthRateLimitMiddleware } from './authMiddleware.js';
 import { testCredentials, verifyLogin } from './login.js';
 import { getTokenManager } from './tokenManager.js';
 
@@ -435,6 +435,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
   const router = express.Router();
   const form = express.urlencoded({ extended: false, limit: '32kb' });
   const issuer = oauth.publicUrl;
+  router.use('/oauth', oauthRateLimitMiddleware);
 
   router.get(
     ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'],
@@ -477,7 +478,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
       (uri) => uri.length > MAX_REDIRECT_URI_LENGTH || !isRedirectUriAllowed(uri, oauth.redirectUris)
     );
     if (refused !== undefined) {
-      log.warn({ redirectUri: refused.slice(0, 200) }, 'OAuth registration refused a redirect URI');
+      log.warn({ redirectUriCount: redirectUris.length }, 'OAuth registration refused a redirect URI');
       oauthError(res, 400, 'invalid_redirect_uri', 'A redirect URI is not allowed by MCP_OAUTH_REDIRECT_URIS');
       return;
     }
@@ -517,7 +518,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
     };
     const clientId = sign(oauth.secret, 'client', client);
 
-    log.info({ client: name, redirectUris }, 'OAuth client registered');
+    log.info({ client: name, redirectHosts: redirectUris.map((uri) => new URL(uri).host) }, 'OAuth client registered');
     noStore(res);
     res.status(201).json({
       client_id: clientId,
