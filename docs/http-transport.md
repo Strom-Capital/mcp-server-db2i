@@ -223,6 +223,32 @@ The server must be reachable over HTTPS at `MCP_PUBLIC_URL`, through a reverse p
 
 To add it in Claude, open **Settings > Connectors > Add custom connector** and enter `https://mcp.example.com/mcp`. Leave the OAuth client fields empty; Claude registers itself.
 
+### Limiting who can reach the server
+
+OAuth decides who may query, but the sign-in page and token endpoint still face the internet. Put an IP allowlist in front of them as well. Claude connectors call from Anthropic's [published outbound range](https://platform.claude.com/docs/en/api/ip-addresses), `160.79.104.0/21`. The sign-in page opens in the user's own browser, so the networks your users sign in from must be allowed too.
+
+With an ngrok tunnel, a traffic policy on the endpoint does this before requests reach the server:
+
+```yaml
+version: 3
+endpoints:
+  - name: db2i-mcp
+    url: https://mcp.example.com
+    upstream:
+      url: http://127.0.0.1:3000
+    traffic_policy:
+      on_http_request:
+        - actions:
+            - type: restrict-ips
+              config:
+                enforce: true
+                allow:
+                  - 160.79.104.0/21     # Anthropic outbound (Claude connectors)
+                  - 203.0.113.10/32     # your office network
+```
+
+A reverse proxy can do the same, for example nginx `allow` and `deny` rules.
+
 Notes:
 
 - **Redirect URIs.** Registration is refused for a redirect URI outside `MCP_OAUTH_REDIRECT_URIS`, which defaults to the claude.ai and claude.com connector callbacks. Loopback redirects (`http://localhost:<port>/...`) are always accepted, for desktop clients. Without this list, anyone could register a client that sends codes to their own site and ask a user to sign in.
