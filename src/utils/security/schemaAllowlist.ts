@@ -2,8 +2,14 @@
  * Schema allowlist for execute_query and the SQL service tools.
  *
  * When QUERY_ALLOWED_SCHEMAS is set, every table reference must resolve to
- * one of those libraries. Queries that cannot be parsed are rejected, so a
- * dialect the parser does not understand cannot skip the check.
+ * one of those libraries, and every schema-qualified function call must name
+ * one of them. Queries that cannot be parsed are rejected, so a dialect the
+ * parser does not understand cannot skip the check.
+ *
+ * Unqualified function calls are not checked. They resolve through the SQL
+ * path (the library list under system naming), which is not known here, and
+ * that is how built-ins such as UPPER and COALESCE are found. Clients cannot
+ * change the path because SET statements are rejected by the SQL validator.
  */
 
 import nodeSqlParser from 'node-sql-parser';
@@ -127,6 +133,50 @@ function collectCteNames(node: unknown, names: Set<string>): void {
   }
 }
 
+function identifierValue(node: unknown): string | undefined {
+  if (typeof node === 'string') {
+    return node;
+  }
+  const value = (node as { value?: unknown } | null)?.value;
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Collect schema-qualified function calls as SCHEMA.NAME.
+ * The parser puts the qualifier in `name.schema`. Extra leading name parts are
+ * treated as the qualifier too, so a shape change cannot hide one.
+ */
+function collectQualifiedFunctions(node: unknown, found: Map<string, string>): void {
+  if (!node || typeof node !== 'object') {
+    return;
+  }
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      collectQualifiedFunctions(item, found);
+    }
+    return;
+  }
+
+  const record = node as Record<string, unknown>;
+  if (record.type === 'function' && record.name && typeof record.name === 'object') {
+    const name = record.name as { name?: unknown; schema?: unknown };
+    const parts = Array.isArray(name.name) ? name.name.map(identifierValue) : [];
+    const functionName = parts.at(-1) ?? '?';
+    const qualifiers = [identifierValue(name.schema), ...parts.slice(0, -1)].filter(
+      (part): part is string => typeof part === 'string' && part.length > 0
+    );
+    for (const qualifier of qualifiers) {
+      const schema = qualifier.replace(/^"|"$/g, '').toUpperCase();
+      found.set(`${schema}.${functionName.toUpperCase()}`, schema);
+    }
+  }
+
+  for (const value of Object.values(record)) {
+    collectQualifiedFunctions(value, found);
+  }
+}
+
 function schemaOf(entry: string): { schema: string | undefined; table: string } | undefined {
   const parts = entry.split('::');
   if (parts.length < 3) {
@@ -147,7 +197,8 @@ function schemaOf(entry: string): { schema: string | undefined; table: string } 
 }
 
 /**
- * Check that every table reference stays inside the allowlist.
+ * Check that every table reference and qualified function call stays inside
+ * the allowlist.
  * Callers should skip this when the allowlist is unset.
  */
 export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): SchemaCheckResult {
@@ -192,6 +243,16 @@ export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): Sch
     if (!allowed.has(ref.schema)) {
       violations.push(
         `Table ${ref.schema}.${ref.table} is not in the allowed schemas (${[...allowed].join(', ')}).`
+      );
+    }
+  }
+
+  const functions = new Map<string, string>();
+  collectQualifiedFunctions(parsed.ast, functions);
+  for (const [name, schema] of functions) {
+    if (!allowed.has(schema)) {
+      violations.push(
+        `Function ${name} is not in the allowed schemas (${[...allowed].join(', ')}).`
       );
     }
   }
