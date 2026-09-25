@@ -284,7 +284,9 @@ const PAGE_STYLE = `
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px; }
-  .logo { display: block; margin: 0 0 16px; color: var(--fg); }
+  .brand { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; }
+  .logo { display: block; flex: none; color: var(--fg); }
+  .brand-name { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0.01em; }
   h1 { font-size: 20px; margin: 0 0 8px; }
   p { margin: 0 0 16px; color: var(--muted); }
   strong { color: var(--fg); }
@@ -296,7 +298,13 @@ const PAGE_STYLE = `
   .note { font-size: 13px; margin: 16px 0 0; }
 `;
 
+/** Server name shown next to the logo and in the tab title. The OAuth router sets it on every request. */
+function pageBrand(res: Response): string {
+  return typeof res.locals.pageBrand === 'string' ? res.locals.pageBrand : '';
+}
+
 function sendPage(res: Response, status: number, title: string, body: string, formAction?: string): void {
+  const brand = pageBrand(res);
   noStore(res);
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader(
@@ -318,9 +326,12 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
     .send(
       `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
         `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-        `<title>${escapeHtml(title)}</title><link rel="icon" type="image/svg+xml" href="${FAVICON_HREF}">` +
+        `<title>${escapeHtml(brand ? `${title} · ${brand}` : title)}</title>` +
+        `<link rel="icon" type="image/svg+xml" href="${FAVICON_HREF}">` +
         `<style>${PAGE_STYLE}</style></head>` +
-        `<body><main>${LOGO_SVG}${body}</main></body></html>`
+        `<body><main><div class="brand">${LOGO_SVG}` +
+        (brand ? `<span class="brand-name">${escapeHtml(brand)}</span>` : '') +
+        `</div>${body}</main></body></html>`
     );
 }
 
@@ -486,13 +497,17 @@ function issueTokens(
  * Mount it only when MCP_OAUTH_ENABLED is on.
  *
  * @param oauth - OAuth settings from getHttpConfig()
- * @param resourceName - Human-readable name for the protected resource metadata
+ * @param resourceName - Server name for the protected resource metadata and the sign-in pages
  */
 export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Router {
   const router = express.Router();
   const form = express.urlencoded({ extended: false, limit: '32kb' });
   const issuer = oauth.publicUrl;
   router.use('/oauth', oauthRateLimitMiddleware);
+  router.use('/oauth', (_req: Request, res: Response, next: express.NextFunction) => {
+    res.locals.pageBrand = resourceName;
+    next();
+  });
 
   router.get(
     ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'],

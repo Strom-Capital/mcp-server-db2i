@@ -279,6 +279,8 @@ describe('OAuth authorization server', () => {
     expect(csp).toContain('img-src data:');
     const html = await res.text();
     expect(html).toContain('<svg class="logo"');
+    expect(html).toContain('<span class="brand-name">mcp-server-db2i</span>');
+    expect(html).toContain('<title>Sign in to IBM i · mcp-server-db2i</title>');
     expect(html).toContain('rel="icon" type="image/svg+xml" href="data:image/svg+xml,');
     expect(html).toContain('<option value="prod" selected>prod</option>');
     expect(html).toContain('<option value="test">test</option>');
