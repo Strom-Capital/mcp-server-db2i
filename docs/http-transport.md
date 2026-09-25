@@ -228,7 +228,7 @@ Notes:
 - **Redirect URIs.** Registration is refused for a redirect URI outside `MCP_OAUTH_REDIRECT_URIS`, which defaults to the claude.ai and claude.com connector callbacks. Loopback redirects (`http://localhost:<port>/...`) are always accepted, for desktop clients. Without this list, anyone could register a client that sends codes to their own site and ask a user to sign in.
 - **Registrations are stateless.** A client ID is the client's metadata signed with `MCP_OAUTH_SECRET`. Nothing is stored, and a registration keeps working after a restart as long as the secret stays the same. Without the secret, a random one is used and clients must register again after a restart.
 - **Codes and refresh tokens live in memory.** A restart signs every user out. Refresh tokens rotate on every use, and each refresh repeats the test connection, so a disabled user profile or a changed password ends the grant.
-- **Rate limit.** Sign-in attempts share the `/auth` limit: 5 per minute per client IP. Behind a proxy that does not pass the client address, all users share that budget.
+- **Rate limit.** Sign-in attempts share the `/auth` limit: 5 per minute per client IP. All `/oauth/*` endpoints together allow 120 requests per minute per IP. Behind a proxy that does not pass the client address, all users share those budgets.
 - **Scopes** are not used. A token can call every tool that `MCP_TOOLS_ENABLED` and `MCP_TOOLS_DISABLED` leave registered.
 
 ## API Endpoints

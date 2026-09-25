@@ -25,7 +25,12 @@ import express, { type Request, type Response, type Router } from 'express';
 import { getHttpConfig, isLoopbackHost, type DB2iConfig, type OAuthConfig } from '../config.js';
 import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
-import { clearAuthRateLimit, consumeAuthAttempt, oauthRateLimitMiddleware } from './authMiddleware.js';
+import {
+  authRateLimitMiddleware,
+  clearAuthRateLimit,
+  oauthRateLimitMiddleware,
+  type LoginRateLimitedHandler,
+} from './authMiddleware.js';
 import { testCredentials, verifyLogin } from './login.js';
 import { getTokenManager } from './tokenManager.js';
 
@@ -367,6 +372,28 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
   );
 }
 
+/** A sign-in form post whose signed request and client have been checked. */
+interface SignInForm {
+  body: Record<string, string | undefined>;
+  pending: LoginRequest;
+  client: RegisteredClient;
+  username: string;
+  password: string;
+  system?: string;
+}
+
+/** Render the sign-in page again for a form post, with an error and the entered user profile. */
+function renderSignIn(res: Response, form: SignInForm, status: number, error: string): void {
+  renderLogin(res, status, {
+    client: form.client,
+    redirectUri: form.pending.redirectUri,
+    request: form.body.request as string,
+    username: form.username,
+    system: form.system,
+    error,
+  });
+}
+
 type ClientAuth = { ok: true; clientId: string; client: RegisteredClient } | { ok: false; basic: boolean; description: string };
 
 /**
@@ -603,65 +630,78 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
     renderLogin(res, 200, { client, redirectUri, request: sign(oauth.secret, 'login', loginRequest) });
   });
 
-  router.post('/oauth/authorize', form, async (req: Request, res: Response) => {
-    const body = stringParams(req.body);
-    const pending = verifySigned(oauth.secret, 'login', body.request) as LoginRequest | undefined;
-    if (!pending || typeof pending.exp !== 'number' || pending.exp < Date.now()) {
-      renderError(res, 400, 'This sign-in page has expired. Start the connection again from your client.');
-      return;
-    }
-    const client = readClient(oauth, pending.clientId);
-    if (!client || !client.redirectUris.includes(pending.redirectUri) || !isRedirectUriAllowed(pending.redirectUri, oauth.redirectUris)) {
-      renderError(res, 400, 'This client is no longer allowed. Remove the connector and add it again.');
-      return;
-    }
+  // Sign-in: check the signed request first, so a rate-limited attempt can
+  // still render the page; then count the attempt; then test the credentials.
+  router.post(
+    '/oauth/authorize',
+    form,
+    (req: Request, res: Response, next: express.NextFunction) => {
+      const body = stringParams(req.body);
+      const pending = verifySigned(oauth.secret, 'login', body.request) as LoginRequest | undefined;
+      if (!pending || typeof pending.exp !== 'number' || pending.exp < Date.now()) {
+        renderError(res, 400, 'This sign-in page has expired. Start the connection again from your client.');
+        return;
+      }
+      const client = readClient(oauth, pending.clientId);
+      if (!client || !client.redirectUris.includes(pending.redirectUri) || !isRedirectUriAllowed(pending.redirectUri, oauth.redirectUris)) {
+        renderError(res, 400, 'This client is no longer allowed. Remove the connector and add it again.');
+        return;
+      }
 
-    const username = (body.username ?? '').trim();
-    const password = body.password ?? '';
-    const system = body.system?.trim() || undefined;
-    const retry = (status: number, error: string): void =>
-      renderLogin(res, status, { client, redirectUri: pending.redirectUri, request: body.request as string, username, system, error });
+      const form: SignInForm = {
+        body,
+        pending,
+        client,
+        username: (body.username ?? '').trim(),
+        password: body.password ?? '',
+        system: body.system?.trim() || undefined,
+      };
+      res.locals.signIn = form;
+      const onRateLimited: LoginRateLimitedHandler = (retryAfter) =>
+        renderSignIn(res, form, 429, `Too many sign-in attempts. Try again in ${retryAfter} seconds.`);
+      res.locals.onLoginRateLimited = onRateLimited;
 
-    if (!username || !password || username.length > 128 || password.length > 256) {
-      retry(400, 'Enter your user profile and password.');
-      return;
+      if (!form.username || !form.password || form.username.length > 128 || form.password.length > 256) {
+        renderSignIn(res, form, 400, 'Enter your user profile and password.');
+        return;
+      }
+      next();
+    },
+    authRateLimitMiddleware,
+    async (req: Request, res: Response) => {
+      const { pending, client, username, password, system } = res.locals.signIn as SignInForm;
+      const retry = (status: number, error: string): void => renderSignIn(res, res.locals.signIn as SignInForm, status, error);
+
+      const login = await verifyLogin({ username, password, system });
+      if (!login.ok) {
+        log.warn({ user: username, system, client: client.name, reason: login.description }, 'OAuth sign-in failed');
+        // Driver errors can describe the host; the page only says what the user can fix
+        retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user profile and password.');
+        return;
+      }
+      clearAuthRateLimit(req);
+
+      const now = Date.now();
+      sweepExpired(pendingCodes, now);
+      if (pendingCodes.size >= MAX_PENDING_CODES) {
+        retry(503, 'Too many sign-ins are in progress. Try again shortly.');
+        return;
+      }
+      const code = randomToken();
+      pendingCodes.set(code, {
+        clientId: pending.clientId,
+        redirectUri: pending.redirectUri,
+        redirectUriExplicit: pending.redirectUriExplicit,
+        codeChallenge: pending.codeChallenge,
+        system: login.system,
+        config: login.config,
+        expiresAt: now + CODE_TTL_MS,
+      });
+
+      log.info({ user: login.config.username, system: login.system, client: client.name }, 'OAuth sign-in succeeded');
+      redirectWith(res, 303, pending.redirectUri, { code, state: pending.state, iss: issuer });
     }
-
-    const retryAfter = consumeAuthAttempt(req);
-    if (retryAfter !== null) {
-      retry(429, `Too many sign-in attempts. Try again in ${retryAfter} seconds.`);
-      return;
-    }
-
-    const login = await verifyLogin({ username, password, system });
-    if (!login.ok) {
-      log.warn({ user: username, system, client: client.name, reason: login.description }, 'OAuth sign-in failed');
-      // Driver errors can describe the host; the page only says what the user can fix
-      retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user profile and password.');
-      return;
-    }
-    clearAuthRateLimit(req);
-
-    const now = Date.now();
-    sweepExpired(pendingCodes, now);
-    if (pendingCodes.size >= MAX_PENDING_CODES) {
-      retry(503, 'Too many sign-ins are in progress. Try again shortly.');
-      return;
-    }
-    const code = randomToken();
-    pendingCodes.set(code, {
-      clientId: pending.clientId,
-      redirectUri: pending.redirectUri,
-      redirectUriExplicit: pending.redirectUriExplicit,
-      codeChallenge: pending.codeChallenge,
-      system: login.system,
-      config: login.config,
-      expiresAt: now + CODE_TTL_MS,
-    });
-
-    log.info({ user: login.config.username, system: login.system, client: client.name }, 'OAuth sign-in succeeded');
-    redirectWith(res, 303, pending.redirectUri, { code, state: pending.state, iss: issuer });
-  });
+  );
 
   router.post('/oauth/token', form, async (req: Request, res: Response) => {
     try {

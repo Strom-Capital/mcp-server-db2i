@@ -241,6 +241,9 @@ The `/auth` endpoint and the OAuth sign-in form share additional rate limiting t
 - After 5 attempts within 60 seconds, further requests from that IP get 429 until the window ends
 - Successful authentication clears the count for that IP
 - Lockout automatically expires after the window period
+- With OAuth on, the sign-in form uses the same budget, and all `/oauth/*` endpoints together are limited to 120 requests per minute per IP
+
+Both limits use [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) with an in-memory store.
 
 > **Note:** These values are currently hardcoded. Environment variable configuration may be added in a future release.
 

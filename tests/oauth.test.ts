@@ -104,7 +104,7 @@ describe('OAuth authorization server', () => {
     delete process.env.MCP_OAUTH_REFRESH_EXPIRY;
     resetSystems();
     resetOAuthState();
-    resetAuthRateLimits();
+    await resetAuthRateLimits();
     ({ server, baseUrl } = await listen(createHttpApp()));
   });
 

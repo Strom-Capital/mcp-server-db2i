@@ -22,7 +22,8 @@ export {
   extractBearerToken,
   authRateLimitMiddleware,
   clearAuthRateLimit,
-  consumeAuthAttempt,
+  oauthRateLimitMiddleware,
+  type LoginRateLimitedHandler,
   type AuthenticatedRequest,
 } from './authMiddleware.js';
 
