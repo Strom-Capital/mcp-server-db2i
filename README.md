@@ -10,14 +10,13 @@
 [![CI](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml/badge.svg)](https://github.com/Strom-Capital/mcp-server-db2i/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/mcp-server-db2i)](https://www.npmjs.com/package/mcp-server-db2i)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MCP](https://img.shields.io/badge/MCP-2026--07--28-green?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
+[![MCP](https://img.shields.io/badge/MCP-2026--07--28-green?logo=modelcontextprotocol&logoColor=white)](https://modelcontextprotocol.io/)
 [![IBM i](https://img.shields.io/badge/IBM%20i-V7R3+-green?logo=ibm&logoColor=white)](https://www.ibm.com/products/ibm-i)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-≥22-green?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-supported-blue?logo=docker&logoColor=white)](docs/docker.md)
 [![npm downloads](https://img.shields.io/npm/dm/mcp-server-db2i)](https://www.npmjs.com/package/mcp-server-db2i)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Strom-Capital/mcp-server-db2i/pulls)
-[![GitHub last commit](https://img.shields.io/github/last-commit/Strom-Capital/mcp-server-db2i)](https://github.com/Strom-Capital/mcp-server-db2i/commits/main)
+[![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Strom-Capital)
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for IBM DB2 for i (DB2i). This server enables AI assistants like Claude and Cursor to query and inspect IBM i databases through the IBM i Access ODBC driver, or optionally the JT400 JDBC driver or Mapepire over SSH.
 
