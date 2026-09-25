@@ -161,6 +161,7 @@ See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, C
 | `get_object_ddl` | Return the SQL DDL that recreates an object |
 | `get_related_objects` | List objects that depend on a table |
 | `get_journal_info` | List journal, images, and primary key per table, and flag tables a replication tool cannot read |
+| `index_advice` | List the indexes the query optimizer asked for in a library, merged and ranked by temporary index use |
 | `profile_table` | Row count, last change, and per-column distinct and null counts from stored statistics or a scan |
 | `get_business_context` | List business descriptions and relations loaded from YAML |
 | `search_ibmi_services` | Find IBM i services by keyword or category, with the release that added each one and an example query |

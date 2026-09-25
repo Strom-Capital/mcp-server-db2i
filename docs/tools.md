@@ -23,11 +23,27 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 | `get_object_ddl` | Return the SQL DDL that recreates an object |
 | `get_related_objects` | List objects that depend on a table |
 | `get_journal_info` | List journal, images, and primary key per table, and flag tables a replication tool cannot read |
+| `index_advice` | List the indexes the query optimizer asked for in a library, merged and ranked by temporary index use |
 | `profile_table` | Row count, last change, and per-column distinct and null counts from stored statistics or a scan |
 | `get_business_context` | List business descriptions and relations loaded from YAML |
 | `search_ibmi_services` | Find IBM i services by keyword or category, with the release that added each one and an example query |
 
 > **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included.
+
+### Index advice
+
+`index_advice` reads the IBM i index advisor (`QSYS2.SYSIXADV`) for one library, or one table in it. The advisor keeps a row per reason code and variant, so the tool merges rows with the same table, key columns, and index type and sums their counts. `rows_merged` says how many advisor rows each result stands for.
+
+| Field | Meaning |
+|-------|---------|
+| `key_columns` | Keys in `CREATE INDEX` order. A key can end in `DESC` |
+| `index_type` | `RADIX` or `ENCODED VECTOR` |
+| `times_advised` | How often the optimizer asked for this index |
+| `mti_used`, `mti_created` | How often it used and built a maintained temporary index (MTI) instead |
+| `last_advised`, `last_mti_used` | Latest advice and latest MTI use, in the system's local time |
+| `reasons` | Reason codes with IBM's description, such as `I1` (row selection) and `I2` (ordering or grouping) |
+
+Results are sorted by `mti_used`, then `times_advised`. Advice the optimizer kept building a temporary index for is the strongest candidate for a permanent one. `since` keeps only advisor rows last given on or after that date or timestamp, also in the system's local time. The tool only reads the advice. Review it before creating an index, because the advisor does not check whether an existing index or keyed logical file already covers the keys.
 
 ### Failed statements
 

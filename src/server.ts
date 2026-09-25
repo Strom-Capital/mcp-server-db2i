@@ -37,6 +37,7 @@ import {
   searchIbmiServicesTool,
   validateQueryTool,
 } from './tools/sqlServices.js';
+import { indexAdviceTool } from './tools/indexAdvice.js';
 import { profileTableTool } from './tools/profile.js';
 import { getBusinessContextTool } from './customTools/context.js';
 import { bindCustomToolArgs, executeCustomTool } from './customTools/execute.js';
@@ -317,6 +318,33 @@ const servicesOutputSchema = z.object({
     initial_db2_group_level: z.number().int().nullable(),
     latest_db2_group_level: z.number().int().nullable(),
     example: z.string().nullable().optional(),
+  })).optional(),
+  count: z.number().int().optional(),
+  truncated: z.boolean().optional(),
+});
+
+const indexAdviceOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  ...sqlErrorOutputFields,
+  schema: z.string().optional(),
+  table: z.string().optional(),
+  since: z.string().optional(),
+  data: z.array(z.object({
+    schema: z.string(),
+    table: z.string(),
+    key_columns: z.array(z.string()),
+    index_type: z.string(),
+    times_advised: z.number(),
+    mti_used: z.number(),
+    mti_created: z.number(),
+    last_advised: z.string().nullable(),
+    last_mti_used: z.string().nullable(),
+    reasons: z.array(z.object({
+      code: z.string(),
+      description: z.string().nullable(),
+    })),
+    rows_merged: z.number().int(),
   })).optional(),
   count: z.number().int().optional(),
   truncated: z.boolean().optional(),
@@ -987,6 +1015,38 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         'Failed to search IBM i services',
         sessionContext,
         argsAudit('search_ibmi_services'),
+      )
+    );
+  }
+
+  if (enabledTools.has('index_advice')) {
+    server.registerTool(
+      'index_advice',
+      {
+        title: 'Index Advice',
+        description: 'List the indexes the query optimizer asked for on the tables of a library, from the IBM i index advisor (QSYS2.SYSIXADV). Rows with the same table, key columns, and index type are merged into one, with counts summed and reason codes described. Sorted by mti_used, then times_advised: advice where the optimizer kept building and reusing a maintained temporary index (MTI) is the strongest signal. key_columns are in CREATE INDEX order and can end in DESC. last_advised and since are in the system\'s local time. This tool only reads the advice; it does not create indexes.',
+        annotations: READ_ONLY_ANNOTATIONS,
+        inputSchema: z.object({
+          ...system,
+          schema: z.string().optional().describe(`Schema (library) whose tables to read advice for. ${SCHEMA_DEFAULT_HINT}`),
+          table: z.string().optional().describe('Table name. Omit for every table in the library.'),
+          since: z.string().optional().describe('Only advice last given on or after this date or timestamp, in the IBM i system\'s local time with no time zone. Example: "2026-01-31" or "2026-01-31 08:00:00"'),
+          limit: z.number().int().positive().optional().describe('Maximum rows to return. Capped by QUERY_MAX_LIMIT.'),
+        }),
+        outputSchema: indexAdviceOutputSchema,
+      },
+      withToolHandler(
+        (args, target) => indexAdviceTool({
+          schema: args.schema,
+          table: args.table,
+          since: args.since,
+          limit: args.limit,
+          target,
+          defaultSchema: target.defaultSchema,
+        }),
+        'Failed to read index advice',
+        sessionContext,
+        argsAudit('index_advice'),
       )
     );
   }
