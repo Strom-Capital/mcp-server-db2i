@@ -10,7 +10,8 @@ Set the `MCP_TRANSPORT` environment variable:
 # HTTP only
 MCP_TRANSPORT=http
 
-# Both stdio and HTTP (for development/testing)
+# Both stdio and HTTP (for development/testing).
+# When the stdio client goes away, HTTP keeps serving.
 MCP_TRANSPORT=both
 
 # Default: stdio only (for CLI/IDE integration)
