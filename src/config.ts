@@ -32,6 +32,7 @@
  * - MCP_OAUTH_REDIRECT_URIS: Redirect URIs OAuth clients may register
  * - MCP_OAUTH_SECRET: Key that signs OAuth client IDs and login requests
  * - MCP_OAUTH_REFRESH_EXPIRY: OAuth refresh token lifetime in seconds (default: 7 days)
+ * - MCP_TRUST_PROXY: Express 'trust proxy' setting, so rate limits see the client address behind a proxy
  */
 
 import crypto from 'node:crypto';
@@ -1144,6 +1145,11 @@ export interface HttpConfig {
   authAllowedDbHosts: string[] | null;
   /** Built-in OAuth authorization server. Null when MCP_OAUTH_ENABLED is off. */
   oauth: OAuthConfig | null;
+  /**
+   * Express 'trust proxy' setting from MCP_TRUST_PROXY: false (default), true,
+   * a hop count, or a comma-separated list of proxy addresses or subnets.
+   */
+  trustProxy: boolean | number | string;
 }
 
 /**
@@ -1173,6 +1179,9 @@ export const DEFAULT_OAUTH_REDIRECT_URIS = [
 /** Random signing key used when MCP_OAUTH_SECRET is unset. Stable for the process. */
 let ephemeralOAuthSecret: Buffer | undefined;
 
+/** Last parsed OAuth settings, reused while the variables they come from are unchanged. */
+let oauthConfigCache: { key: string; config: OAuthConfig | null } | undefined;
+
 /**
  * Read the OAuth authorization server settings.
  *
@@ -1187,6 +1196,22 @@ let ephemeralOAuthSecret: Buffer | undefined;
  * @throws Error when OAuth is on and a setting is missing or invalid
  */
 export function getOAuthConfig(authMode: AuthMode): OAuthConfig | null {
+  // getHttpConfig() runs on every authenticated request, so skip the parsing when nothing changed
+  const key = JSON.stringify([
+    authMode,
+    process.env.MCP_OAUTH_ENABLED,
+    process.env.MCP_PUBLIC_URL,
+    process.env.MCP_OAUTH_REDIRECT_URIS,
+    process.env.MCP_OAUTH_SECRET,
+    process.env.MCP_OAUTH_REFRESH_EXPIRY,
+  ]);
+  if (oauthConfigCache?.key !== key) {
+    oauthConfigCache = { key, config: parseOAuthConfig(authMode) };
+  }
+  return oauthConfigCache.config;
+}
+
+function parseOAuthConfig(authMode: AuthMode): OAuthConfig | null {
   const enabled = process.env.MCP_OAUTH_ENABLED?.trim().toLowerCase();
   if (enabled !== 'true' && enabled !== '1') {
     return null;
@@ -1369,6 +1394,26 @@ export function normalizeDbHost(host: string): string {
   return host.trim().replace(/\.$/, '').toLowerCase();
 }
 
+/**
+ * Parse MCP_TRUST_PROXY into Express's 'trust proxy' value.
+ * Unset, false or 0 trusts no proxy. A number is a hop count. Any other value
+ * is passed through as a comma-separated list of addresses or subnets.
+ */
+function getTrustProxy(): boolean | number | string {
+  const raw = process.env.MCP_TRUST_PROXY?.trim();
+  if (!raw || raw.toLowerCase() === 'false') {
+    return false;
+  }
+  if (raw.toLowerCase() === 'true') {
+    return true;
+  }
+  if (/^\d+$/.test(raw)) {
+    const hops = Number(raw);
+    return hops === 0 ? false : hops;
+  }
+  return raw;
+}
+
 function allowUnauthenticatedHttp(): boolean {
   const value = process.env.MCP_ALLOW_UNAUTHENTICATED_HTTP?.toLowerCase();
   return value === 'true' || value === '1';
@@ -1489,6 +1534,7 @@ export function getHttpConfig(): HttpConfig {
     allowUnauthenticatedHttp: allowUnauthenticatedHttp(),
     authAllowedDbHosts: getAuthAllowedDbHosts(),
     oauth,
+    trustProxy: getTrustProxy(),
   };
 }
 

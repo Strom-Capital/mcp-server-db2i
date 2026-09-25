@@ -124,20 +124,23 @@ export function authMiddleware(
   const authHeader = req.headers.authorization;
   const token = extractBearerToken(authHeader);
 
-  // With the OAuth server on, point clients at the protected resource metadata (RFC 9728)
-  if (httpConfig.oauth) {
-    res.setHeader(
-      'WWW-Authenticate',
-      `Bearer resource_metadata="${httpConfig.oauth.publicUrl}/.well-known/oauth-protected-resource/mcp"` +
-        (token ? ', error="invalid_token"' : '')
-    );
-  }
+  // With the OAuth server on, a 401 points clients at the protected resource metadata (RFC 9728)
+  const challenge = (error?: string): void => {
+    if (httpConfig.oauth) {
+      res.setHeader(
+        'WWW-Authenticate',
+        `Bearer resource_metadata="${httpConfig.oauth.publicUrl}/.well-known/oauth-protected-resource/mcp"` +
+          (error ? `, error="${error}"` : '')
+      );
+    }
+  };
 
   if (!token) {
     log.debug(
       { path: req.path, method: req.method },
       'Missing or invalid Authorization header'
     );
+    challenge();
     res.status(401).json({
       error: 'unauthorized',
       error_description: 'Missing or invalid Authorization header. Use: Authorization: Bearer <token>',
@@ -153,6 +156,7 @@ export function authMiddleware(
       { path: req.path, method: req.method, error: result.error },
       'Token validation failed'
     );
+    challenge('invalid_token');
     res.status(401).json({
       error: 'invalid_token',
       error_description: result.error ?? 'Token validation failed',
@@ -199,8 +203,8 @@ const oauthRequestStore = new MemoryStore();
  * If proxy is trusted, req.ip will contain the client IP from X-Forwarded-For.
  * If proxy is not trusted, req.ip will be the direct connection IP.
  * 
- * To trust proxy headers, set app.set('trust proxy', true) or configure
- * specific trusted proxies. Without this, X-Forwarded-For headers are ignored.
+ * MCP_TRUST_PROXY sets Express's 'trust proxy'. Without it, X-Forwarded-For
+ * headers are ignored and every request behind a proxy shares the proxy's address.
  */
 function getClientIp(req: Request): string {
   // Use Express's req.ip which respects 'trust proxy' setting
@@ -232,16 +236,20 @@ export type LoginRateLimitedHandler = (retryAfter: number) => void;
  * and the OAuth sign-in form, which share one budget. Each attempt is counted
  * when it arrives, because failures are only known after a slow database
  * connection test and parallel requests would otherwise all pass the check.
- * Call clearAuthRateLimit after a successful login.
+ * A successful login gives back only its own attempt. It never clears earlier
+ * failures, so a caller with one valid profile cannot use it to reset the count
+ * while guessing the password of another.
  */
 export const authRateLimitMiddleware = rateLimit({
   windowMs: AUTH_RATE_LIMIT.windowMs,
   limit: AUTH_RATE_LIMIT.maxAttempts,
   store: loginAttemptStore,
   keyGenerator: rateLimitKey,
+  // Success is a 2xx from /auth or the 303 redirect from the sign-in form
+  skipSuccessfulRequests: true,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  // Forwarded headers are ignored unless Express is told to trust a proxy; that is deliberate
+  // X-Forwarded-For is ignored unless MCP_TRUST_PROXY is set; that is deliberate
   validate: { xForwardedForHeader: false },
   handler: (req: Request, res: Response) => {
     const retryAfter = retryAfterSeconds(req);
@@ -258,13 +266,6 @@ export const authRateLimitMiddleware = rateLimit({
     });
   },
 });
-
-/**
- * Clear rate limit for an IP (on successful auth)
- */
-export function clearAuthRateLimit(req: Request): void {
-  void loginAttemptStore.resetKey(rateLimitKey(req));
-}
 
 /**
  * Per-IP request limit for the OAuth endpoints (registration, sign-in, token, revoke).

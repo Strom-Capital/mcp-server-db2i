@@ -50,6 +50,8 @@ services:
       - MCP_HTTP_HOST=${MCP_HTTP_HOST:-127.0.0.1}
       # Extra Host names when clients use a public hostname. Loopback is always allowed.
       - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
+      # Set to 1 behind one reverse proxy or tunnel, so rate limits see each client's address
+      - MCP_TRUST_PROXY=${MCP_TRUST_PROXY:-false}
       # stateless (default). Set stateful only for 2025-era clients that require Mcp-Session-Id.
       - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateless}
       - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}

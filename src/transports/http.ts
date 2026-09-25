@@ -23,7 +23,6 @@ import {
   getTokenManager,
   authMiddleware,
   authRateLimitMiddleware,
-  clearAuthRateLimit,
   createOAuthRouter,
   extractBearerToken,
   resetOAuthState,
@@ -348,6 +347,9 @@ export function createHttpApp(): Express {
   );
   const mcpNodeHandler = toNodeHandler(mcpHttpHandler);
 
+  // Behind a proxy, MCP_TRUST_PROXY lets req.ip, and so the rate limits, see the client address
+  app.set('trust proxy', httpConfig.trustProxy);
+
   // Middleware
   app.use(express.json());
 
@@ -536,9 +538,6 @@ export function createHttpApp(): Express {
         }
         throw err; // Re-throw other errors
       }
-
-      // Clear rate limit on successful auth
-      clearAuthRateLimit(req);
 
       const response: AuthResponse = {
         access_token: token,

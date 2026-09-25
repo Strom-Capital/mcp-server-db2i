@@ -21,7 +21,6 @@ export {
   authMiddleware,
   extractBearerToken,
   authRateLimitMiddleware,
-  clearAuthRateLimit,
   oauthRateLimitMiddleware,
   type LoginRateLimitedHandler,
   type AuthenticatedRequest,

@@ -15,7 +15,7 @@ import {
   withoutSshKeyLogin,
   type DB2iConfig,
 } from '../config.js';
-import { closeSessionPool, initializeSessionPool, testConnection } from '../db/connection.js';
+import { closeSessionPool, executeQuery, initializeSessionPool } from '../db/connection.js';
 import {
   DEFAULT_SYSTEM_NAME,
   defaultSystem,
@@ -99,23 +99,65 @@ export function authConnection(authReq: AuthRequest): { system: string; config: 
   };
 }
 
+/** Why a credential check failed. */
+export interface CredentialFailure {
+  /** Short reason for logs. Never shown to the user: driver errors can describe the host. */
+  reason: string;
+  /**
+   * True when the system could not be reached, so the credentials were never judged.
+   * A rejected or expired password is never transient.
+   */
+  transient: boolean;
+}
+
+/** Driver messages that mean the IBM i judged the sign-on: bad password, disabled or expired profile. */
+const CREDENTIAL_ERROR =
+  /password|user ?profile|user ?id|not authori[sz]ed|disabled|expired|CWBSY0\d{3}|CPF22\w{2}|SQL30082|SQLSTATE[= ]?(28000|08004)/i;
+
+/**
+ * Network failures: the connection never reached a sign-on. CWBCO messages are
+ * the IBM i Access communication errors (CWBCO1049 refused, CWBCO1004 unknown
+ * host); JT400 reports the same cases as "cannot establish the connection".
+ */
+const TRANSIENT_ERROR =
+  /ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|EPIPE|timed? ?out|socket hang up|could not be resolved|host.*unreachable|connection (was )?(refused|reset|closed)|CWBCO\d{4}|cannot establish the connection/i;
+
+/**
+ * Whether a connection error means the system was unreachable rather than
+ * that it refused the credentials. A message that mentions the credentials
+ * wins, and anything unrecognized counts as a refusal: retrying a stored
+ * password the IBM i rejected would count toward disabling the profile.
+ */
+export function isTransientConnectionError(err: unknown): boolean {
+  const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code: unknown }).code) : '';
+  const message = `${code} ${err instanceof Error ? err.message : String(err)}`;
+  return !CREDENTIAL_ERROR.test(message) && TRANSIENT_ERROR.test(message);
+}
+
 /**
  * Prove a config's credentials by opening a throwaway pool and running a test query.
  *
- * @returns null on success, or the reason the connection failed
+ * @returns null on success, or why the connection failed
  */
-export async function testCredentials(system: string, config: DB2iConfig): Promise<string | null> {
+export async function testCredentials(system: string, config: DB2iConfig): Promise<CredentialFailure | null> {
   log.debug({ host: config.hostname, user: config.username, system }, 'Testing credentials');
   // A random pool ID keeps concurrent logins apart
   const testPoolId = `auth-test-${crypto.randomBytes(16).toString('hex')}`;
   try {
     initializeSessionPool(testPoolId);
-    const connected = await testConnection({ poolKey: testPoolId, system, config });
-    return connected ? null : 'unable to connect to database';
+    await executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], { poolKey: testPoolId, system, config });
+    return null;
   } catch (err) {
-    return err instanceof Error ? err.message : 'Connection failed';
+    const transient = isTransientConnectionError(err);
+    log.warn({ err, host: config.hostname, user: config.username, system, transient }, 'Credential check failed');
+    return {
+      reason: transient ? 'unable to reach the database' : 'unable to connect to database',
+      transient,
+    };
   } finally {
-    await closeSessionPool(testPoolId);
+    await closeSessionPool(testPoolId).catch((err: unknown) => {
+      log.warn({ err, system }, 'Could not close the credential test pool');
+    });
   }
 }
 
@@ -150,7 +192,7 @@ export async function verifyLogin(authReq: AuthRequest): Promise<LoginResult> {
       ok: false,
       status: 401,
       error: 'invalid_credentials',
-      description: `Authentication failed: ${failure}`,
+      description: `Authentication failed: ${failure.reason}`,
     };
   }
   return { ok: true, system, config };

@@ -71,6 +71,8 @@ export interface TokenSession {
   system: string;
   /** OAuth client the token was issued to. Unset for tokens from POST /auth. */
   clientId?: string;
+  /** OAuth sign-in the token descends from, shared by its refreshed tokens. Unset for POST /auth. */
+  grantId?: string;
   /** When the token was created */
   createdAt: Date;
   /** When the token expires */

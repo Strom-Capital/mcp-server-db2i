@@ -16,7 +16,8 @@
  *
  * Client IDs are the registered metadata signed with MCP_OAUTH_SECRET, so
  * registration keeps no state and survives a restart when the secret is set.
- * Codes and refresh tokens live in memory.
+ * Codes and refresh tokens live in memory. Every token from one sign-in shares
+ * a grant ID, so revoking one of them, or replaying its code, ends them all.
  */
 
 import crypto from 'node:crypto';
@@ -27,7 +28,6 @@ import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
 import {
   authRateLimitMiddleware,
-  clearAuthRateLimit,
   oauthRateLimitMiddleware,
   type LoginRateLimitedHandler,
 } from './authMiddleware.js';
@@ -46,6 +46,12 @@ const MAX_REDIRECT_URIS = 10;
 const MAX_REDIRECT_URI_LENGTH = 2048;
 const MAX_CLIENT_NAME_LENGTH = 100;
 const MAX_SIGNED_VALUE_LENGTH = 16384;
+/** Leaves room in the signed login request for the redirect URI and state. */
+const MAX_CLIENT_ID_LENGTH = 4096;
+/** Refresh grants one IBM i user profile may hold on one system, across all clients. */
+const MAX_REFRESH_GRANTS_PER_USER = 10;
+/** How long a redeemed code is remembered, so a replay can revoke what it issued. */
+const USED_CODE_TTL_MS = LOGIN_TTL_MS;
 
 const TOKEN_AUTH_METHODS = ['none', 'client_secret_basic', 'client_secret_post'] as const;
 type TokenAuthMethod = (typeof TOKEN_AUTH_METHODS)[number];
@@ -90,13 +96,22 @@ interface PendingCode {
 
 interface RefreshGrant {
   clientId: string;
+  grantId: string;
+  /** Owner of the grant, from userKey(). */
+  user: string;
   system: string;
   config: DB2iConfig;
   expiresAt: number;
 }
 
+interface UsedCode {
+  grantId: string;
+  expiresAt: number;
+}
+
 const pendingCodes = new Map<string, PendingCode>();
 const refreshGrants = new Map<string, RefreshGrant>();
+const usedCodes = new Map<string, UsedCode>();
 
 /**
  * Drop pending codes and refresh tokens. Used at shutdown and by tests.
@@ -104,6 +119,22 @@ const refreshGrants = new Map<string, RefreshGrant>();
 export function resetOAuthState(): void {
   pendingCodes.clear();
   refreshGrants.clear();
+  usedCodes.clear();
+}
+
+/** The IBM i user a grant belongs to: one user profile on one system. */
+function userKey(system: string, config: DB2iConfig): string {
+  return `${system}\n${config.username.toUpperCase()}`;
+}
+
+/** End every access and refresh token issued from one sign-in. */
+async function revokeGrant(grantId: string): Promise<void> {
+  for (const [token, grant] of refreshGrants) {
+    if (grant.grantId === grantId) {
+      refreshGrants.delete(token);
+    }
+  }
+  await getTokenManager().revokeGrant(grantId);
 }
 
 function sweepExpired(map: Map<string, { expiresAt: number }>, now: number): void {
@@ -306,7 +337,9 @@ function pageBrand(res: Response): string {
 function sendPage(res: Response, status: number, title: string, body: string, formAction?: string): void {
   const brand = pageBrand(res);
   noStore(res);
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  // Not no-referrer: with it, browsers send `Origin: null` on the form post and the
+  // Origin check refuses it. same-origin still keeps the URL from the client's origin.
+  res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader(
     'Content-Security-Policy',
     [
@@ -448,18 +481,24 @@ function authenticateClient(oauth: OAuthConfig, req: Request, body: Record<strin
   return { ok: true, clientId, client };
 }
 
+/** The sign-in a token request continues: who signed in, where, and its grant ID. */
+interface GrantContext {
+  grantId: string;
+  system: string;
+  config: DB2iConfig;
+}
+
 /** Issue an access token, plus a refresh token when the client and settings allow it. */
 function issueTokens(
   res: Response,
   oauth: OAuthConfig,
-  clientId: string,
-  client: RegisteredClient,
-  system: string,
-  config: DB2iConfig
+  maxRefreshGrants: number,
+  auth: { clientId: string; client: RegisteredClient },
+  grant: GrantContext
 ): void {
   let access: { token: string; expiresIn: number };
   try {
-    access = getTokenManager().createSession(config, undefined, system, clientId);
+    access = getTokenManager().createSession(grant.config, undefined, grant.system, auth.clientId, grant.grantId);
   } catch (err) {
     if (err instanceof Error && err.message.includes('Maximum concurrent sessions')) {
       oauthError(res, 503, 'temporarily_unavailable', err.message);
@@ -474,18 +513,30 @@ function issueTokens(
     expires_in: access.expiresIn,
   };
 
-  if (oauth.refreshExpiry > 0 && client.grantTypes.includes('refresh_token')) {
+  if (oauth.refreshExpiry > 0 && auth.client.grantTypes.includes('refresh_token')) {
     const now = Date.now();
     sweepExpired(refreshGrants, now);
-    // Keep the store bounded: past the session cap, the oldest grant goes first
-    const cap = getHttpConfig().maxSessions;
-    for (const key of refreshGrants.keys()) {
-      if (refreshGrants.size < cap) break;
+    // A user past their own cap loses their oldest grant. Other users' grants are never evicted.
+    const user = userKey(grant.system, grant.config);
+    const own = [...refreshGrants].filter(([, entry]) => entry.user === user).map(([key]) => key);
+    for (const key of own.slice(0, Math.max(0, own.length - MAX_REFRESH_GRANTS_PER_USER + 1))) {
       refreshGrants.delete(key);
     }
-    const refreshToken = randomToken();
-    refreshGrants.set(refreshToken, { clientId, system, config, expiresAt: now + oauth.refreshExpiry * 1000 });
-    body.refresh_token = refreshToken;
+    if (refreshGrants.size >= maxRefreshGrants) {
+      // The client keeps working until the access token expires, then signs in again
+      log.warn({ grants: refreshGrants.size }, 'OAuth refresh grant store is full; issuing no refresh token');
+    } else {
+      const refreshToken = randomToken();
+      refreshGrants.set(refreshToken, {
+        clientId: auth.clientId,
+        grantId: grant.grantId,
+        user,
+        system: grant.system,
+        config: grant.config,
+        expiresAt: now + oauth.refreshExpiry * 1000,
+      });
+      body.refresh_token = refreshToken;
+    }
   }
 
   noStore(res);
@@ -503,6 +554,8 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
   const router = express.Router();
   const form = express.urlencoded({ extended: false, limit: '32kb' });
   const issuer = oauth.publicUrl;
+  // Refresh grants are bounded like access tokens
+  const maxRefreshGrants = getHttpConfig().maxSessions;
   router.use('/oauth', oauthRateLimitMiddleware);
   router.use('/oauth', (_req: Request, res: Response, next: express.NextFunction) => {
     res.locals.pageBrand = resourceName;
@@ -589,6 +642,10 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
       nonce: crypto.randomBytes(12).toString('base64url'),
     };
     const clientId = sign(oauth.secret, 'client', client);
+    if (clientId.length > MAX_CLIENT_ID_LENGTH) {
+      oauthError(res, 400, 'invalid_client_metadata', 'The client metadata is too large. Register fewer or shorter redirect URIs.');
+      return;
+    }
 
     log.info({ client: name, redirectHosts: redirectUris.map((uri) => new URL(uri).host) }, 'OAuth client registered');
     noStore(res);
@@ -647,7 +704,13 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
       state: params.state,
       exp: Date.now() + LOGIN_TTL_MS,
     };
-    renderLogin(res, 200, { client, redirectUri, request: sign(oauth.secret, 'login', loginRequest) });
+    const request = sign(oauth.secret, 'login', loginRequest);
+    // The form post must carry the request back, and the check refuses longer values
+    if (request.length > MAX_SIGNED_VALUE_LENGTH) {
+      fail('invalid_request', 'The authorization request is too large. Use a shorter state.');
+      return;
+    }
+    renderLogin(res, 200, { client, redirectUri, request });
   });
 
   // Sign-in: check the signed request first, so a rate-limited attempt can
@@ -688,18 +751,24 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
       next();
     },
     authRateLimitMiddleware,
-    async (req: Request, res: Response) => {
+    async (_req: Request, res: Response) => {
       const { pending, client, username, password, system } = res.locals.signIn as SignInForm;
       const retry = (status: number, error: string): void => renderSignIn(res, res.locals.signIn as SignInForm, status, error);
 
-      const login = await verifyLogin({ username, password, system });
+      let login: Awaited<ReturnType<typeof verifyLogin>>;
+      try {
+        login = await verifyLogin({ username, password, system });
+      } catch (err) {
+        log.error({ err, user: username, system }, 'Unexpected error in OAuth sign-in');
+        retry(500, 'Sign-in failed unexpectedly. Try again.');
+        return;
+      }
       if (!login.ok) {
         log.warn({ user: username, system, client: client.name, reason: login.description }, 'OAuth sign-in failed');
         // Driver errors can describe the host; the page only says what the user can fix
         retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user profile and password.');
         return;
       }
-      clearAuthRateLimit(req);
 
       const now = Date.now();
       sweepExpired(pendingCodes, now);
@@ -745,6 +814,15 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
         if (code) {
           // Single use: a replayed code finds nothing
           pendingCodes.delete(code);
+          const used = usedCodes.get(code);
+          if (used) {
+            // RFC 6749 section 4.1.2: a code used twice may be stolen, so end what it issued
+            usedCodes.delete(code);
+            if (used.expiresAt > Date.now()) {
+              log.warn({ client: auth.client.name }, 'OAuth authorization code replayed; revoking its tokens');
+              await revokeGrant(used.grantId);
+            }
+          }
         }
         if (!pending || pending.expiresAt <= Date.now() || pending.clientId !== auth.clientId) {
           oauthError(res, 400, 'invalid_grant', 'The authorization code is invalid or expired');
@@ -765,29 +843,49 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
           oauthError(res, 400, 'invalid_grant', 'code_verifier does not match the code challenge');
           return;
         }
-        issueTokens(res, oauth, auth.clientId, auth.client, pending.system, pending.config);
+        const grantId = randomToken();
+        const now = Date.now();
+        sweepExpired(usedCodes, now);
+        for (const key of usedCodes.keys()) {
+          if (usedCodes.size < MAX_PENDING_CODES) break;
+          usedCodes.delete(key);
+        }
+        usedCodes.set(code as string, { grantId, expiresAt: now + USED_CODE_TTL_MS });
+        issueTokens(res, oauth, maxRefreshGrants, auth, { grantId, system: pending.system, config: pending.config });
         return;
       }
 
       if (body.grant_type === 'refresh_token' && oauth.refreshExpiry > 0) {
         const refreshToken = body.refresh_token;
         const grant = refreshToken ? refreshGrants.get(refreshToken) : undefined;
-        if (refreshToken) {
-          // Rotation: every refresh token works once
-          refreshGrants.delete(refreshToken);
-        }
-        if (!grant || grant.expiresAt <= Date.now() || grant.clientId !== auth.clientId) {
+        // Another client presenting the token does not use it up
+        if (!refreshToken || !grant || grant.clientId !== auth.clientId) {
           oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
           return;
         }
-        // A disabled profile or a changed password ends the grant
+        // Rotation: every refresh token works once, and a parallel request finds nothing
+        refreshGrants.delete(refreshToken);
+        if (grant.expiresAt <= Date.now()) {
+          oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
+          return;
+        }
         const failure = await testCredentials(grant.system, grant.config);
         if (failure !== null) {
-          log.warn({ user: grant.config.username, system: grant.system, reason: failure }, 'OAuth refresh refused');
+          if (failure.transient) {
+            // The IBM i was not reached, so the credentials were never judged: keep the grant
+            refreshGrants.set(refreshToken, grant);
+            log.warn({ user: grant.config.username, system: grant.system, reason: failure.reason }, 'OAuth refresh deferred');
+            res.setHeader('Retry-After', '30');
+            oauthError(res, 503, 'temporarily_unavailable', 'The IBM i could not be reached. Try again shortly.');
+            return;
+          }
+          // A disabled profile or a changed password ends the grant and its access tokens
+          log.warn({ user: grant.config.username, system: grant.system, reason: failure.reason }, 'OAuth refresh refused');
+          await revokeGrant(grant.grantId);
           oauthError(res, 400, 'invalid_grant', 'The IBM i credentials are no longer accepted. Sign in again.');
           return;
         }
-        issueTokens(res, oauth, auth.clientId, auth.client, grant.system, grant.config);
+        issueTokens(res, oauth, maxRefreshGrants, auth, grant);
         return;
       }
 
@@ -799,29 +897,34 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string): Rou
   });
 
   router.post('/oauth/revoke', form, async (req: Request, res: Response) => {
-    const body = stringParams(req.body);
-    const auth = authenticateClient(oauth, req, body);
-    if (!auth.ok) {
-      oauthError(res, 401, 'invalid_client', auth.description);
-      return;
-    }
-    const token = body.token;
-    if (token) {
-      const grant = refreshGrants.get(token);
-      if (grant) {
-        if (grant.clientId === auth.clientId) {
-          refreshGrants.delete(token);
-        }
-      } else {
-        const tokenManager = getTokenManager();
-        if (tokenManager.getSession(token)?.clientId === auth.clientId) {
-          await tokenManager.revokeToken(token);
+    try {
+      const body = stringParams(req.body);
+      const auth = authenticateClient(oauth, req, body);
+      if (!auth.ok) {
+        oauthError(res, 401, 'invalid_client', auth.description);
+        return;
+      }
+      const token = body.token;
+      if (token) {
+        // Either kind of token ends the whole sign-in: its refresh token and every access token
+        const grant = refreshGrants.get(token);
+        const session = grant ? undefined : getTokenManager().getSession(token);
+        const owner = grant ?? session;
+        if (owner?.clientId === auth.clientId) {
+          if (owner.grantId) {
+            await revokeGrant(owner.grantId);
+          } else {
+            await getTokenManager().revokeToken(token);
+          }
         }
       }
+      // RFC 7009: the answer is the same whether or not the token was known
+      noStore(res);
+      res.status(200).end();
+    } catch (err) {
+      log.error({ err }, 'Unexpected error in OAuth revocation handler');
+      oauthError(res, 500, 'server_error', 'An unexpected error occurred');
     }
-    // RFC 7009: the answer is the same whether or not the token was known
-    noStore(res);
-    res.status(200).end();
   });
 
   return router;

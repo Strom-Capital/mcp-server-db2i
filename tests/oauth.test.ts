@@ -26,6 +26,7 @@ import { createHttpApp } from '../src/transports/http.js';
 import { getTokenManager } from '../src/auth/tokenManager.js';
 import { resetAuthRateLimits } from '../src/auth/authMiddleware.js';
 import { isRedirectUriAllowed, resetOAuthState } from '../src/auth/oauth.js';
+import { isTransientConnectionError } from '../src/auth/login.js';
 import { getOAuthConfig } from '../src/config.js';
 import { resetSystems } from '../src/systems.js';
 
@@ -163,6 +164,30 @@ describe('OAuth authorization server', () => {
     });
   }
 
+  /** Exchange a code for tokens. */
+  async function exchange(clientId: string, code: string, verifier: string): Promise<{ access_token: string; refresh_token: string }> {
+    const res = await postToken({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id: clientId, redirect_uri: CLAUDE_CALLBACK });
+    expect(res.status).toBe(200);
+    return (await res.json()) as { access_token: string; refresh_token: string };
+  }
+
+  function revoke(clientId: string, token: string): Promise<Response> {
+    return fetch(`${baseUrl}/oauth/revoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token, client_id: clientId }),
+    });
+  }
+
+  /** Make the next test connection fail with this error. */
+  async function failNextConnection(message: string): Promise<void> {
+    const { pool } = await import('node-jt400');
+    vi.mocked(pool).mockImplementationOnce(() => ({
+      query: vi.fn().mockRejectedValue(new Error(message)),
+      close: vi.fn().mockResolvedValue(undefined),
+    }) as never);
+  }
+
   /** Register, sign in, and return the code plus what the token request needs. */
   async function signIn(
     fields: Record<string, string> = { username: 'CALLER', password: 'callerpass', system: 'test' },
@@ -277,6 +302,8 @@ describe('OAuth authorization server', () => {
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("form-action 'self' https://claude.ai");
     expect(csp).toContain('img-src data:');
+    // no-referrer would make browsers post the form with `Origin: null`, which the Origin check refuses
+    expect(res.headers.get('referrer-policy')).toBe('same-origin');
     const html = await res.text();
     expect(html).toContain('<svg class="logo"');
     expect(html).toContain('<span class="brand-name">mcp-server-db2i</span>');
@@ -351,6 +378,62 @@ describe('OAuth authorization server', () => {
     expect(last).toBe(429);
   });
 
+  it('accepts a same-origin form post', async () => {
+    const client = await register();
+    const page = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    const res = await fetch(`${baseUrl}/oauth/authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: baseUrl },
+      body: new URLSearchParams({ request: hiddenRequest(await page.text()), username: 'CALLER', password: 'callerpass', system: 'test' }),
+      redirect: 'manual',
+    });
+    expect(res.status).toBe(303);
+  });
+
+  it('does not let a successful sign-in reset earlier failures', async () => {
+    const client = await register();
+    const page = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    const request = hiddenRequest(await page.text());
+    for (let i = 0; i < 4; i++) {
+      expect((await postLogin(request, { username: 'VICTIM', password: 'wrong', system: 'prod' })).status).toBe(401);
+    }
+    expect((await postLogin(request, { username: 'CALLER', password: 'callerpass', system: 'prod' })).status).toBe(303);
+    expect((await postLogin(request, { username: 'VICTIM', password: 'wrong', system: 'prod' })).status).toBe(401);
+    expect((await postLogin(request, { username: 'VICTIM', password: 'wrong', system: 'prod' })).status).toBe(429);
+  });
+
+  it('refuses registrations whose client ID would be too long to use', async () => {
+    const uris = Array.from({ length: 10 }, (_, i) => `http://127.0.0.1:${9000 + i}/${'a'.repeat(2000)}`);
+    const res = await fetch(`${baseUrl}/oauth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: uris, token_endpoint_auth_method: 'none' }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('invalid_client_metadata');
+  });
+
+  it('sends an oversized state back to the client instead of rendering a form that cannot work', async () => {
+    const client = await register();
+    const res = await fetch(authorizeUrl(client.client_id as string, pkce().challenge, { state: 'x'.repeat(13000) }), {
+      redirect: 'manual',
+    });
+    expect(res.status).toBe(302);
+    expect(new URL(res.headers.get('location') as string).searchParams.get('error')).toBe('invalid_request');
+  });
+
+  it('challenges only failed requests', async () => {
+    const { clientId, code, verifier } = await signIn();
+    const tokens = await exchange(clientId, code, verifier);
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens.access_token}` },
+      body: '{}',
+    });
+    expect(res.status).not.toBe(401);
+    expect(res.headers.get('www-authenticate')).toBeNull();
+  });
+
   it('refuses a forged or expired login request', async () => {
     const res = await postLogin('eyJ4IjoxfQ.bad', { username: 'CALLER', password: 'callerpass' });
     expect(res.status).toBe(400);
@@ -381,6 +464,17 @@ describe('OAuth authorization server', () => {
       redirect_uri: CLAUDE_CALLBACK,
     });
     expect(wrongClient.status).toBe(400);
+  });
+
+  it('revokes the tokens of a replayed code', async () => {
+    const { clientId, code, verifier } = await signIn();
+    const tokens = await exchange(clientId, code, verifier);
+
+    const replay = await postToken({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id: clientId, redirect_uri: CLAUDE_CALLBACK });
+    expect(replay.status).toBe(400);
+    expect(getTokenManager().validateToken(tokens.access_token).valid).toBe(false);
+    const refresh = await postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId });
+    expect(refresh.status).toBe(400);
   });
 
   it('requires the secret of a confidential client', async () => {
@@ -435,6 +529,63 @@ describe('OAuth authorization server', () => {
     expect((await res.json()).error_description).toMatch(/Sign in again/);
   });
 
+  it('keeps the refresh grant when the IBM i cannot be reached', async () => {
+    const { clientId, code, verifier } = await signIn();
+    const tokens = await exchange(clientId, code, verifier);
+
+    await failNextConnection('connect ECONNREFUSED 192.0.2.1:8471');
+    const down = await postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId });
+    expect(down.status).toBe(503);
+    expect((await down.json()).error).toBe('temporarily_unavailable');
+
+    const up = await postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId });
+    expect(up.status).toBe(200);
+  });
+
+  it('does not let another client use up a refresh token', async () => {
+    const { clientId, code, verifier } = await signIn();
+    const tokens = await exchange(clientId, code, verifier);
+    const stranger = await register();
+
+    const stolen = await postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: stranger.client_id as string });
+    expect(stolen.status).toBe(400);
+    const own = await postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId });
+    expect(own.status).toBe(200);
+  });
+
+  it('caps refresh grants per user without touching other users', async () => {
+    const other = await signIn({ username: 'OTHER', password: 'otherpass', system: 'test' });
+    const otherTokens = await exchange(other.clientId, other.code, other.verifier);
+
+    const grants: Array<{ clientId: string; refresh: string }> = [];
+    for (let i = 0; i < 11; i++) {
+      const { clientId, code, verifier } = await signIn();
+      grants.push({ clientId, refresh: (await exchange(clientId, code, verifier)).refresh_token });
+    }
+
+    const oldest = await postToken({ grant_type: 'refresh_token', refresh_token: grants[0].refresh, client_id: grants[0].clientId });
+    expect(oldest.status).toBe(400);
+    const newest = await postToken({ grant_type: 'refresh_token', refresh_token: grants[10].refresh, client_id: grants[10].clientId });
+    expect(newest.status).toBe(200);
+    const untouched = await postToken({ grant_type: 'refresh_token', refresh_token: otherTokens.refresh_token, client_id: other.clientId });
+    expect(untouched.status).toBe(200);
+  });
+
+  it('ends the refresh token when its access token is revoked', async () => {
+    const { clientId, code, verifier } = await signIn();
+    const tokens = await exchange(clientId, code, verifier);
+    expect((await revoke(clientId, tokens.access_token)).status).toBe(200);
+    const refresh = await postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId });
+    expect(refresh.status).toBe(400);
+  });
+
+  it('ends the access tokens when their refresh token is revoked', async () => {
+    const { clientId, code, verifier } = await signIn();
+    const tokens = await exchange(clientId, code, verifier);
+    expect((await revoke(clientId, tokens.refresh_token)).status).toBe(200);
+    expect(getTokenManager().validateToken(tokens.access_token).valid).toBe(false);
+  });
+
   it('revokes only tokens of the calling client', async () => {
     const { clientId, code, verifier } = await signIn();
     const tokens = (await (
@@ -484,6 +635,41 @@ describe('OAuth authorization server', () => {
     expect(res.status).toBe(404);
     const mcp = await fetch(`${baseUrl}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     expect(mcp.headers.get('www-authenticate')).toBeNull();
+  });
+});
+
+describe('isTransientConnectionError', () => {
+  it('treats network failures as transient', () => {
+    expect(isTransientConnectionError(new Error('connect ECONNREFUSED 192.0.2.1:8471'))).toBe(true);
+    expect(isTransientConnectionError(Object.assign(new Error('socket failed'), { code: 'ETIMEDOUT' }))).toBe(true);
+    expect(isTransientConnectionError(new Error('Connection timed out'))).toBe(true);
+  });
+
+  it('recognizes the driver messages for an unreachable IBM i', () => {
+    // ODBC: host servers not listening, and a name that does not resolve
+    expect(isTransientConnectionError(new Error(
+      '[08004] [IBM][System i Access ODBC Driver]Communication link failure. comm rc=10061 - CWBCO1049 - The IBM i server application  is not started, or the connection was blocked by a firewall'
+    ))).toBe(true);
+    expect(isTransientConnectionError(new Error(
+      '[08S01] [IBM][System i Access ODBC Driver]Communication link failure. comm rc=11001 - CWBCO1004 - Remote address could not be resolved'
+    ))).toBe(true);
+    // JT400: the same two cases
+    expect(isTransientConnectionError(new Error('The application requester cannot establish the connection. (Connection refused)'))).toBe(true);
+    expect(isTransientConnectionError(new Error('The application requester cannot establish the connection. (ibmi.example.com)'))).toBe(true);
+  });
+
+  it('treats the drivers\' wrong-password messages as a refusal', () => {
+    expect(isTransientConnectionError(new Error(
+      '[28000] [IBM][System i Access ODBC Driver]Communication link failure. comm rc=8002 - CWBSY0002 - Password for user CALLER on system ibmi.example.com is not correct'
+    ))).toBe(false);
+    expect(isTransientConnectionError(new Error('The application server rejected the connection. (Password length is not valid.)'))).toBe(false);
+  });
+
+  it('treats credential errors and anything unknown as a refusal', () => {
+    expect(isTransientConnectionError(new Error('SQL30082 password incorrect'))).toBe(false);
+    expect(isTransientConnectionError(new Error('Communication link failure. comm rc=8015 - CWBSY0002 - Password for user CALLER is not correct'))).toBe(false);
+    expect(isTransientConnectionError(new Error('User profile CALLER is disabled; connection reset'))).toBe(false);
+    expect(isTransientConnectionError(new Error('something odd'))).toBe(false);
   });
 });
 

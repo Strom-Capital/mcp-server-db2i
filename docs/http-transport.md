@@ -24,6 +24,7 @@ MCP_TRANSPORT=stdio
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `http`, or `both` |
 | `MCP_HTTP_PORT` | `3000` | HTTP server port |
 | `MCP_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` when Docker publishes the port or another container connects. Put TLS on this process or on the proxy in front of it |
+| `MCP_TRUST_PROXY` | `false` | Express `trust proxy`: `true`, a hop count such as `1`, or proxy addresses and subnets, comma-separated. Set it behind a reverse proxy or tunnel so rate limits key on the client address from `X-Forwarded-For`. Trust only proxies that overwrite that header |
 | `MCP_ALLOWED_HOSTS` | loopback | Extra `Host` names, comma-separated. Loopback is always allowed. Required for a public hostname when the process binds `0.0.0.0` |
 | `MCP_SESSION_MODE` | `stateless` | `stateless` (default) or deprecated `stateful` |
 | `MCP_AUTH_MODE` | `required` | Authentication mode: `required`, `token`, or `none` |
@@ -217,6 +218,8 @@ MCP_PUBLIC_URL=https://mcp.example.com
 MCP_OAUTH_SECRET=<openssl rand -hex 32>
 # Behind a TLS proxy or tunnel on the same host:
 MCP_HTTP_HOST=127.0.0.1
+# One proxy hop, so rate limits see each client's address:
+MCP_TRUST_PROXY=1
 ```
 
 The server must be reachable over HTTPS at `MCP_PUBLIC_URL`, through a reverse proxy or a tunnel that keeps the `Host` header. `MCP_PUBLIC_URL` must be an origin only: serve the server at the root of its hostname, not under a path.
@@ -262,8 +265,8 @@ Notes:
 
 - **Redirect URIs.** Registration is refused for a redirect URI outside `MCP_OAUTH_REDIRECT_URIS`, which defaults to the claude.ai and claude.com connector callbacks. Loopback redirects (`http://localhost:<port>/...`) are always accepted, for desktop clients. Without this list, anyone could register a client that sends codes to their own site and ask a user to sign in.
 - **Registrations are stateless.** A client ID is the client's metadata signed with `MCP_OAUTH_SECRET`. Nothing is stored, and a registration keeps working after a restart as long as the secret stays the same. Without the secret, a random one is used and clients must register again after a restart.
-- **Codes and refresh tokens live in memory.** A restart signs every user out. Refresh tokens rotate on every use, and each refresh repeats the test connection, so a disabled user profile or a changed password ends the grant.
-- **Rate limit.** Sign-in attempts share the `/auth` limit: 5 per minute per client IP. All `/oauth/*` endpoints together allow 120 requests per minute per IP. Behind a proxy that does not pass the client address, all users share those budgets.
+- **Codes and refresh tokens live in memory.** A restart signs every user out. Refresh tokens rotate on every use, and each refresh repeats the test connection, so a disabled user profile or a changed password ends the grant. If the IBM i cannot be reached, the refresh answers 503 and the grant stays. Revoking an access or refresh token ends both.
+- **Rate limit.** Sign-in attempts share the `/auth` limit: 5 per minute per client IP. All `/oauth/*` endpoints together allow 120 requests per minute per IP. Behind a proxy, set `MCP_TRUST_PROXY` so the limits use the client address from `X-Forwarded-For`. Without it, all users share the proxy's budget. A successful sign-in does not count toward the limit.
 - **Scopes** are not used. A token can call every tool that `MCP_TOOLS_ENABLED` and `MCP_TOOLS_DISABLED` leave registered.
 
 ## API Endpoints
