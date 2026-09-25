@@ -1,6 +1,6 @@
 /**
  * IBM i SQL services used by validate_query, get_object_ddl, get_related_objects,
- * and get_journal_info.
+ * get_journal_info, and search_ibmi_services.
  *
  * PARSE_STATEMENT, RELATED_OBJECTS, and OBJECT_STATISTICS run on the read-only query pool.
  * GENERATE_SQL runs on the procedure pool because a read-only connection rejects it.
@@ -445,6 +445,97 @@ export async function listRelatedObjects(
     system_name: textCell(row.SYSTEM_NAME),
     object_text: textCell(row.OBJECT_TEXT),
   }));
+}
+
+export const SERVICES_INFO_UNAVAILABLE =
+  'QSYS2.SERVICES_INFO is not available on this system. It ships with the Db2 for i PTF group; apply a current group to get it.';
+
+/** One row of QSYS2.SERVICES_INFO, the catalog of IBM i services. */
+export interface IbmiService {
+  service_name: string;
+  category: string;
+  schema: string;
+  sql_object_type: string | null;
+  system_object_name: string | null;
+  earliest_release: string | null;
+  initial_db2_group_level: number | null;
+  latest_db2_group_level: number | null;
+  example: string | null;
+}
+
+/** The catalog changes only when PTFs are applied, so an hour is fresh enough. */
+export const SERVICES_CACHE_TTL_MS = 60 * 60 * 1000;
+const SERVICES_CACHE_MAX_ENTRIES = 50;
+
+const servicesCache = new Map<string, { services: IbmiService[]; expires: number }>();
+
+export function clearServicesCache(): void {
+  servicesCache.clear();
+}
+
+/**
+ * True when the failure is QSYS2.SERVICES_INFO missing (SQL0204 on an older PTF level).
+ */
+export function isServicesInfoMissing(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /SERVICES_INFO/i.test(message) && (/\bSQL0204\b/.test(message) || /not found/i.test(message));
+}
+
+function intCell(value: unknown): number | null {
+  if (value == null || value === '') {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function exampleCell(value: unknown): string | null {
+  const text = textCell(value);
+  return text == null ? null : text.replace(/\r\n?/g, '\n');
+}
+
+/**
+ * Every row of QSYS2.SERVICES_INFO, cached per system and user for an hour.
+ * The whole view is about 400 rows, so callers filter in memory.
+ */
+export async function listServices(target?: DbTarget): Promise<IbmiService[]> {
+  // Same key as routineCache: not the pool key, which is the bearer token in required auth mode.
+  const key = `${target?.system ?? ''}|${target?.config.username ?? ''}`;
+  const now = Date.now();
+  const cached = servicesCache.get(key);
+  if (cached && cached.expires > now) {
+    return cached.services;
+  }
+
+  const result = await executeQuery(
+    `SELECT SERVICE_CATEGORY, SERVICE_SCHEMA_NAME, SERVICE_NAME, SQL_OBJECT_TYPE, SYSTEM_OBJECT_NAME,
+            EARLIEST_POSSIBLE_RELEASE, INITIAL_DB2_GROUP_LEVEL, LATEST_DB2_GROUP_LEVEL, EXAMPLE
+     FROM QSYS2.SERVICES_INFO`,
+    [],
+    target
+  );
+
+  const services = result.rows.map((row) => ({
+    service_name: textCell(row.SERVICE_NAME) ?? '',
+    category: textCell(row.SERVICE_CATEGORY) ?? '',
+    schema: textCell(row.SERVICE_SCHEMA_NAME) ?? '',
+    sql_object_type: textCell(row.SQL_OBJECT_TYPE),
+    system_object_name: textCell(row.SYSTEM_OBJECT_NAME),
+    earliest_release: textCell(row.EARLIEST_POSSIBLE_RELEASE),
+    initial_db2_group_level: intCell(row.INITIAL_DB2_GROUP_LEVEL),
+    latest_db2_group_level: intCell(row.LATEST_DB2_GROUP_LEVEL),
+    example: exampleCell(row.EXAMPLE),
+  }));
+
+  servicesCache.delete(key);
+  if (servicesCache.size >= SERVICES_CACHE_MAX_ENTRIES) {
+    const oldest = servicesCache.keys().next().value;
+    if (oldest !== undefined) {
+      servicesCache.delete(oldest);
+    }
+  }
+  servicesCache.set(key, { services, expires: now + SERVICES_CACHE_TTL_MS });
+  return services;
 }
 
 export const JOURNAL_INFO_UNAVAILABLE =

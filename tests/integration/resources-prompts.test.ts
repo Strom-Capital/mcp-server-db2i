@@ -460,6 +460,7 @@ describe('MCP resources and prompts', () => {
       expect(text).toContain('- ITEMNO CHAR(15), nullable: Item. Item sold on the line');
       expect(text).toContain('What the table holds: Sales order lines');
       expect(text).toContain('MYLIB.ORDERS.CUSTNO = MYLIB.CUSTOMERS.CUSTNO');
+      expect(text).toContain('search_ibmi_services');
       expect(text).toContain('validate_query');
       expect(text).toContain('execute_query');
     });

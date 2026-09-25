@@ -77,6 +77,7 @@ graph LR
 | `get_journal_info` | List journal, images, and primary key per table, and flag tables a replication tool cannot read |
 | `profile_table` | Row count, last change, and per-column distinct and null counts from stored statistics or a scan |
 | `get_business_context` | List business descriptions and relations loaded from YAML |
+| `search_ibmi_services` | Find IBM i services by keyword or category, with the release that added each one and an example query |
 
 > **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included.
 

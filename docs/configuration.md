@@ -105,7 +105,7 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 | `MCP_TOOLS_ENABLED` | - | Comma-separated allowlist. If set, only these tools are registered |
 | `MCP_TOOLS_DISABLED` | - | Comma-separated denylist, applied after the allowlist |
 
-Valid built-in names: `execute_query`, `list_schemas`, `list_tables`, `search_tables`, `search_columns`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`, `validate_query`, `get_object_ddl`, `get_related_objects`, `get_journal_info`, `profile_table`, `get_business_context`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
+Valid built-in names: `execute_query`, `list_schemas`, `list_tables`, `search_tables`, `search_columns`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`, `validate_query`, `get_object_ddl`, `get_related_objects`, `get_journal_info`, `profile_table`, `get_business_context`, `search_ibmi_services`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
 
 When [business SQL tools](custom-tools.md) are loaded, the same variables also accept a custom tool name or `toolset:<name>`. A toolset selector matches only custom tools in that group. `toolset:sales` does not register `execute_query`.
 
@@ -532,6 +532,7 @@ When the list is set:
 - Names defined in a `WITH` clause are not treated as tables.
 - `search_tables` and `search_columns` search only the libraries in the list. Without a list, they skip system libraries (`Q*` and `SYS*`) unless `include_system` is true.
 - `get_journal_info` and `profile_table` reject a library outside the list. They read `QSYS2` catalog views themselves, so `QSYS2` does not have to be in the list for them.
+- `search_ibmi_services` reads only the service catalog `QSYS2.SERVICES_INFO`, so the list does not apply to it. Running one of its examples with `execute_query` still needs the service's schema in the list, and examples that call `TABLE(...)` table functions are rejected while the list is set.
 - `list_tables`, `describe_table`, `list_views`, `list_indexes`, and `get_table_constraints` reject a library outside the list before querying. `list_schemas` returns only the libraries in the list. Keys and indexes of an allowed table are still reported when they reference another library.
 
 A view or alias inside an allowed library can still read other libraries. Give the IBM i user profile access only to the libraries in the list. See [Security](security.md#schema-allowlist).
