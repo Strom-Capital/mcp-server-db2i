@@ -422,7 +422,7 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
       `<form method="post" action="/oauth/authorize">` +
       `<input type="hidden" name="request" value="${escapeHtml(page.request)}">` +
       systemField +
-      `<label for="username">User profile</label>` +
+      `<label for="username">User</label>` +
       `<input id="username" name="username" autocomplete="username" autocapitalize="characters" required maxlength="128" value="${escapeHtml(page.username ?? '')}">` +
       `<label for="password">Password</label>` +
       `<input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">` +
@@ -769,7 +769,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       res.locals.onLoginRateLimited = onRateLimited;
 
       if (!form.username || !form.password || form.username.length > 128 || form.password.length > 256) {
-        renderSignIn(res, form, 400, 'Enter your user profile and password.');
+        renderSignIn(res, form, 400, 'Enter your user and password.');
         return;
       }
       next();
@@ -790,7 +790,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       if (!login.ok) {
         log.warn({ user: username, system, client: client.name, reason: login.description }, 'OAuth sign-in failed');
         // Driver errors can describe the host; the page only says what the user can fix
-        retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user profile and password.');
+        retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user and password.');
         return;
       }
 

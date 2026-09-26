@@ -382,7 +382,7 @@ describe('OAuth authorization server', () => {
     const res = await postLogin(hiddenRequest(await page.text()), { username: 'CALLER', password: 'wrong', system: 'prod' });
     expect(res.status).toBe(401);
     const html = await res.text();
-    expect(html).toContain('Sign-in failed. Check the user profile and password.');
+    expect(html).toContain('Sign-in failed. Check the user and password.');
     expect(html).not.toContain('SQL30082');
     expect(html).not.toContain('wrong');
     expect(html).toContain('value="CALLER"');
