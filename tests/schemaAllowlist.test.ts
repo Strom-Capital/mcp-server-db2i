@@ -123,7 +123,7 @@ describe('checkQuerySchemas', () => {
       'DECFLOAT(34)',
       'DECFLOAT',
       'TIMESTAMP(12)',
-      'nvarchar(30) ccsid 1208',
+      'vargraphic(30) ccsid 1200',
     ])('should accept a cast to %s', (type) => {
       expect(check(`SELECT CAST(NOTE AS ${type}) FROM MYLIB.ORDERS`).ok).toBe(true);
     });
@@ -137,7 +137,7 @@ describe('checkQuerySchemas', () => {
 
     it('should still catch a qualified function inside a Db2 cast', () => {
       const result = check(
-        'SELECT CAST(OUTSIDELIB.F(NOTE) AS NVARCHAR(10) CCSID 1208) FROM MYLIB.ORDERS'
+        'SELECT CAST(OUTSIDELIB.F(NOTE) AS VARGRAPHIC(10) CCSID 1200) FROM MYLIB.ORDERS'
       );
       expect(result.ok).toBe(false);
       expect(result.violations).toEqual([
@@ -152,7 +152,7 @@ describe('checkQuerySchemas', () => {
 
     it('should leave string literals, quoted names and comments alone', () => {
       const sql =
-        "SELECT CAST(NOTE AS NVARCHAR(30) CCSID 1208) -- AS NCHAR(1) CCSID 37 ?\n" +
+        "SELECT CAST(NOTE AS VARGRAPHIC(30) CCSID 1200) -- AS NCHAR(1) CCSID 37 ?\n" +
         "FROM MYLIB.ORDERS /* AS CLOB(1M) FOR BIT DATA ? */ " +
         `WHERE DESCR = 'AS NVARCHAR CCSID 1208 ?' AND "AS NCHAR" = 1`;
       expect(normalizeForParsing(sql)).toBe(
