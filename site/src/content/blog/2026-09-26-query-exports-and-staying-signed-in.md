@@ -1,7 +1,7 @@
 ---
 title: Query exports and staying signed in (2.12)
 description: export_query writes every row of a read-only query to a CSV or XLSX file, OAuth sign-ins survive restarts, and fixes for non-ASCII text, binary columns and the schema allowlist.
-date: 2026-09-27T09:00:00Z
+date: 2026-09-26T22:30:00Z
 audience: ibmi
 icon: file-code
 tags: [release, tools, oauth]

@@ -1,7 +1,7 @@
 ---
 title: The whole list as a spreadsheet
 description: Ask for all the open orders for a customer and get a file you can open in Excel, not a summary in the chat.
-date: 2026-09-27T10:00:00Z
+date: 2026-09-26T22:31:00Z
 audience: business
 icon: book-open-text
 tags: [business, exports]
