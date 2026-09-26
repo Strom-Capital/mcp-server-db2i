@@ -96,17 +96,22 @@ Do not change the logo to:
 - `DB2I/MCP`
 - `Db2i MCP`
 
-### Technical naming
+### Naming
 
-Use the visual wordmark and technical names differently:
+Each name has one job:
 
 | Context | Form |
 |---|---|
 | Brand / logo | `db2i/mcp` |
+| Descriptive product name: page titles, the README heading, the docs site name, the sign-in page | Db2 for i MCP Server |
 | Website | `db2i-mcp.com` |
-| Package / CLI / repo | `mcp-server-db2i` |
-| Product prose | `Db2 for i` |
-| IBM platform name | `IBM i` |
+| Package / CLI / repo / MCP Registry | `mcp-server-db2i` |
+| The database, in prose | Db2 for i |
+| The platform, in prose | IBM i |
+
+The wordmark is the logo, not a second product name. Pair it with the descriptive name where a reader may not know it yet ("db2i/mcp, the Db2 for i MCP Server").
+
+The package name follows the `mcp-server-*` convention so people find it on npm and in the MCP Registry. Keep it out of the logo, and show it wherever someone installs the server: the install command, the footer and the README.
 
 The lowercase logo does **not** replace the correct product terminology in prose.
 
