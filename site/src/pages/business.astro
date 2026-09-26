@@ -11,7 +11,7 @@ const questions = [
 ];
 
 const summary = `mcp-server-db2i is an open-source MCP server (MIT) that lets AI assistants such as Claude and Cursor read Db2 for i.
-- Read-only: a read-only connection, a SQL validator and a query timeout that cancels on the IBM i.
+- Read-only: a read-only connection and a SQL validator that only accepts queries. A query timeout also cancels long statements on the IBM i.
 - People sign in with their own IBM i profile (OAuth), so object authority and exit programs apply as usual.
 - A library allowlist, column masking and an audit log of every tool call.
 - Connects with the IBM i Access ODBC driver, JT400, or Mapepire over SSH. Nothing is installed on the IBM i.
@@ -107,8 +107,8 @@ Security: ${links.security}`;
         <p class="label">Safeguards</p>
         <h2 class="h2s">What it can and can't do with your data.</h2>
         <ul class="rows ticks">
-          <li><strong>Read-only at three levels.</strong> A read-only connection, a check that only allows queries, and a time limit that stops long queries on the IBM i.</li>
-          <li><strong>Everyone signs in as themselves.</strong> People use their own IBM i user, so they see exactly what they can see today.</li>
+          <li><strong>It only reads.</strong> A read-only connection, and a check that only lets queries through. A time limit also stops long queries on the IBM i.</li>
+          <li><strong>Everyone signs in as themselves.</strong> People use their own IBM i user, often the same user name and password as for the ERP. The IBM i decides what each person can read.</li>
           <li><strong>You choose what is visible.</strong> Only the libraries you allow, with sensitive columns hidden or masked.</li>
           <li><strong>Everything is logged.</strong> Every request is written to an audit log.</li>
           <li><strong>The data stays on your IBM i.</strong> Nothing is copied into a new database.</li>

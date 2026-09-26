@@ -9,7 +9,7 @@ const groups: Group[] = [
     label: 'Safety',
     heading: 'Reads only, and only what you allow.',
     items: [
-      { title: 'Read-only by design', href: links.security, body: 'A read-only database connection, a SQL validator that only accepts queries, and a timeout that cancels runaway statements on the IBM i itself.' },
+      { title: 'Read-only by design', href: links.security, body: 'A read-only database connection and a SQL validator that only accepts queries. A timeout also cancels runaway statements on the IBM i itself.' },
       { title: 'Library allowlist and masking', href: links.allowlist, body: 'Limit queries and catalog browsing to the libraries you choose. Redact sensitive columns, or show only their last four characters.' },
       { title: 'IBM i checks the SQL', href: links.tools, body: 'validate_query parses a statement on the IBM i and checks every table and column against the catalog before anything runs.' },
     ],
