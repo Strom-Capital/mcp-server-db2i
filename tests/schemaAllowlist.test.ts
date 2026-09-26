@@ -179,6 +179,74 @@ describe('checkQuerySchemas', () => {
     });
   });
 
+  describe('Db2 for i special registers', () => {
+    function checkWithSysibm(sql: string) {
+      return checkQuerySchemas(sql, { allowed: ['SYSIBM', 'MYLIB'] });
+    }
+
+    it.each([
+      'SELECT CURRENT USER AS U FROM SYSIBM.SYSDUMMY1',
+      'SELECT CURRENT USER U FROM SYSIBM.SYSDUMMY1',
+      'SELECT CURRENT_USER AS U FROM SYSIBM.SYSDUMMY1',
+      'SELECT CURRENT TIMESTAMP AS TS FROM SYSIBM.SYSDUMMY1',
+      'SELECT CURRENT TIMESTAMP FROM SYSIBM.SYSDUMMY1',
+      'SELECT CURRENT TIMESTAMP(12) AS TS, CURRENT TIME ZONE AS TZ FROM SYSIBM.SYSDUMMY1',
+      'SELECT CURRENT DATE AS D FROM SYSIBM.SYSDUMMY1',
+      'SELECT CURRENT SCHEMA AS S, CURRENT SERVER AS SRV, CURRENT PATH AS P FROM SYSIBM.SYSDUMMY1',
+      'SELECT current date as d, current_time as t FROM SYSIBM.SYSDUMMY1',
+      'SELECT USER AS U, SESSION_USER AS SU FROM SYSIBM.SYSDUMMY1',
+    ])('should accept %s', (sql) => {
+      expect(checkWithSysibm(sql).ok).toBe(true);
+    });
+
+    it.each([
+      'SELECT ORDERNO, CURRENT DATE AS D FROM MYLIB.ORDERS',
+      'SELECT ORDERNO FROM MYLIB.ORDERS WHERE ORDERDATE < CURRENT DATE',
+      'SELECT ORDERNO FROM MYLIB.ORDERS WHERE ORDERDATE > CURRENT DATE - 30 DAYS',
+      'SELECT ORDERNO FROM MYLIB.ORDERS WHERE CHANGED > CURRENT TIMESTAMP - 2 HOURS - (1 + 1) MINUTES',
+      'SELECT ORDERNO, VARCHAR_FORMAT(CURRENT TIMESTAMP, \'YYYY-MM-DD\') AS TODAY FROM MYLIB.ORDERS',
+      'SELECT ORDERNO, CAST(CURRENT DATE AS CHAR(10)) AS TODAY FROM MYLIB.ORDERS',
+    ])('should accept %s and still check its library', (sql) => {
+      expect(check(sql).ok).toBe(true);
+      const outside = check(sql.replace('MYLIB.', 'OTHERLIB.'));
+      expect(outside.ok).toBe(false);
+      expect(outside.violations[0]).toMatch(/^Table OTHERLIB\./);
+    });
+
+    it('should still refuse a library outside the list next to a special register', () => {
+      const result = check(
+        'SELECT ORDERNO, CURRENT DATE AS D FROM MYLIB.ORDERS ' +
+          'WHERE ORDERNO IN (SELECT ORDERNO FROM OTHERLIB.ORDERHDR WHERE ORDERDATE = CURRENT DATE - 1 DAY)'
+      );
+      expect(result.ok).toBe(false);
+      expect(result.violations).toEqual([
+        'Table OTHERLIB.ORDERHDR is not in the allowed schemas (MYLIB).',
+      ]);
+    });
+
+    it('should not hide a table whose name looks like a special register', () => {
+      const qualified = check('SELECT * FROM OTHERLIB.CURRENT USER');
+      expect(qualified.ok).toBe(false);
+      expect(qualified.violations[0]).toMatch(/^Table OTHERLIB\.CURRENT /);
+      // An unqualified table named CURRENT with an alias no longer parses, so it is refused
+      expect(check('SELECT * FROM CURRENT DATE').ok).toBe(false);
+    });
+
+    it('should only rewrite keywords, never qualified names or column names', () => {
+      expect(
+        normalizeForParsing('SELECT MYLIB.CURRENT_DATE, X.CURRENT DATE, T1 DAYS, 30 DAYS, CURRENT DATE.X')
+      ).toBe('SELECT MYLIB.CURRENT_DATE, X.CURRENT DATE, T1 DAYS, 30, CURRENT DATE.X');
+      expect(normalizeForParsing('SELECT A$CURRENT DATE, CURRENT DATES FROM MYLIB.ORDERS')).toBe(
+        'SELECT A$CURRENT DATE, CURRENT DATES FROM MYLIB.ORDERS'
+      );
+    });
+
+    it('should leave special registers in strings and comments alone', () => {
+      const sql = "SELECT 'CURRENT DATE - 1 DAY' -- CURRENT USER\nFROM MYLIB.ORDERS /* 30 DAYS */";
+      expect(normalizeForParsing(sql)).toBe(sql);
+    });
+  });
+
   describe('function calls', () => {
     const withCatalog = { allowed: ['MYLIB', 'SYSIBM'], defaultSchema: 'MYLIB' };
 
