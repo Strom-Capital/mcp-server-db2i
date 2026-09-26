@@ -7,6 +7,10 @@ body:
       value: |
         Thank you for reporting a bug! Please fill out the sections below.
 
+        **This is a public repository.** Before you paste queries, logs or tool output, replace hostnames, credentials, user profiles and real library, table or column names with stand-ins such as `MYLIB.ORDERS` and `ibmi.example.com`.
+
+        To report a security problem, use [private vulnerability reporting](https://github.com/Strom-Capital/mcp-server-db2i/security/advisories/new) instead of an issue.
+
   - type: textarea
     id: description
     attributes:
@@ -72,6 +76,7 @@ body:
       options:
         - odbc (default)
         - jt400
+        - mapepire
     validations:
       required: true
 
@@ -91,7 +96,7 @@ body:
     id: logs
     attributes:
       label: Error Logs
-      description: Any relevant error messages or logs
+      description: Any relevant error messages or logs. Redact hostnames, user profiles and real object names.
       render: shell
 
   - type: textarea
