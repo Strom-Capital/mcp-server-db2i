@@ -107,7 +107,7 @@ Security: ${links.security}`;
         <p class="label">Safeguards</p>
         <h2 class="h2s">What it can and can't do with your data.</h2>
         <ul class="rows ticks">
-          <li><strong>It only reads.</strong> A read-only connection, and a check that only lets queries through. A time limit also stops long queries on the IBM i.</li>
+          <li><strong>It only reads.</strong> A read-only connection, and a check that only lets queries through. If a question takes too long, it is stopped automatically so it doesn't keep your system busy.</li>
           <li><strong>Everyone signs in as themselves.</strong> People use their own IBM i user, often the same user name and password as for the ERP. The IBM i decides what each person can read.</li>
           <li><strong>You choose what is visible.</strong> Only the libraries you allow, with sensitive columns hidden or masked.</li>
           <li><strong>Everything is logged.</strong> Every request is written to an audit log.</li>
