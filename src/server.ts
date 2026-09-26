@@ -142,6 +142,7 @@ const queryOutputSchema = z.object({
   data: z.array(z.unknown()).optional(),
   rowCount: z.number().int().optional(),
   limitApplied: z.number().int().optional(),
+  warnings: z.array(z.string()).optional().describe('Tell the user these, such as columns the driver rounded'),
 });
 
 const listSchemasOutputSchema = z.object({

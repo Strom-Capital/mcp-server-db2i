@@ -72,6 +72,10 @@ Templates look like `CALL MYLIB.GET_ORDER(ORDERNO => ?)`, `SELECT MYLIB.ORDER_TO
 
 Results are sorted by `mti_used`, then `times_advised`. Advice the optimizer kept building a temporary index for is the strongest candidate for a permanent one. `since` keeps only advisor rows last given on or after that date or timestamp, also in the system's local time. The tool only reads the advice. Review it before creating an index, because the advisor does not check whether an existing index or keyed logical file already covers the keys.
 
+### Warnings
+
+A successful `execute_query` or business SQL tool result can carry `warnings`, which the agent should pass on to the user. Today the only one is from the `odbc` driver: it names `DECIMAL` and `NUMERIC` columns whose values have more than 15 digits and were rounded. See [Values that differ by driver](configuration.md#values-that-differ-by-driver).
+
 ### Failed statements
 
 When Db2 rejects a statement in `execute_query`, a business SQL tool, `validate_query` or `profile_table`, the error result also has these fields:

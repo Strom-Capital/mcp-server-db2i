@@ -27,6 +27,8 @@ const created = vi.hoisted(() => ({
   sshClients: [] as Array<{ config: Record<string, unknown>; end: Mock<() => void> }>,
   failNext: { jt400: false, odbc: false, mapepire: false },
   rows: [] as Record<string, unknown>[],
+  // Column definitions the odbc fake reports with each result
+  odbcColumns: [] as Array<Record<string, unknown>>,
   // Statement time limit: the next statement waits until something cancels it
   hangNext: false,
   hanging: [] as Array<(rows: Record<string, unknown>[]) => void>,
@@ -117,7 +119,7 @@ vi.mock('odbc', () => ({
         const rows = (await inner.query(...args)) as Record<string, unknown>[];
         const result = Object.assign([...rows], {
           count: rows.length,
-          columns: [],
+          columns: created.odbcColumns,
           statement: args[0],
           parameters: args[1],
           return: undefined,
@@ -647,6 +649,7 @@ describe('driver contract: odbc specifics', () => {
     created.odbc.length = 0;
     created.failNext.odbc = false;
     created.rows = [{ N: 1 }];
+    created.odbcColumns = [];
     vi.resetModules();
     connection = await import('../../src/db/connection.js');
   });
@@ -674,6 +677,64 @@ describe('driver contract: odbc specifics', () => {
     expect(params).toEqual(['2026-09-24 13:45:30.123000']);
     expect(Object.keys(result.rows)).toEqual(['0']);
     expect(result.rows).toEqual([{ N: 1 }]);
+  });
+
+  it('returns binary columns, which node-odbc reads as an ArrayBuffer, as upper-case hex', async () => {
+    connection.initializePool(baseConfig('odbc'));
+    created.rows = [{ B2: new Uint8Array([0x0a, 0xff]).buffer, EMPTY: new ArrayBuffer(0), N: null }];
+    const { rows } = await connection.executeQuery('SELECT B2 FROM SYSIBM.SYSDUMMY1');
+    expect(rows).toEqual([{ B2: '0AFF', EMPTY: '', N: null }]);
+    expect(JSON.stringify(rows)).toBe('[{"B2":"0AFF","EMPTY":"","N":null}]');
+  });
+
+  describe('decimals node-odbc rounds', () => {
+    const decimal = (name: string, columnSize: number, decimalDigits: number, dataType = 3) => ({
+      name,
+      dataType,
+      dataTypeName: dataType === 3 ? 'DECIMAL' : 'NUMERIC',
+      columnSize,
+      decimalDigits,
+      nullable: true,
+    });
+
+    it('names a wide DECIMAL or NUMERIC column whose value has more than 15 digits', async () => {
+      connection.initializePool(baseConfig('odbc'));
+      created.odbcColumns = [decimal('W', 31, 2), decimal('N', 20, 0, 2), decimal('SMALL', 31, 2)];
+      created.rows = [
+        { W: 12345678901234567000, N: null, SMALL: 12.5 },
+        { W: null, N: 1234567890123456, SMALL: 9999999999999.99 },
+      ];
+      const result = await connection.executeQuery('SELECT W, N, SMALL FROM MYLIB.ORDERS');
+      expect(result.roundedColumns).toEqual(['W', 'N']);
+      expect(result.rows).toEqual(created.rows);
+    });
+
+    it('names nothing when every value fits in 15 digits, or there are no rows', async () => {
+      connection.initializePool(baseConfig('odbc'));
+      created.odbcColumns = [decimal('AMOUNT', 31, 2), decimal('NARROW', 15, 2), decimal('FRACTION', 31, 20)];
+      created.rows = [{ AMOUNT: 1234567890123.45, NARROW: 1234567890123.45, FRACTION: 0.000001 }];
+      expect((await connection.executeQuery('SELECT * FROM MYLIB.ORDERS')).roundedColumns).toBeUndefined();
+
+      created.odbcColumns = [decimal('AMOUNT', 31, 2)];
+      created.rows = [];
+      expect((await connection.executeQuery('SELECT * FROM MYLIB.ORDERS')).roundedColumns).toBeUndefined();
+    });
+
+    it('counts the scale: a DECIMAL(31,20) value from 0.00001 up may have more than 15 digits', async () => {
+      connection.initializePool(baseConfig('odbc'));
+      created.odbcColumns = [decimal('FRACTION', 31, 20)];
+      created.rows = [{ FRACTION: 0.00001 }];
+      expect((await connection.executeQuery('SELECT * FROM MYLIB.ORDERS')).roundedColumns).toEqual(['FRACTION']);
+    });
+
+    it('names rounded columns when the statement runs with a time limit', async () => {
+      connection.initializePool({ ...baseConfig('odbc'), queryTimeout: 30 });
+      created.odbcColumns = [decimal('W', 31, 2)];
+      created.rows = [{ W: 12345678901234567000 }];
+      const result = await connection.executeQuery('SELECT W FROM MYLIB.ORDERS');
+      expect(result.roundedColumns).toEqual(['W']);
+      expect(result.rows).toEqual([{ W: 12345678901234567000 }]);
+    });
   });
 
   it('surfaces the ODBC diagnostic when the pool cannot connect', async () => {
