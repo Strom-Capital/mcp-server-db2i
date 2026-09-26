@@ -3,6 +3,7 @@ title: Sign in with your IBM i profile
 description: A built-in OAuth 2.1 server lets claude.ai, Cursor and Claude Code connect with one URL. Everyone signs in as themselves and queries run with their own authority.
 date: 2026-09-25T09:00:00Z
 audience: ibmi
+icon: key-round
 tags: [release, oauth, http]
 ---
 

@@ -3,6 +3,7 @@ title: Mapepire is back, over SSH
 description: I dropped the Mapepire driver earlier. Its new SSH mode changes the trade-off, so it's back, for systems where only port 22 is open.
 date: 2026-09-24T18:00:00Z
 audience: ibmi
+icon: terminal
 tags: [release, drivers, mapepire]
 ---
 
