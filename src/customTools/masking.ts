@@ -314,6 +314,33 @@ export function columnsForTables(masking: MaskingMap, tables: readonly string[])
 }
 
 /**
+ * Check that every masked column is among the result's column names.
+ * Returns the error to report, or undefined when all of them are present.
+ */
+export function requireMaskedColumns(
+  columnNames: readonly string[],
+  rules: ReadonlyMap<string, MaskRule>,
+): string | undefined {
+  const names = new Set(columnNames.map((name) => name.toUpperCase()));
+  for (const column of rules.keys()) {
+    if (!names.has(column)) {
+      return `Masked column ${column} was not in the result, so the rows were not returned.`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Mask one value. Null and undefined stay as they are.
+ */
+export function maskValue(value: unknown, rule: MaskRule): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  return rule === 'redact' ? REDACTED : last4(value);
+}
+
+/**
  * Apply rules to result keys. An empty result has no keys to check.
  * A row set that is missing a selected masked column is returned as an error.
  */
@@ -326,14 +353,9 @@ export function maskRows(
   }
 
   if (rows.length > 0) {
-    const keys = new Set(Object.keys(rows[0]).map((key) => key.toUpperCase()));
-    for (const column of rules.keys()) {
-      if (!keys.has(column)) {
-        return {
-          ok: false,
-          error: `Masked column ${column} was not in the result, so the rows were not returned.`,
-        };
-      }
+    const error = requireMaskedColumns(Object.keys(rows[0]), rules);
+    if (error) {
+      return { ok: false, error };
     }
   }
 
@@ -341,10 +363,9 @@ export function maskRows(
     const copy: Record<string, unknown> = { ...row };
     for (const [key, value] of Object.entries(copy)) {
       const rule = rules.get(key.toUpperCase());
-      if (!rule || value === null || value === undefined) {
-        continue;
+      if (rule) {
+        copy[key] = maskValue(value, rule);
       }
-      copy[key] = rule === 'redact' ? REDACTED : last4(value);
     }
     return copy;
   });

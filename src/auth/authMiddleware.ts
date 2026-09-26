@@ -274,6 +274,32 @@ export function createAuthRateLimitMiddleware(
   });
 }
 
+/** Export downloads per IP address. A link is a 256-bit secret, so this limits load, not guessing. */
+export const DEFAULT_EXPORT_DOWNLOAD_RATE_LIMIT: IpRateLimitConfig = {
+  limit: 30,
+  windowMs: 60_000,
+};
+
+/**
+ * Create the per-IP request limit for export download links (GET and HEAD
+ * /exports/:id).
+ *
+ * @param limit - Requests allowed per IP address and the window length
+ */
+export function createExportDownloadRateLimitMiddleware(
+  limit: IpRateLimitConfig = DEFAULT_EXPORT_DOWNLOAD_RATE_LIMIT
+): RequestHandler {
+  return rateLimit({
+    ...ipLimiterOptions(limit),
+    handler: (req: Request, res: Response) => {
+      const retryAfter = retryAfterSeconds(req);
+      log.warn({ ip: getClientIp(req) }, 'Export download rate limit exceeded');
+      res.setHeader('Retry-After', String(retryAfter));
+      res.status(429).type('text/plain').send(`Too many downloads. Try again in ${retryAfter} seconds.`);
+    },
+  });
+}
+
 /**
  * Create the per-IP request limit for the OAuth endpoints (registration,
  * sign-in, token, revoke). Sign-in attempts are limited further by the login

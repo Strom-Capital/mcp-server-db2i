@@ -42,12 +42,13 @@
   "bugs": {
     "url": "https://github.com/Strom-Capital/mcp-server-db2i/issues"
   },
-  "homepage": "https://github.com/Strom-Capital/mcp-server-db2i#readme",
+  "homepage": "https://db2i-mcp.com",
   "dependencies": {
     "@modelcontextprotocol/node": "^2.1.0",
     "@modelcontextprotocol/server": "^2.1.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
+    "fflate": "^0.8.3",
     "hono": "^4.13.8",
     "node-sql-parser": "^5.4.0",
     "pino": "^10.3.1",

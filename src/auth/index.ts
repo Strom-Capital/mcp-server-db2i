@@ -22,6 +22,7 @@ export {
   extractBearerToken,
   createAuthRateLimitMiddleware,
   createOAuthRateLimitMiddleware,
+  createExportDownloadRateLimitMiddleware,
   type LoginRateLimitedHandler,
   type AuthenticatedRequest,
 } from './authMiddleware.js';

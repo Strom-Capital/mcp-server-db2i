@@ -17,9 +17,11 @@ import { McpServer, type RegisteredTool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { serverIcons } from './branding.js';
-import { getEnabledTools, getResponseFormat } from './config.js';
+import { getEnabledTools, getExportConfig, getResponseFormat } from './config.js';
 import { resolveTarget, STDIO_POOL_KEY, systemNames, type DbTarget, type SystemBinding } from './systems.js';
 import { executeQueryTool } from './tools/query.js';
+import { exportQueryTool } from './tools/exportQuery.js';
+import { EXPORT_CONTENT_TYPES } from './export/store.js';
 import {
   listSchemasTool,
   listTablesTool,
@@ -111,7 +113,10 @@ export interface ToolResult {
  * MCP tool response type
  */
 export type McpToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
+  content: Array<
+    | { type: 'text'; text: string }
+    | { type: 'resource_link'; uri: string; name: string; mimeType?: string; description?: string }
+  >;
   structuredContent?: Record<string, unknown>;
   isError?: true;
 };
@@ -143,6 +148,26 @@ const queryOutputSchema = z.object({
   rowCount: z.number().int().optional(),
   limitApplied: z.number().int().optional(),
   warnings: z.array(z.string()).optional().describe('Tell the user these, such as columns the driver rounded'),
+});
+
+const exportOutputSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  ...sqlErrorOutputFields,
+  violations: z.array(z.string()).optional(),
+  format: z.enum(['csv', 'xlsx']).optional(),
+  filename: z.string().optional().describe('Name the download is saved as'),
+  rowCount: z.number().int().optional(),
+  bytes: z.number().int().optional(),
+  truncated: z.union([z.literal(false), z.enum(['rows', 'bytes'])]).optional()
+    .describe('rows or bytes when the file stops at max_rows / EXPORT_MAX_ROWS or EXPORT_MAX_BYTES'),
+  columns: z.array(z.object({ name: z.string(), kind: z.string() })).optional(),
+  sample: z.array(z.record(z.string(), z.unknown())).optional().describe('First rows of the file, masked'),
+  warnings: z.array(z.string()).optional().describe('Tell the user these, such as columns the driver rounded'),
+  path: z.string().optional().describe('The file on the server host (stdio)'),
+  url: z.string().optional().describe('Download link for the user (HTTP)'),
+  expiresAt: z.string().optional(),
+  downloadsAllowed: z.number().int().optional().describe('Downloads the link allows before it stops working'),
 });
 
 const listSchemasOutputSchema = z.object({
@@ -584,6 +609,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       outcome: 'success',
       durationMs,
       rowCount: rowCountOf(result),
+      ...(typeof result.bytes === 'number' ? { bytes: result.bytes } : {}),
     });
     return {
       content: [{ type: 'text', text: formatToolText(result, getResponseFormat()) }],
@@ -624,7 +650,7 @@ function recordAudit(
   identity: string,
   system: string | undefined,
   facts: Pick<AuditCall, 'sql' | 'params' | 'args'>,
-  outcome: Pick<AuditCall, 'outcome' | 'error' | 'durationMs' | 'rowCount'>,
+  outcome: Pick<AuditCall, 'outcome' | 'error' | 'durationMs' | 'rowCount' | 'bytes'>,
 ): void {
   if (!tool) {
     return;
@@ -709,6 +735,66 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         sessionContext,
         sqlAudit('execute_query'),
       )
+    );
+  }
+
+  if (enabledTools.has('export_query') && getExportConfig()) {
+    const delivery = sessionContext ? 'link' : 'path';
+    const handler = withToolHandler(
+      (args: { sql: string; params?: unknown[]; format?: 'csv' | 'xlsx'; filename?: string; max_rows?: number }, target) =>
+        exportQueryTool({
+          sql: args.sql,
+          params: args.params,
+          format: args.format,
+          filename: args.filename,
+          maxRows: args.max_rows,
+          delivery,
+          owner: sessionContext ? target.config.username : 'stdio',
+          target,
+          defaultSchema: target.defaultSchema,
+        }),
+      'Export failed',
+      sessionContext,
+      sqlAudit('export_query'),
+    );
+    server.registerTool(
+      'export_query',
+      {
+        title: 'Export Query to File',
+        description:
+          'Run a read-only SQL SELECT and write every row to a CSV or Excel (XLSX) file for the user, instead of returning the rows. ' +
+          'Use it when the user asks for a file, a spreadsheet, or more rows than execute_query returns. ' +
+          (delivery === 'link'
+            ? 'The result has a download link: give it to the user as is, and do not open it yourself, because each download counts against a small limit. It expires after a few minutes. '
+            : 'The result has the file path on this machine: tell the user where the file is. ') +
+          'The result also has the row count, the columns, and a few sample rows so you can check the export. ' +
+          'Same checks as execute_query; masked columns are masked in the file.',
+        annotations: { ...READ_ONLY_ANNOTATIONS, idempotentHint: false },
+        inputSchema: z.object({
+          ...system,
+          sql: z.string().describe('SQL SELECT query to export'),
+          params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
+          format: z.enum(['csv', 'xlsx']).optional().describe('File format. Default: xlsx'),
+          filename: z.string().max(120).optional().describe('Name for the file, without extension, e.g. open-orders-1001'),
+          max_rows: z.number().int().positive().optional().describe('Most rows to write (capped by EXPORT_MAX_ROWS)'),
+        }),
+        outputSchema: exportOutputSchema,
+      },
+      async (args) => {
+        const response = await handler(args);
+        const url = response.structuredContent?.url;
+        const filename = response.structuredContent?.filename;
+        if (typeof url === 'string' && typeof filename === 'string') {
+          response.content.push({
+            type: 'resource_link',
+            uri: url,
+            name: filename,
+            mimeType: EXPORT_CONTENT_TYPES[filename.endsWith('.csv') ? 'csv' : 'xlsx'],
+            description: 'Query export for the user to download',
+          });
+        }
+        return response;
+      }
     );
   }
 

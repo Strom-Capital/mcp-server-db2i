@@ -12,7 +12,7 @@
 import type { DB2iConfig } from '../config.js';
 import { queryTimeoutMs } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
-import type { DbPool, DbRows } from './driver.js';
+import type { DbPool, DbRows, RowCursor } from './driver.js';
 import { loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
 import { DatabaseQueryError, explainSqlError } from './sqlErrorInfo.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -346,6 +346,75 @@ async function run(
     }
     const { message, details } = await explainSqlError(error, db, resolved.system);
     throw new DatabaseQueryError(`Database query failed: ${message}`, details, { cause: error });
+  }
+}
+
+/**
+ * Open a cursor on the read-only pool, for reading a large result a batch at
+ * a time. The cursor holds one connection or job until it is closed, so the
+ * caller must close it in a `finally`. Aborting `signal` cancels the statement
+ * on the IBM i, the same way QUERY_TIMEOUT does for executeQuery.
+ *
+ * @param sql - A statement that already passed prepareReadQuery
+ * @param params - Query parameters
+ * @param target - Caller and system. Omit for the stdio default system.
+ * @param options - Rows per fetch, the caller's time limit, and the abort signal
+ */
+export async function openQueryCursor(
+  sql: string,
+  params: unknown[],
+  target: DbTarget | undefined,
+  options: { fetchSize: number; timeoutMs: number; signal?: AbortSignal }
+): Promise<RowCursor> {
+  const resolved = resolve(target);
+  const slot = getSlot(resolved, false);
+  let db: DbPool | undefined;
+  let warmUp: NodeJS.Timeout | undefined;
+
+  const explain = async (error: unknown, pool: DbPool | undefined): Promise<Error> => {
+    log.debug({ err: error, sql: sql.substring(0, 200) }, 'Cursor query failed');
+    if (!pool) {
+      const message = error instanceof Error ? error.message : 'Unknown database error';
+      return new Error(`Database query failed: ${message}`, { cause: error });
+    }
+    const { message, details } = await explainSqlError(error, pool, resolved.system);
+    return new DatabaseQueryError(`Database query failed: ${message}`, details, { cause: error });
+  };
+
+  try {
+    log.debug(
+      { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
+      'Opening cursor'
+    );
+    db = await acquire(slot, resolved);
+    if (!db.openCursor) {
+      throw new Error(`The ${slot.config.driver} driver cannot read results in batches`);
+    }
+    warmUp = scheduleCancelWarmUp(slot, resolved, false, options.timeoutMs);
+    const cursor = await db.openCursor(sql, toParams(params), {
+      fetchSize: options.fetchSize,
+      timeoutMs: options.timeoutMs,
+      signal: options.signal,
+      cancelJob: (jobName) => cancelSql(jobName, resolved),
+    });
+    const pool = db;
+    return {
+      columns: cursor.columns,
+      async next() {
+        try {
+          return await cursor.next();
+        } catch (error) {
+          throw await explain(error, pool);
+        }
+      },
+      async close() {
+        clearTimeout(warmUp);
+        await cursor.close();
+      },
+    };
+  } catch (error) {
+    clearTimeout(warmUp);
+    throw await explain(error, db);
   }
 }
 

@@ -1,0 +1,68 @@
+---
+/**
+ * Cycles the theme: system, light, dark. The choice is kept in localStorage
+ * and applied as data-theme on <html>. The inline script in Base.astro's head
+ * applies it before first paint, so the page never flashes the wrong theme.
+ */
+import Monitor from '@lucide/astro/icons/monitor';
+import Moon from '@lucide/astro/icons/moon';
+import Sun from '@lucide/astro/icons/sun';
+---
+<button type="button" class="theme-switch" data-theme-switch aria-label="Theme: system. Switch to light.">
+  <span data-icon="system"><Monitor size={18} stroke-width={1.75} /></span>
+  <span data-icon="light"><Sun size={18} stroke-width={1.75} /></span>
+  <span data-icon="dark"><Moon size={18} stroke-width={1.75} /></span>
+</button>
+
+<script>
+  type Theme = 'system' | 'light' | 'dark';
+  const order: Theme[] = ['system', 'light', 'dark'];
+  const key = 'theme';
+
+  function read(): Theme {
+    try {
+      const value = localStorage.getItem(key);
+      return value === 'light' || value === 'dark' ? value : 'system';
+    } catch {
+      return 'system';
+    }
+  }
+
+  function apply(theme: Theme) {
+    const root = document.documentElement;
+    if (theme === 'system') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', theme);
+    try {
+      if (theme === 'system') localStorage.removeItem(key);
+      else localStorage.setItem(key, theme);
+    } catch {
+      // Storage blocked: the choice lasts for this page only.
+    }
+    const next = order[(order.indexOf(theme) + 1) % order.length];
+    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-theme-switch]')) {
+      button.dataset.current = theme;
+      button.setAttribute('aria-label', `Theme: ${theme}. Switch to ${next}.`);
+      button.title = `Theme: ${theme}`;
+    }
+    document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
+  }
+
+  let current = read();
+  apply(current);
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-theme-switch]')) {
+    button.addEventListener('click', () => {
+      current = order[(order.indexOf(current) + 1) % order.length];
+      apply(current);
+    });
+  }
+</script>
+
+<style>
+  .theme-switch { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; }
+  .theme-switch:hover { color: var(--fg); border-color: var(--muted); }
+  .theme-switch span { display: none; line-height: 0; }
+  .theme-switch:not([data-current]) [data-icon='system'],
+  .theme-switch[data-current='system'] [data-icon='system'],
+  .theme-switch[data-current='light'] [data-icon='light'],
+  .theme-switch[data-current='dark'] [data-icon='dark'] { display: block; }
+</style>

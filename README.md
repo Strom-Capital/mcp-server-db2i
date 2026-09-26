@@ -22,6 +22,8 @@
 
 Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.Strom-Capital/mcp-server-db2i`.
 
+**Website:** [db2i-mcp.com](https://db2i-mcp.com), with a [blog](https://db2i-mcp.com/blog) that explains each release. **Docs:** [mcp-server-db2i.mintlify.app](https://mcp-server-db2i.mintlify.app).
+
 ## Architecture
 
 AI clients connect to the MCP Server in one of two ways. Local clients such as Claude Desktop, Claude Code and Cursor can start it as a process and talk over stdio. Remote clients connect over Streamable HTTP at `/mcp`, signing in with OAuth 2.1 (claude.ai custom connectors) or a bearer token (custom agents). Local clients can also use the HTTP endpoint. The server executes read-only queries against Db2 for i using the IBM i Access ODBC driver (default, no Java), the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`), or Mapepire over SSH (`DB2I_DRIVER=mapepire`) for systems where only SSH is reachable. One server can reach several IBM i systems through connection profiles, each with its own driver.
@@ -88,6 +90,7 @@ graph LR
 - **Statement checks and DDL** - Validate object names, return the SQL that recreates an object, and list what depends on a table
 - **Catalog search and profiling** - Find tables and columns across libraries, check journaling, and profile a table's row counts and value ranges
 - **Column masking** - Redact sensitive columns, or show only their last four characters, in query results. See [Column masking](docs/security.md#column-masking)
+- **Query exports** - Hand the user a CSV or Excel file of a query's results, as a file path over stdio or a short-lived download link over HTTP. The rows never pass through the model. See [Query exports](docs/tools.md#query-exports)
 - **Audit log** - Record every tool call as one JSON line, with the SQL hashed by default. See [Audit log](docs/security.md#audit-log)
 - **Tool reload** - Reload YAML tool files when they change, with `MCP_CUSTOM_TOOLS_WATCH=true`
 - **Resources and prompts** - Read table columns and DDL as MCP resources, and start from prompts that explore a library, explain a table, or write a query. See [Resources and prompts](#resources-and-prompts)
@@ -149,6 +152,7 @@ See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, C
 | Tool | Description |
 |------|-------------|
 | `execute_query` | Execute read-only SELECT queries |
+| `export_query` | Write every row of a read-only query to a CSV or XLSX file: a path over stdio, a short-lived download link over HTTP. Off unless `EXPORT_ENABLED` is set |
 | `list_schemas` | List schemas/libraries (with optional filter) |
 | `list_tables` | List tables in a schema (with optional filter) |
 | `search_tables` | Find tables by name or description across libraries |

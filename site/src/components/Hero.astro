@@ -1,0 +1,58 @@
+---
+import DemoChat from './DemoChat.astro';
+import CopyCommand from './CopyCommand.astro';
+import { links, url } from '../lib/links';
+---
+<section class="hero">
+  <div class="container inner">
+    <div class="copy">
+      <p class="eyebrow">Open source · MCP server for Db2 for i</p>
+      <h1>Ask your IBM i in plain language.</h1>
+      <p class="lead">
+        Claude, Cursor and other AI assistants can read your Db2 for i data, look up tables and check their own SQL.
+        Read-only by design. It connects through the host servers your IBM i already runs, or over SSH,
+        so there is nothing new to install on the system.
+      </p>
+      <CopyCommand command="npx mcp-server-db2i" />
+      <div class="btn-row">
+        <a class="btn btn--primary" href={links.quickstart}>Get started</a>
+        <a class="btn" href={links.github}>View on GitHub</a>
+        <a class="btn" href={links.docs} data-ask-docs="hero">Ask the docs</a>
+      </div>
+    </div>
+    <DemoChat />
+  </div>
+
+  <div class="container">
+    <div class="paths">
+      <a class="path card" href={url('/business')}>
+        <span class="eyebrow">For business teams</span>
+        <strong>New questions for the ERP data you already have</strong>
+        <span class="muted">What it adds to your ERP screens, reports, Excel or BI, and what your IBM i team needs to agree to.</span>
+        <span class="go" aria-hidden="true">Read more →</span>
+      </a>
+      <a class="path card" href={links.quickstart}>
+        <span class="eyebrow">For IBM i teams</span>
+        <strong>Connect a client in a few minutes</strong>
+        <span class="muted">Install from npm or Docker, set three environment variables and point Claude, Cursor or Claude Code at it.</span>
+        <span class="go" aria-hidden="true">Quickstart →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero { padding: var(--space-7) 0 var(--space-6); background: radial-gradient(60rem 30rem at 85% -10%, color-mix(in srgb, var(--spark) 14%, transparent), transparent 70%); }
+  .inner { display: grid; gap: var(--space-6); align-items: center; }
+  @media (min-width: 960px) { .inner { grid-template-columns: 1.05fr 1fr; gap: var(--space-7); } .hero { padding-top: var(--space-8); } }
+  .copy .lead { margin-bottom: var(--space-5); }
+  .btn-row { margin-top: var(--space-4); }
+
+  .paths { display: grid; gap: var(--space-4); margin-top: var(--space-7); }
+  @media (min-width: 720px) { .paths { grid-template-columns: 1fr 1fr; } }
+  .path { display: grid; gap: var(--space-2); text-decoration: none; color: var(--fg); transition: border-color 0.15s, transform 0.15s; }
+  .path:hover { border-color: var(--accent); color: var(--fg); transform: translateY(-1px); }
+  .path .eyebrow { margin: 0; }
+  .path strong { font-size: 1.15rem; }
+  .go { color: var(--accent); font-weight: 600; margin-top: var(--space-2); }
+</style>

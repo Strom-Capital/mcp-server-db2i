@@ -10,6 +10,7 @@
     ".": {
       "package-name": "mcp-server-db2i",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": ["site"],
       "extra-files": [
         { "type": "json", "path": "server.json", "jsonpath": "$.version" },
         { "type": "json", "path": "server.json", "jsonpath": "$.packages[0].version" }

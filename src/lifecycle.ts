@@ -7,6 +7,7 @@
  */
 
 import { stopCustomToolsWatch } from './customTools/watch.js';
+import { closeExportStore } from './export/store.js';
 import { closeAuditLog, writeAuditEvent } from './utils/auditLog.js';
 import { createChildLogger, flushLogger } from './utils/logger.js';
 
@@ -99,6 +100,10 @@ export function createLifecycle(options: LifecycleOptions): Lifecycle {
       }
       await Promise.all(closing);
       await options.closeStdioPools();
+      // Download links end with the process, so their files go too
+      await closeExportStore().catch((err: unknown) => {
+        log.error({ err }, 'Error deleting export files');
+      });
       clearTimeout(deadline);
       finish(0);
     } catch (err) {
