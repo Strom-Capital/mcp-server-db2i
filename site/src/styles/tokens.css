@@ -37,8 +37,12 @@
   --shadow: 0 1px 2px rgb(31 35 40 / 6%), 0 8px 24px rgb(31 35 40 / 6%);
 }
 
+/*
+ * Dark mode follows the system unless the reader picked a theme with the
+ * header switch, which sets data-theme on <html>. Keep both dark blocks equal.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --fg: #f0f6fc;
     --muted: #9198a1;
     --bg: #0d1117;
@@ -52,4 +56,24 @@
     --code-bg: #0d1117;
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --fg: #f0f6fc;
+  --muted: #9198a1;
+  --bg: #0d1117;
+  --bg-subtle: #151b23;
+  --card: #151b23;
+  --line: #3d444d;
+  --accent: #22c55e;
+  --accent-strong: #4ade80;
+  --accent-soft: #052e16;
+  --on-accent: #052e16;
+  --code-bg: #0d1117;
+  --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
 }

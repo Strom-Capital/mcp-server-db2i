@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import Logo from '../components/Logo.astro';
 import AskDocs from '../components/AskDocs.astro';
+import ThemeSwitch from '../components/ThemeSwitch.astro';
 import { links, url } from '../lib/links';
 
 interface Props {
@@ -47,6 +48,13 @@ const favicon =
     <link rel="alternate" type="application/rss+xml" title="Db2 for i MCP Server blog" href={url('/rss.xml')} />
     <link rel="sitemap" href={url('/sitemap-index.xml')} />
     <meta name="color-scheme" content="light dark" />
+    <script is:inline>
+      // Apply a saved theme before first paint. See ThemeSwitch.astro.
+      try {
+        const theme = localStorage.getItem('theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+      } catch {}
+    </script>
     <meta property="og:type" content={type} />
     <meta property="og:site_name" content={siteName} />
     <meta property="og:title" content={title} />
@@ -68,6 +76,7 @@ const favicon =
           <a href={url('/blog')} aria-current={current('/blog')}>Blog</a>
           <a href={links.docs}>Docs</a>
           <a href={links.github} class="gh">GitHub</a>
+          <ThemeSwitch />
         </nav>
       </div>
     </header>
@@ -130,7 +139,7 @@ const favicon =
   .bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: 60px; }
   .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--fg); text-decoration: none; font-weight: 650; letter-spacing: -0.01em; }
   .brand:hover { color: var(--fg); }
-  nav { display: flex; gap: var(--space-4); font-size: 0.95rem; }
+  nav { display: flex; align-items: center; gap: var(--space-4); font-size: 0.95rem; }
   nav a { color: var(--muted); text-decoration: none; white-space: nowrap; }
   nav a:hover, nav a[aria-current] { color: var(--fg); }
 
