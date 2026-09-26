@@ -32,73 +32,158 @@ export interface SchemaCheckResult {
 
 const PARSE_DIALECTS = ['db2', 'mysql'] as const;
 
-const UNPARSEABLE_MESSAGE =
-  'Query could not be parsed, so its libraries could not be checked. ' +
-  'While a schema allowlist is set, system naming (LIB/FILE) and TABLE(...) functions are not accepted.';
+const UNPARSEABLE_CAUSES =
+  'Common causes while a schema allowlist is set: system naming (LIB/FILE), TABLE(...) functions, ' +
+  'or Db2 syntax the checker does not support yet. Try SQL naming (LIB.FILE) or a simpler expression.';
+
+/** Characters of the parsed text shown after the position the parser stopped at */
+const ERROR_SNIPPET_LENGTH = 25;
 
 interface ParsedQuery {
   tables: string[];
   ast: unknown;
 }
 
+interface ParseFailure {
+  line?: number;
+  near?: string;
+}
+
 /**
- * Replace `?` parameter markers with NULL, leaving markers inside quotes alone.
- * The Db2 dialect rejects `?`, and real queries use it for prepared statements.
+ * Apply rewrite to the SQL outside string literals, quoted identifiers and
+ * comments. Those runs are copied unchanged.
  */
-function replaceParameterMarkers(sql: string): string {
+function rewriteCode(sql: string, rewrite: (code: string) => string): string {
   let out = '';
-  let quote: "'" | '"' | null = null;
+  let code = '';
+  let i = 0;
 
-  for (let i = 0; i < sql.length; i++) {
+  const flushCode = (): void => {
+    out += rewrite(code);
+    code = '';
+  };
+
+  while (i < sql.length) {
     const ch = sql[i];
-
-    if (quote) {
-      out += ch;
-      if (ch === quote) {
-        if (sql[i + 1] === quote) {
-          out += sql[++i];
-        } else {
-          quote = null;
-        }
-      }
-      continue;
-    }
+    let end: number;
 
     if (ch === "'" || ch === '"') {
-      quote = ch;
-      out += ch;
+      end = i + 1;
+      while (end < sql.length) {
+        if (sql[end] === ch) {
+          if (sql[end + 1] === ch) {
+            end += 2;
+            continue;
+          }
+          end++;
+          break;
+        }
+        end++;
+      }
+    } else if (ch === '-' && sql[i + 1] === '-') {
+      const newline = sql.indexOf('\n', i);
+      end = newline === -1 ? sql.length : newline;
+    } else if (ch === '/' && sql[i + 1] === '*') {
+      const close = sql.indexOf('*/', i + 2);
+      end = close === -1 ? sql.length : close + 2;
+    } else {
+      code += ch;
+      i++;
       continue;
     }
 
-    if (ch === '?') {
-      out += 'NULL';
-      continue;
-    }
-
-    out += ch;
+    flushCode();
+    out += sql.slice(i, end);
+    i = end;
   }
 
+  flushCode();
   return out;
 }
 
-function normalizeForParsing(sql: string): string {
-  return replaceParameterMarkers(stripTrailingRowLimit(sql));
+/** Db2 for i type names the parser rejects, mapped to ones it reads */
+const TYPE_REPLACEMENTS: Record<string, string> = {
+  NVARCHAR: 'VARCHAR',
+  VARGRAPHIC: 'VARCHAR',
+  NCHAR: 'CHAR',
+  GRAPHIC: 'CHAR',
+  NCLOB: 'VARCHAR',
+  DBCLOB: 'VARCHAR',
+  CLOB: 'VARCHAR',
+  DECFLOAT: 'DECIMAL',
+};
+
+const CAST_TYPE_RE = new RegExp(
+  `\\bAS(\\s+)(${Object.keys(TYPE_REPLACEMENTS).join('|')})\\b(?!\\s*\\.)(\\s*\\([^()]*\\))?`,
+  'gi'
+);
+
+/**
+ * Rewrite Db2 for i data type syntax the parser does not read into forms it
+ * does. Only keywords, integers and type names change, never identifiers, so
+ * the table and function references stay the same.
+ */
+function normalizeDb2Types(code: string): string {
+  return code
+    .replace(/\bCCSID\s+\d+\b/gi, '')
+    .replace(/\bFOR\s+(?:BIT|SBCS|MIXED)\s+DATA\b/gi, '')
+    .replace(CAST_TYPE_RE, (_match, space: string, type: string, args: string | undefined) => {
+      // LOB lengths such as CLOB(1M) take a K, M or G suffix
+      const length = args?.replace(/(\d+)\s*[KMG]\b/gi, '$1') ?? '';
+      return `AS${space}${TYPE_REPLACEMENTS[type.toUpperCase()]}${length}`;
+    });
 }
 
-function parseQuery(sql: string): ParsedQuery | undefined {
+/**
+ * Build the copy of the SQL that is parsed for the check. It is never run.
+ * `?` markers become NULL because the Db2 dialect rejects them.
+ * Exported for tests.
+ */
+export function normalizeForParsing(sql: string): string {
+  return rewriteCode(stripTrailingRowLimit(sql), (code) =>
+    normalizeDb2Types(code.replace(/\?/g, 'NULL'))
+  );
+}
+
+function describeParseError(sql: string, error: unknown): ParseFailure {
+  const start = (error as { location?: { start?: { line?: unknown; offset?: unknown } } } | null)
+    ?.location?.start;
+  if (typeof start?.line !== 'number' || typeof start.offset !== 'number') {
+    return {};
+  }
+  const near = sql
+    .slice(start.offset, start.offset + ERROR_SNIPPET_LENGTH)
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { line: start.line, near: near || undefined };
+}
+
+function unparseableMessage(failure: ParseFailure): string {
+  let position = '';
+  if (failure.line !== undefined) {
+    position = failure.near
+      ? ` (near line ${failure.line}: "${failure.near}")`
+      : ` (at the end of line ${failure.line})`;
+  }
+  return `The query could not be parsed, so its libraries could not be checked${position}. ${UNPARSEABLE_CAUSES}`;
+}
+
+function parseQuery(sql: string): ParsedQuery | ParseFailure {
   const parser = new Parser();
+  let failure: ParseFailure | undefined;
 
   for (const database of PARSE_DIALECTS) {
     try {
       const ast = parser.astify(sql, { database });
       const tables = parser.tableList(sql, { database });
       return { ast, tables };
-    } catch {
-      // The other dialect may accept what this one rejects.
+    } catch (error) {
+      // The other dialect may accept what this one rejects. Report the first.
+      failure ??= describeParseError(sql, error);
     }
   }
 
-  return undefined;
+  return failure ?? {};
 }
 
 function collectCteNames(node: unknown, names: Set<string>): void {
@@ -203,8 +288,8 @@ function schemaOf(entry: string): { schema: string | undefined; table: string } 
  */
 export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): SchemaCheckResult {
   const parsed = parseQuery(normalizeForParsing(sql));
-  if (!parsed) {
-    return { ok: false, violations: [UNPARSEABLE_MESSAGE] };
+  if (!('ast' in parsed)) {
+    return { ok: false, violations: [unparseableMessage(parsed)] };
   }
 
   const cteNames = new Set<string>();
