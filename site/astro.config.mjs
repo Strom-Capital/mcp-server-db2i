@@ -9,4 +9,8 @@ export default defineConfig({
   site: 'https://db2i-mcp.com',
   base: '/',
   integrations: [sitemap()],
+  markdown: {
+    // Dual themes: CodeBlock.astro and global.css pick one with the page theme
+    shikiConfig: { themes: { light: 'vitesse-light', dark: 'vitesse-dark' }, defaultColor: false },
+  },
 });

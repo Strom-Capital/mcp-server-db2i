@@ -3,7 +3,6 @@ title: Open-sourcing an MCP server for Db2 for i
 description: Why I built a way for Claude and Cursor to read IBM i databases directly, and what the first release does.
 date: 2026-01-16T12:00:00Z
 audience: ibmi
-icon: rocket
 tags: [release, announcement]
 originalUrl: https://www.reddit.com/r/IBMi/comments/1qedua2/open_sourced_an_mcp_server_for_db2_for_i_claude/
 ---

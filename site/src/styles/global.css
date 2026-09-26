@@ -14,46 +14,98 @@ body {
 
 img, svg { max-width: 100%; }
 
-a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
-a:hover { color: var(--accent-strong); }
+a { color: var(--fg); text-decoration-color: var(--line-strong); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--accent); text-decoration-color: currentColor; }
 
-h1, h2, h3 { line-height: 1.2; letter-spacing: -0.015em; margin: 0 0 var(--space-3); }
-h1 { font-size: clamp(2.1rem, 5.5vw, 3.4rem); letter-spacing: -0.03em; }
-h2 { font-size: clamp(1.5rem, 3.2vw, 2rem); }
-h3 { font-size: 1.1rem; }
+h1, h2, h3 { font-weight: 400; line-height: 1.05; letter-spacing: -0.03em; margin: 0 0 var(--space-4); text-wrap: balance; }
+h1 { font-size: clamp(2.6rem, 7.4vw, 6rem); line-height: 0.98; letter-spacing: -0.045em; }
+h2 { font-size: clamp(2.1rem, 5vw, 4rem); line-height: 1; letter-spacing: -0.04em; }
+h3 { font-size: 1.1rem; font-weight: 500; letter-spacing: -0.01em; line-height: 1.3; }
 p { margin: 0 0 var(--space-4); }
+strong { font-weight: 500; }
 
-code, pre, kbd { font-family: var(--font-mono); font-size: 0.9em; }
-:not(pre) > code { background: var(--bg-subtle); border: 1px solid var(--line); border-radius: 6px; padding: 0.1em 0.35em; }
-pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: var(--space-4); overflow-x: auto; line-height: 1.5; }
+code, pre, kbd { font-family: var(--font-mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-input); padding: 0.05em 0.35em; }
+pre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-code); padding: var(--space-4); overflow-x: auto; line-height: 1.65; }
 
-.container { width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 var(--space-4); }
-@media (min-width: 720px) { .container { padding: 0 var(--space-5); } }
+/* Highlighted code (Shiki dual themes, see astro.config.mjs) with a header and copy button (CodeCopy.astro) */
+.astro-code { background: var(--surface); }
+.astro-code span { color: var(--shiki-light); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .astro-code span { color: var(--shiki-dark); } }
+:root[data-theme='dark'] .astro-code span { color: var(--shiki-dark); }
+.code { border: 1px solid var(--line); border-radius: var(--radius-code); background: var(--surface); overflow: hidden; margin: var(--space-5) 0; }
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 8px 7px 14px; border-bottom: 1px solid var(--line); font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.code-head button { font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--bg); background: var(--fg); border: 0; border-radius: var(--radius-btn); padding: 6px 10px; cursor: pointer; }
+.code-head button:hover { background: var(--accent); color: var(--on-accent); }
+.code pre.astro-code { margin: 0 !important; border: 0; border-radius: 0; background: transparent !important; font-size: 0.85rem; }
 
-.section { padding: var(--space-8) 0; }
-.section--subtle { background: var(--bg-subtle); border-block: 1px solid var(--line); }
-.eyebrow { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: var(--space-2); }
-.lead { font-size: 1.15rem; color: var(--muted); max-width: 42rem; }
+/* Screenshots with a light and a dark version, following the page theme (including the header switch) */
+.shot .light { display: block; }
+.shot .dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .shot .light { display: none; }
+  :root:not([data-theme='light']) .shot .dark { display: block; }
+}
+:root[data-theme='dark'] .shot .light { display: none; }
+:root[data-theme='dark'] .shot .dark { display: block; }
+
+/* Layout */
+.container { width: 100%; max-width: var(--max); margin: 0 auto; padding-inline: var(--gutter); }
+.section { padding-block: var(--space-8) 88px; }
+.section--tight { padding-top: 0; }
+
+/* Section heading: a mono label directly above a large heading and lead */
+.sec-head { display: grid; gap: var(--space-4); margin-bottom: var(--space-7); }
+.sec-head h2, .sec-head h1 { margin: 0; max-width: 16ch; }
+.sec-head .lead { margin: var(--space-5) 0 0; }
+
+/* Smaller heading for blocks inside a section, such as the query example and the audience paths */
+.mini-head { display: grid; gap: var(--space-3); margin-bottom: var(--space-6); }
+.mini-head h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.25rem); letter-spacing: -0.03em; max-width: 24ch; }
+
+/* Type helpers */
+.label { font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.lead { font-size: 1.15rem; line-height: 1.55; color: var(--muted); max-width: 56ch; }
 .muted { color: var(--muted); }
 
+/* Actions */
 .btn {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: 10px 18px; border-radius: var(--radius-sm);
-  font: 600 0.95rem/1.2 var(--font-sans); text-decoration: none;
-  border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 13px 18px; border-radius: var(--radius-btn);
+  font: 500 0.95rem/1 var(--font-sans); text-decoration: none;
+  border: 1px solid var(--line-strong); background: transparent; color: var(--fg);
   cursor: pointer;
 }
-.btn:hover { border-color: var(--muted); color: var(--fg); }
+.btn:hover { color: var(--fg); background: var(--surface); }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn--primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
-.btn-row { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.btn-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); }
+.link-rule { font-weight: 500; text-decoration: none; border-bottom: 1px solid var(--line-strong); padding-bottom: 3px; }
+.link-rule:hover { border-color: var(--accent); }
 
-.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-5); }
+/* Ruled rows instead of cards */
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows > * { border-top: 1px solid var(--line); }
+.rows > *:first-child { border-top: 0; }
 
-.grid { display: grid; gap: var(--space-4); }
-@media (min-width: 640px) { .grid--2 { grid-template-columns: repeat(2, 1fr); } .grid--3 { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 960px) { .grid--3 { grid-template-columns: repeat(3, 1fr); } .grid--4 { grid-template-columns: repeat(4, 1fr); } }
+/* Hairline panel for the few things that are separate objects (a copyable summary, a code sample) */
+.panel { background: var(--surface); border: 1px solid var(--line); padding: var(--space-5); }
+
+/* Spec block: key/value pairs in mono */
+.spec { font: 12.5px/1 var(--font-mono); margin: 0; }
+.spec .spec-title { display: flex; justify-content: space-between; font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg); padding-bottom: 10px; border-bottom: 1px solid var(--line-strong); }
+.spec dl { margin: 0; }
+.spec dl div { display: grid; grid-template-columns: 128px 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.spec dt { color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.spec dd { margin: 0; }
+.spec.untitled dl { border-top: 1px solid var(--line-strong); }
+.spec .on { color: var(--accent); }
+
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

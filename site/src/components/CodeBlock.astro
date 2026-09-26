@@ -1,0 +1,19 @@
+---
+/**
+ * A highlighted code block with a language label and a copy button. Uses the
+ * same Shiki themes as Markdown (astro.config.mjs); CodeCopy.astro adds the button.
+ */
+import { Code } from 'astro:components';
+import type { ComponentProps } from 'astro/types';
+
+type Lang = ComponentProps<typeof Code>['lang'];
+
+interface Props {
+  code: string;
+  lang: Lang;
+  /** Shown in the header instead of the language name. */
+  title?: string;
+}
+const { code, lang, title } = Astro.props;
+---
+<Code code={code} lang={lang} themes={{ light: 'vitesse-light', dark: 'vitesse-dark' }} defaultColor={false} data-title={title} />

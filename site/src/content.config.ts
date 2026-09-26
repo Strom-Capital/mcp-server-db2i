@@ -16,11 +16,6 @@ const blog = defineCollection({
     date: z.coerce.date(),
     /** Main reader: IBM i teams or business readers. */
     audience: z.enum(['ibmi', 'business']),
-    /** Lucide icon shown on the post's card. Add new names to `postIcons` in src/lib/posts.ts too. */
-    icon: z.enum([
-      'book-open-text', 'file-code', 'key-round', 'lock', 'message-circle-question-mark', 'network',
-      'rocket', 'search-check', 'shield-check', 'telescope', 'terminal', 'timer',
-    ]),
     tags: z.array(z.string()).default([]),
     /** Where the post first appeared, if it was published elsewhere first. */
     originalUrl: z.url().optional(),

@@ -3,7 +3,6 @@ title: Let IBM i check the model's work
 description: Three tools that push validation to the system itself, so the model finds out about a wrong column name before anything runs.
 date: 2026-09-23T12:00:00Z
 audience: ibmi
-icon: search-check
 tags: [release, tools]
 ---
 

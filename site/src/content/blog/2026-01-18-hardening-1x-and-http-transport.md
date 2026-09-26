@@ -3,7 +3,6 @@ title: Hardening 1.x, and an HTTP transport
 description: A stricter SQL validator, rate limits and result limits, Docker secrets, and a way for web apps and agents to connect over HTTP.
 date: 2026-01-18T12:00:00Z
 audience: ibmi
-icon: shield-check
 tags: [release, security, http]
 ---
 

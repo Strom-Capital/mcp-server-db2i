@@ -1,0 +1,38 @@
+---
+/**
+ * Adds a header with the language and a copy button to every highlighted code
+ * block on the page (Markdown fences and CodeBlock.astro). Included once, in Base.astro.
+ */
+---
+<script>
+  const labels: Record<string, string> = { bash: 'Shell', sh: 'Shell', shell: 'Shell', json: 'JSON', yaml: 'YAML', dotenv: '.env', sql: 'SQL', ts: 'TypeScript', js: 'JavaScript' };
+
+  function enhance(pre: HTMLPreElement) {
+    if (pre.parentElement?.classList.contains('code')) return;
+    const lang = pre.dataset.language ?? '';
+    const wrap = document.createElement('div');
+    wrap.className = 'code';
+    const head = document.createElement('div');
+    head.className = 'code-head';
+    const name = document.createElement('span');
+    name.textContent = pre.dataset.title || labels[lang] || lang || 'Code';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Copy';
+    button.setAttribute('aria-label', 'Copy code');
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(pre.innerText.replace(/\n$/, ''));
+        button.textContent = 'Copied';
+      } catch {
+        button.textContent = 'Press Ctrl+C';
+      }
+      setTimeout(() => (button.textContent = 'Copy'), 1600);
+    });
+    head.append(name, button);
+    pre.replaceWith(wrap);
+    wrap.append(head, pre);
+  }
+
+  for (const pre of document.querySelectorAll<HTMLPreElement>('pre.astro-code')) enhance(pre);
+</script>

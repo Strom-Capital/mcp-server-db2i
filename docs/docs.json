@@ -4,35 +4,70 @@
   "name": "Db2 for i MCP Server",
   "description": "MCP server for IBM Db2 for i: read-only SQL and catalog metadata for AI assistants.",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#22C55E",
-    "dark": "#15803D"
+    "primary": "#3159E8",
+    "light": "#7D97FF",
+    "dark": "#2447C9"
   },
   "logo": {
-    "light": "/assets/wordmark.svg",
-    "dark": "/assets/wordmark-dark.svg"
+    "light": "/assets/brand/svg/lockup-primary.svg",
+    "dark": "/assets/brand/svg/lockup-dark.svg"
   },
-  "favicon": {
-    "light": "/assets/logo.svg",
-    "dark": "/assets/logo-dark.svg"
+  "favicon": "/assets/brand/svg/favicon.svg",
+  "appearance": {
+    "default": "system"
+  },
+  "background": {
+    "color": {
+      "light": "#F3F1EB",
+      "dark": "#121312"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Geist",
+      "source": "/assets/fonts/Geist-Variable.woff2",
+      "format": "woff2",
+      "weight": 500
+    },
+    "body": {
+      "family": "Geist",
+      "source": "/assets/fonts/Geist-Variable.woff2",
+      "format": "woff2",
+      "weight": 400
+    }
   },
   "navigation": {
     "groups": [
       {
         "group": "Getting started",
-        "pages": ["index", "quickstart", "client-setup", "use-cases"]
+        "pages": [
+          "index",
+          "quickstart",
+          "client-setup",
+          "use-cases"
+        ]
       },
       {
         "group": "Reference",
-        "pages": ["tools", "configuration", "custom-tools"]
+        "pages": [
+          "tools",
+          "configuration",
+          "custom-tools"
+        ]
       },
       {
         "group": "Deployment",
-        "pages": ["http-transport", "docker", "security"]
+        "pages": [
+          "http-transport",
+          "docker",
+          "security"
+        ]
       },
       {
         "group": "Contributing",
-        "pages": ["development"]
+        "pages": [
+          "development"
+        ]
       }
     ],
     "global": {

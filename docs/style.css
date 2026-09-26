@@ -1,0 +1,37 @@
+/*
+ * Brand overrides for the Mintlify docs (docs/assets/brand/README.md).
+ * The palette, background and Geist come from docs.json. This file adds IBM Plex
+ * Mono for code, smaller corner radii and calmer headings. Keep it small: Mintlify
+ * class names change, so only stable ids and broad selectors are used.
+ */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/assets/fonts/IBMPlexMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/assets/fonts/IBMPlexMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+code, pre, kbd, samp {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+}
+
+/* Headings: regular weight, tight tracking */
+#content-area h1, #header h1 { font-weight: 400; letter-spacing: -0.035em; }
+#content-area h2, #content-area h3 { font-weight: 500; letter-spacing: -0.02em; }
+
+/* Small radii and no shadows on cards, callouts, code blocks and tables */
+#content-area [class*="rounded-xl"],
+#content-area [class*="rounded-2xl"],
+#content-area [class*="rounded-lg"] { border-radius: 4px !important; }
+#content-area [class*="shadow"] { box-shadow: none !important; }
+
+/* Inline code: hairline, not a pill */
+#content-area :not(pre) > code { border-radius: 2px; }

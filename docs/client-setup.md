@@ -265,6 +265,19 @@ Once connected, you can ask the AI assistant:
 - "Count the records in ORDERS where YEAR = 2024"
 - "Find customers with no orders in the last year"
 
+## Claude for Excel
+
+Claude for Excel, the Claude add-in for Microsoft Excel, can use this server through a claude.ai connector. People ask in the Claude sidebar in Excel, and Claude queries Db2 for i and puts the results in the sheet.
+
+It needs the same setup as claude.ai:
+
+1. Run the server over HTTP with OAuth at a public HTTPS address. See [Remote clients (OAuth)](http-transport.md#remote-clients-oauth).
+2. Limit who can reach it to the clients' address ranges. See [Limiting who can reach the server](http-transport.md#limiting-who-can-reach-the-server).
+3. Add the server as a custom connector in claude.ai: **Settings > Connectors > Add custom connector**. On Team and Enterprise plans, an owner may need to add it for the organization.
+4. In Excel, open Claude with the same Claude account. The connector is available from the sidebar.
+
+Claude for Excel needs a paid Claude plan. As with any assistant, query results go to Claude; see [Where data goes](security.md#where-data-goes).
+
 ## Troubleshooting
 
 ### Connection Issues

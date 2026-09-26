@@ -3,7 +3,6 @@ title: "What \"open order\" means at your company"
 description: How your own business definitions, written down once, keep an AI assistant from guessing about your ERP data. Explained without the technical detail.
 date: 2026-09-26T12:00:00Z
 audience: business
-icon: book-open-text
 tags: [business, business-tools]
 ---
 

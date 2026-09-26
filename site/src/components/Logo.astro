@@ -1,18 +1,34 @@
 ---
 /**
- * The project logo drawn inline. Strokes follow the text color, so it works in
- * both themes. Same shapes as docs/assets/logo.svg and the sign-in page.
+ * The db2i/mcp route mark, or the mark with the outlined wordmark (the lockup),
+ * inlined from docs/assets/brand/svg. Ink follows the text color, and the end
+ * node and the slash use --accent, so both work in light and dark.
  */
-interface Props { size?: number; class?: string }
-const { size = 32, class: className } = Astro.props;
+import markSvg from '../../../docs/assets/brand/svg/mark-primary.svg?raw';
+import lockupSvg from '../../../docs/assets/brand/svg/lockup-primary.svg?raw';
+
+interface Props {
+  variant?: 'mark' | 'lockup';
+  /** Rendered height in px. */
+  height?: number;
+  class?: string;
+}
+const { variant = 'mark', height = 24, class: className } = Astro.props;
+
+/** Swap the brand colors for currentColor and the accent token, and set the size. */
+function themed(svg: string): string {
+  return svg
+    .replace(/fill="#161716"/g, 'fill="currentColor"')
+    .replace(/stroke="#161716"/g, 'stroke="currentColor"')
+    .replace(/fill="#3159E8"/g, 'style="fill:var(--accent)"')
+    .replace(/stroke="#3159E8"/g, 'style="stroke:var(--accent)"')
+    .replace(/ role="img" aria-label="[^"]*"/, ' aria-hidden="true" focusable="false"')
+    .replace('<svg ', `<svg height="${height}" class="${['logo', className].filter(Boolean).join(' ')}" `);
+}
+const html = themed(variant === 'lockup' ? lockupSvg : markSvg);
 ---
-<svg class={className} xmlns="http://www.w3.org/2000/svg" viewBox="54 42 160 142" width={size} height={Math.round(size * 142 / 160)} fill="none" aria-hidden="true">
-  <g stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="116" cy="96" rx="54" ry="20" />
-    <path d="M62 96v30c0 11 24 20 54 20s54-9 54-20V96" />
-    <path d="M62 126c0 11 24 20 54 20s54-9 54-20" />
-    <path d="M62 126v30c0 11 24 20 54 20s54-9 54-20v-30" />
-    <path d="M62 156c0 11 24 20 54 20s54-9 54-20" />
-  </g>
-  <path d="M184 48C184 62 192 70 206 70C192 70 184 78 184 92C184 78 176 70 162 70C176 70 184 62 184 48Z" fill="#22C55E" />
-</svg>
+<Fragment set:html={html} />
+
+<style is:global>
+  svg.logo { display: block; width: auto; flex: none; }
+</style>

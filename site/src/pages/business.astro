@@ -1,163 +1,187 @@
 ---
-import AppWindow from '@lucide/astro/icons/app-window';
-import ChartColumn from '@lucide/astro/icons/chart-column';
-import Factory from '@lucide/astro/icons/factory';
-import Handshake from '@lucide/astro/icons/handshake';
-import Landmark from '@lucide/astro/icons/landmark';
-import NotebookPen from '@lucide/astro/icons/notebook-pen';
-import Scale from '@lucide/astro/icons/scale';
-import Sheet from '@lucide/astro/icons/sheet';
-import Truck from '@lucide/astro/icons/truck';
-import UserCog from '@lucide/astro/icons/user-cog';
-import Wrench from '@lucide/astro/icons/wrench';
-import IconTile from '../components/IconTile.astro';
 import Base from '../layouts/Base.astro';
 import { links, url } from '../lib/links';
 
 const questions = [
-  { area: 'Sales', icon: Handshake, items: ['Which customers ordered less this quarter than last?', 'What is still open on our ten largest orders, and when is it due?'] },
-  { area: 'Purchasing', icon: Truck, items: ['Which purchase orders are late, and from which suppliers?', 'Which items have we bought from more than one supplier this year, and at what prices?'] },
-  { area: 'Service', icon: Wrench, items: ['Which service orders have been open longest, and for which customers?', 'Which items come back for repair most often?'] },
-  { area: 'Manufacturing', icon: Factory, items: ['Which work orders are behind schedule this week?', 'Which components are short for the orders due next month?'] },
-  { area: 'Finance', icon: Landmark, items: ['Which customers have invoices more than 60 days overdue?', 'How do this month’s sales compare with the same month last year, by product group?'] },
+  { area: 'Sales', items: ['Which customers ordered less this quarter than last?', 'What is still open on our ten largest orders, and when is it due?'] },
+  { area: 'Purchasing', items: ['Which purchase orders are late, and from which suppliers?', 'Which items have we bought from more than one supplier this year, and at what prices?'] },
+  { area: 'Service', items: ['Which service orders have been open longest, and for which customers?', 'Which items come back for repair most often?'] },
+  { area: 'Manufacturing', items: ['Which work orders are behind schedule this week?', 'Which components are short for the orders due next month?'] },
+  { area: 'Finance', items: ['Which customers have invoices more than 60 days overdue?', 'How do this month’s sales compare with the same month last year, by product group?'] },
 ];
 
-const summary = `mcp-server-db2i is an open-source MCP server (MIT) that lets AI assistants such as Claude and Cursor read Db2 for i.
-- Read-only: a read-only connection, a SQL validator and a query timeout that cancels on the IBM i.
-- People sign in with their own IBM i profile (OAuth), so object authority and exit programs apply as usual.
-- A library allowlist, column masking and an audit log of every tool call.
-- Connects with the IBM i Access ODBC driver, JT400, or Mapepire over SSH. Nothing is installed on the IBM i.
-Quickstart: ${links.quickstart}
-Security: ${links.security}`;
+const siteUrl = new URL(url('/'), Astro.site).href;
+
+/** The docs assistant needs the Mintlify widget. Without it, "Ask the docs" would only open the technical docs. */
+const hasDocsAssistant = Boolean(import.meta.env.PUBLIC_MINTLIFY_WIDGET_ID);
+
+const emailSubject = 'Could we try an AI assistant on our ERP data?';
+
+const summary = `Hi,
+
+I came across mcp-server-db2i, an open-source, self-hosted tool that lets AI assistants such as Claude answer questions about our ERP data in plain language. It only reads data, people sign in with their own credentials, and it also works inside Excel through Claude for Excel. It is free.
+
+I'd like to use it for the one-off questions we don't have reports for. Could you take a look and let me know if we could try it?
+
+Overview: ${siteUrl}
+Security: ${links.security}
+Setup: ${links.quickstart}
+
+Thanks!`;
 ---
 <Base
   title="For business teams"
-  description="Ask new questions of the ERP data on your IBM i in plain language, alongside the screens, reports, Excel workbooks and BI tools you already use."
+  description="Ask new questions of the ERP data on your IBM i in plain language, next to the screens, reports, Excel workbooks and BI tools you already use."
   starterQuestions={[
-    'What does my IBM i team need to set up?',
+    'What does my IT team need to set up?',
     'How is our data kept read-only and private?',
-    'Can people sign in with their own IBM i user?',
+    'Can everyone sign in with their own user?',
   ]}
 >
+
   <section class="hero">
     <div class="container">
-      <p class="eyebrow">For business teams</p>
-      <h1>New questions for the ERP data you already have</h1>
+      <p class="label">For business teams</p>
+      <h1>For the questions that don't have a report yet.</h1>
       <p class="lead">
-        If your ERP runs on IBM i, years of orders, customers, items and invoices are already there.
-        This project lets your team ask that data new questions in plain language, through an AI assistant,
-        alongside everything you use today.
+        If your ERP runs on IBM i (many still call it AS/400), years of orders, customers, items and invoices are already there.
+        Your team can ask about them in plain language, in an AI assistant such as Claude, and get the answer
+        from live data. Your reports and tools stay as they are.
       </p>
       <div class="btn-row">
-        <a class="btn btn--primary" href={links.docs} data-ask-docs="business-hero">Ask the docs</a>
-        <a class="btn" href="#send-to-it">Send this to your IBM i team</a>
+        <a class="btn btn--primary" href="#send-to-it">Send this to your IT team <span aria-hidden="true">↓</span></a>
+        {hasDocsAssistant && <a class="link-rule" href={links.docs} data-ask-docs="business-hero">Ask the docs</a>}
       </div>
     </div>
   </section>
 
   <section class="section">
     <div class="container">
-      <h2>It works with what you already have</h2>
-      <p class="lead">Most companies with an ERP on IBM i get their answers in one of three ways. Each does its job well, and each was built with care by people who know the business.</p>
-      <div class="grid grid--3 setups">
-        <div class="card">
-          <IconTile icon={AppWindow} />
-          <h3>ERP screens and reports</h3>
-          <p class="muted">The system your team works in every day, with the reports that were built for it.</p>
-        </div>
-        <div class="card">
-          <IconTile icon={Sheet} />
-          <h3>Excel over ODBC</h3>
-          <p class="muted">Workbooks that pull straight from the ERP, shaped by someone who knows exactly which fields matter.</p>
-        </div>
-        <div class="card">
-          <IconTile icon={ChartColumn} />
-          <h3>A warehouse or BI tool</h3>
-          <p class="muted">Dashboards and reports on data that has been modeled for the questions the business asks most.</p>
+      <div class="sec-head">
+        <p class="label">Today</p>
+        <div>
+          <h2>Next to what you already have.</h2>
+          <p class="lead">Companies with an ERP like yours usually get their answers in one of three ways. Each one handles the questions it was built for.</p>
         </div>
       </div>
+      <div class="cols3">
+        <div><h3>ERP screens and reports</h3><p class="muted">The system your team works in every day, with the reports that were built for it.</p></div>
+        <div><h3>Excel linked to the ERP</h3><p class="muted">Workbooks that pull data straight from the ERP, so the numbers land in a sheet your team can work with.</p></div>
+        <div><h3>A data warehouse or BI tool</h3><p class="muted">ERP data copied into a warehouse or data lake, with dashboards and reports on top.</p></div>
+      </div>
       <p class="bridge">
-        Then there is the question that comes up on a Tuesday afternoon and doesn't have a report yet.
-        That is where this fits in. It doesn't replace any of the above. It gives you a way to ask the one-off question
-        straight away, against live data, and it reuses what your existing reports and queries already know.
+        Then there is the one-off question, such as why a large customer ordered less this month.
+        This is for those. It reads the ERP's own database directly. It doesn't connect to your reports,
+        spreadsheets or warehouse, and it doesn't replace them. If your reports use their own
+        definitions, such as what counts as an open order, your IT team can give the assistant the same ones.
+      </p>
+      <p class="erp-note">
+        Works with any business data in Db2 for i: ERPs such as JD Edwards, Infor LX, XA and System21, SAP on IBM i
+        and Iptor DC1, and also banking, insurance, warehouse and in-house systems. Not affiliated with any of these
+        vendors; product names are trademarks of their owners.
       </p>
     </div>
   </section>
 
-  <section class="section section--subtle">
+  <section class="section section--tight">
     <div class="container">
-      <h2>The kind of questions people ask</h2>
-      <p class="lead">Your team types a question. The assistant finds the right tables, writes a read-only query, and answers with the numbers.</p>
-      <div class="grid grid--3 questions">
+      <div class="sec-head">
+        <p class="label">Examples</p>
+        <div>
+          <h2>The kind of questions people ask.</h2>
+          <p class="lead">Your team types a question. The assistant finds where the data is, looks it up, and answers with the numbers.</p>
+        </div>
+      </div>
+      <div class="groups">
         {questions.map((q) => (
-          <div class="card">
-            <IconTile icon={q.icon} />
-            <h3>{q.area}</h3>
-            <ul>{q.items.map((item) => <li>“{item}”</li>)}</ul>
+          <div class="group">
+            <p class="label">{q.area}</p>
+            <ul class="rows">{q.items.map((item) => <li>“{item}”</li>)}</ul>
           </div>
         ))}
       </div>
     </div>
   </section>
 
-  <section class="section">
+  <section class="section section--tight">
+    <div class="container excel">
+      <div class="sec-head">
+        <p class="label">In Excel</p>
+        <div>
+          <h2>Ask from Excel, too.</h2>
+          <p class="lead">
+            With Claude for Excel, people ask the question in the Claude sidebar and the answer goes straight into the
+            sheet. It uses the same connection and sign-in, so your IT team sets it up once for both.
+          </p>
+          <a class="link-rule" href={links.claudeForOffice}>About Claude for Excel</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight">
     <div class="container two">
       <div>
-        <h2>Your definitions, not the model's guesses</h2>
+        <p class="label">Definitions</p>
+        <h2 class="h2s">Your definitions, not the assistant's guesses.</h2>
         <p>
-          Every company has its own meaning of “open order”, “active customer” or “on time”. Your IBM i team can write
-          those definitions down once, in a plain text file: what a status code means, how two tables join, which query
-          answers “late purchase orders”.
+          Every company has its own meaning of “open order”, “active customer” or “on time”. Your IT team can write
+          those definitions down once: what a status code means, which data belongs together, and how to answer common
+          questions such as “late purchase orders”.
         </p>
         <p>
           The assistant then uses your definitions instead of guessing. The logic that already lives in your reports and
           Excel queries is a good place to start.
         </p>
-        <a href={links.customTools}>How business definitions work →</a>
+        <a class="link-rule" href={links.customTools}>How business definitions work <span aria-hidden="true">→</span></a>
       </div>
       <div>
-        <h2>Why your IBM i team can say yes</h2>
-        <ul class="ticks">
-          <li><strong>Read-only at three levels.</strong> A read-only connection, a check that only allows queries, and a time limit that stops long queries on the IBM i.</li>
-          <li><strong>Everyone signs in as themselves.</strong> People use their own IBM i user, so they see exactly what they can see today.</li>
-          <li><strong>You choose what is visible.</strong> Only the libraries you allow, with sensitive columns hidden or masked.</li>
-          <li><strong>Everything is logged.</strong> Every request is written to an audit log.</li>
-          <li><strong>The data stays on your IBM i.</strong> Nothing is copied into a new database.</li>
+        <p class="label">Safeguards</p>
+        <h2 class="h2s">What it can and can't do with your data.</h2>
+        <ul class="rows ticks">
+          <li><strong>It only reads.</strong> It can look data up but never change it, and every request is checked before it runs. If a question takes too long, it is stopped automatically so it doesn't keep your system busy.</li>
+          <li><strong>Everyone signs in as themselves.</strong> People sign in with their own user on the system, often the same user name and password as for the ERP. The system decides what each person can read.</li>
+          <li><strong>You choose what is visible.</strong> Your IT team decides which parts of the ERP data it can see, and can hide sensitive fields such as personal details.</li>
+          <li><strong>Everything is logged.</strong> Every request is recorded, so your IT team can see what was asked.</li>
+          <li><strong>No copy of your database.</strong> Nothing is copied into a new database. The answer to each question goes to the AI assistant you use, so use one your company has approved.</li>
         </ul>
-        <a href={links.security}>Security details →</a>
+        <a class="link-rule" href={links.security}>Security details <span aria-hidden="true">→</span></a>
       </div>
     </div>
   </section>
 
-  <section class="section section--subtle">
+  <section class="section section--tight">
     <div class="container">
-      <h2>Good to know</h2>
-      <div class="grid grid--3">
-        <div class="card"><IconTile icon={UserCog} /><h3>Someone sets it up once</h3><p class="muted">Your IBM i team installs and configures the server. After that, people only add a link in their assistant and sign in.</p></div>
-        <div class="card"><IconTile icon={Scale} /><h3>It is not your financial reporting</h3><p class="muted">Official figures still come from the reports your finance team relies on. This is for exploring and for the questions in between.</p></div>
-        <div class="card"><IconTile icon={NotebookPen} /><h3>Better notes, better answers</h3><p class="muted">The assistant is only as good as what it knows about your tables. A few definitions make a big difference.</p></div>
+      <div class="sec-head">
+        <p class="label">Good to know</p>
+        <div><h2>Before you start.</h2></div>
+      </div>
+      <div class="cols3">
+        <div><p class="label">Setup</p><h3>Someone sets it up once</h3><p class="muted">Your IT team sets it up. After that, people only add a link in their assistant and sign in.</p></div>
+        <div><p class="label">Scope</p><h3>It is not your financial reporting</h3><p class="muted">Official figures still come from the reports your finance team relies on. This is for exploring and for the questions in between.</p></div>
+        <div><p class="label">Quality</p><h3>Better notes, better answers</h3><p class="muted">The assistant is only as good as what it knows about your data. A few definitions make a big difference.</p></div>
       </div>
     </div>
   </section>
 
-  <section class="section" id="send-to-it">
-    <div class="container two">
-      <div>
-        <h2>Next step</h2>
-        <p>
-          Ask the documentation assistant anything about setup, security or what it can do. Or send the summary on the
-          right to your IBM i team. It is free and open source, with nothing to buy.
-        </p>
-        <div class="btn-row">
-          <a class="btn btn--primary" href={links.docs} data-ask-docs="business-next">Ask the docs</a>
-          <a class="btn" href={url('/blog')}>Read the blog</a>
+  <section class="section section--tight" id="send-to-it">
+    <div class="container next">
+      <div class="sec-head">
+        <p class="label">Next step</p>
+        <div>
+          <h2>Share it with your IT team.</h2>
+          <p class="lead">
+            Copy the email below and send it to your IT team. It links to the security and setup
+            docs, so they have what they need to decide.
+          </p>
         </div>
       </div>
-      <div class="card share">
+      <div class="panel share">
         <div class="share-head">
-          <strong>For your IBM i team</strong>
-          <button type="button" class="btn" data-copy-summary>Copy</button>
+          <span class="label">Email to your IT team</span>
+          <button type="button" class="copy" data-copy-summary data-track="it_email_copied">Copy email</button>
         </div>
+        <p class="subject"><span class="label">Subject</span> {emailSubject}</p>
         <pre id="summary">{summary}</pre>
       </div>
     </div>
@@ -174,24 +198,47 @@ Security: ${links.security}`;
     } catch {
       button.textContent = 'Select and copy';
     }
-    setTimeout(() => (button.textContent = 'Copy'), 1600);
+    setTimeout(() => (button.textContent = 'Copy email'), 1600);
   });
 </script>
 
 <style>
-  .hero { padding: var(--space-7) 0 var(--space-5); background: radial-gradient(50rem 26rem at 90% -10%, color-mix(in srgb, var(--spark) 14%, transparent), transparent 70%); }
-  .hero h1 { max-width: 18ch; }
-  .hero .lead { margin-bottom: var(--space-5); }
-  .setups, .questions { margin-top: var(--space-5); }
-  .setups p, .questions ul { margin: 0; }
-  .bridge { max-width: 46rem; margin-top: var(--space-6); font-size: 1.1rem; }
-  .questions ul { padding-left: 1.1em; display: grid; gap: 6px; color: var(--muted); }
-  .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
-  @media (min-width: 900px) { .two { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-7); } }
-  .ticks { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: grid; gap: var(--space-3); }
-  .ticks li { padding-left: 1.6em; position: relative; }
-  .ticks li::before { content: '✓'; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+  .hero { padding-block: 112px 72px; }
+  .hero h1 { margin: 18px 0 28px; max-width: 16ch; }
+  .hero .lead { margin-bottom: 36px; }
+  .cols3 { display: grid; border-top: 1px solid var(--line-strong); }
+  @media (min-width: 900px) { .cols3 { grid-template-columns: repeat(3, 1fr); } }
+  .cols3 > div { display: grid; gap: 10px; align-content: start; padding: 22px 0 28px; }
+  .cols3 > div + div { border-top: 1px solid var(--line); }
+  @media (min-width: 900px) {
+    .cols3 > div { padding-right: 28px; }
+    .cols3 > div + div { border-top: 0; border-left: 1px solid var(--line); padding-left: 28px; }
+  }
+  .cols3 h3 { margin: 0; font-size: 1.4rem; font-weight: 400; letter-spacing: -0.02em; }
+  .cols3 p.muted { margin: 0; }
+  .bridge { max-width: 52ch; margin-top: var(--space-7); font-size: 1.3rem; line-height: 1.45; letter-spacing: -0.01em; }
+  .erp-note { max-width: 70ch; margin: var(--space-5) 0 0; font-size: 0.9rem; color: var(--muted); }
+  .groups { border-top: 1px solid var(--line-strong); }
+  .group { display: grid; gap: 8px 64px; padding-block: 20px 24px; border-bottom: 1px solid var(--line); }
+  @media (min-width: 1000px) { .group { grid-template-columns: 200px minmax(0, 1fr); } }
+  .group .rows li { padding: 8px 0; font-size: 1.1rem; }
+  .group .rows li:first-child { padding-top: 0; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-7); padding-top: var(--space-6); position: relative; }
+  @media (min-width: 900px) { .two { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 64px; } }
+  .two > div > .label { margin-bottom: var(--space-4); }
+  .h2s { font-size: clamp(1.8rem, 3.4vw, 2.6rem); max-width: 18ch; margin-bottom: var(--space-5); }
+  .two p { max-width: 58ch; }
+  .ticks { margin: 0 0 var(--space-5); }
+  .ticks li { padding: 12px 0 12px 22px; position: relative; }
+  .ticks li::before { content: ''; position: absolute; left: 0; top: 20px; width: 7px; height: 7px; background: var(--accent); }
+  .next { padding-top: var(--space-6); position: relative; }
+  /* The top rule spans the content, not the container's side padding */
+  .two::before, .next::before { content: ''; position: absolute; top: 0; left: var(--gutter); right: var(--gutter); height: 1px; background: var(--line-strong); }
+  .share { max-width: 760px; padding: var(--space-5) var(--space-6) var(--space-6); }
   .share-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
-  .share-head .btn { padding: 6px 12px; font-size: 0.85rem; }
-  .share pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.82rem; }
+  .copy { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; background: var(--fg); color: var(--bg); border: 0; border-radius: var(--radius-btn); padding: 8px 12px; cursor: pointer; }
+  .copy:hover { background: var(--accent); color: var(--on-accent); }
+  .subject { margin: 0 0 var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+  .subject .label { margin-right: 8px; }
+  .share pre { margin: 0; padding: 0; border: 0; background: none; white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.6 var(--font-sans); }
 </style>
