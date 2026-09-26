@@ -77,6 +77,7 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 | `MCP_OAUTH_REDIRECT_URIS` | Claude connector and Cursor callbacks | Comma-separated redirect URIs clients may register. Exact URLs, or prefixes ending in `/*`. Loopback is always accepted |
 | `MCP_OAUTH_SECRET` | random per process | Signing key, at least 32 characters. Set it so client registrations survive a restart |
 | `MCP_OAUTH_REFRESH_EXPIRY` | `604800` | Refresh token lifetime in seconds. `0` turns refresh tokens off |
+| `MCP_OAUTH_STATE_FILE` | none | Encrypted file for refresh grants, so users stay signed in across a restart. Requires `MCP_OAUTH_SECRET`. See [Staying signed in across restarts](http-transport.md#staying-signed-in-across-restarts) |
 
 **Authentication Modes:**
 

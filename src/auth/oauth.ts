@@ -16,7 +16,9 @@
  *
  * Client IDs are the registered metadata signed with MCP_OAUTH_SECRET, so
  * registration keeps no state and survives a restart when the secret is set.
- * Codes and refresh tokens live in memory. Every token from one sign-in shares
+ * Codes live in memory. Refresh grants live in memory too, and with
+ * MCP_OAUTH_STATE_FILE also in an encrypted file, so a restart keeps users
+ * signed in (see grantStore.ts). Every token from one sign-in shares
  * a grant ID, so revoking one of them, or replaying its code, ends them all.
  */
 
@@ -24,11 +26,12 @@ import crypto from 'node:crypto';
 import express, { type Request, type RequestHandler, type Response, type Router } from 'express';
 
 import { FAVICON_SVG, LOGO_SHAPES } from '../branding.js';
-import { getHttpConfig, isLoopbackHost, type DB2iConfig, type OAuthConfig } from '../config.js';
+import { getHttpConfig, isLoopbackHost, normalizeDbHost, type DB2iConfig, type OAuthConfig } from '../config.js';
 import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
 import type { LoginRateLimitedHandler } from './authMiddleware.js';
-import { testCredentials, verifyLogin } from './login.js';
+import { grantKey, RefreshGrantStore, type RefreshGrant, type StoredGrant } from './grantStore.js';
+import { authAllowedDbHosts, authConnection, testCredentials, verifyLogin } from './login.js';
 import { getTokenManager } from './tokenManager.js';
 
 const log = createChildLogger({ component: 'oauth' });
@@ -91,27 +94,19 @@ interface PendingCode {
   expiresAt: number;
 }
 
-interface RefreshGrant {
-  clientId: string;
-  grantId: string;
-  /** Owner of the grant, from userKey(). */
-  user: string;
-  system: string;
-  config: DB2iConfig;
-  expiresAt: number;
-}
-
 interface UsedCode {
   grantId: string;
   expiresAt: number;
 }
 
 const pendingCodes = new Map<string, PendingCode>();
-const refreshGrants = new Map<string, RefreshGrant>();
+/** Keyed by grantKey(refreshToken). Replaced by createOAuthRouter with the configured store. */
+let refreshGrants = new RefreshGrantStore();
 const usedCodes = new Map<string, UsedCode>();
 
 /**
- * Drop pending codes and refresh tokens. Used at shutdown and by tests.
+ * Drop pending codes and refresh tokens from memory. Used at shutdown and by
+ * tests. A state file is left as it is, for the next start.
  */
 export function resetOAuthState(): void {
   pendingCodes.clear();
@@ -124,13 +119,36 @@ function userKey(system: string, config: DB2iConfig): string {
   return `${system}\n${config.username.toUpperCase()}`;
 }
 
+/**
+ * Rebuild a stored refresh grant from the current profiles, the way a sign-in
+ * would. Undefined when its system is gone or its host is no longer allowed.
+ */
+function restoreGrant(stored: StoredGrant): RefreshGrant | undefined {
+  let connection: { system: string; config: DB2iConfig };
+  try {
+    connection = authConnection({ username: stored.username, password: stored.password, system: stored.system });
+  } catch {
+    return undefined;
+  }
+  const allowedDbHosts = authAllowedDbHosts();
+  if (allowedDbHosts && !allowedDbHosts.includes(normalizeDbHost(connection.config.hostname))) {
+    return undefined;
+  }
+  return {
+    clientId: stored.clientId,
+    grantId: stored.grantId,
+    user: userKey(connection.system, connection.config),
+    system: connection.system,
+    config: connection.config,
+    expiresAt: stored.expiresAt,
+  };
+}
+
 /** End every access and refresh token issued from one sign-in. */
 async function revokeGrant(grantId: string): Promise<void> {
-  for (const [token, grant] of refreshGrants) {
-    if (grant.grantId === grantId) {
-      refreshGrants.delete(token);
-    }
-  }
+  refreshGrants.deleteMany(
+    refreshGrants.entries().filter(([, grant]) => grant.grantId === grantId).map(([key]) => key)
+  );
   await getTokenManager().revokeGrant(grantId);
 }
 
@@ -504,19 +522,17 @@ function issueTokens(
 
   if (oauth.refreshExpiry > 0 && auth.client.grantTypes.includes('refresh_token')) {
     const now = Date.now();
-    sweepExpired(refreshGrants, now);
+    refreshGrants.sweepExpired(now);
     // A user past their own cap loses their oldest grant. Other users' grants are never evicted.
     const user = userKey(grant.system, grant.config);
-    const own = [...refreshGrants].filter(([, entry]) => entry.user === user).map(([key]) => key);
-    for (const key of own.slice(0, Math.max(0, own.length - MAX_REFRESH_GRANTS_PER_USER + 1))) {
-      refreshGrants.delete(key);
-    }
+    const own = refreshGrants.entries().filter(([, entry]) => entry.user === user).map(([key]) => key);
+    refreshGrants.deleteMany(own.slice(0, Math.max(0, own.length - MAX_REFRESH_GRANTS_PER_USER + 1)));
     if (refreshGrants.size >= maxRefreshGrants) {
       // The client keeps working until the access token expires, then signs in again
       log.warn({ grants: refreshGrants.size }, 'OAuth refresh grant store is full; issuing no refresh token');
     } else {
       const refreshToken = randomToken();
-      refreshGrants.set(refreshToken, {
+      refreshGrants.set(grantKey(refreshToken), {
         clientId: auth.clientId,
         grantId: grant.grantId,
         user,
@@ -554,6 +570,11 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
   const issuer = oauth.publicUrl;
   // Refresh grants are bounded like access tokens
   const maxRefreshGrants = getHttpConfig().maxSessions;
+  if (oauth.stateFile || refreshGrants.persistent) {
+    // An in-memory store is kept, so building the router again does not sign anyone out
+    refreshGrants = new RefreshGrantStore(oauth.stateFile, oauth.secret);
+    refreshGrants.load(restoreGrant);
+  }
   router.use('/oauth', limits.requests);
   router.use('/oauth', (_req: Request, res: Response, next: express.NextFunction) => {
     res.locals.pageBrand = resourceName;
@@ -855,14 +876,15 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
 
       if (body.grant_type === 'refresh_token' && oauth.refreshExpiry > 0) {
         const refreshToken = body.refresh_token;
-        const grant = refreshToken ? refreshGrants.get(refreshToken) : undefined;
+        const key = refreshToken ? grantKey(refreshToken) : undefined;
+        const grant = key ? refreshGrants.get(key) : undefined;
         // Another client presenting the token does not use it up
-        if (!refreshToken || !grant || grant.clientId !== auth.clientId) {
+        if (!key || !grant || grant.clientId !== auth.clientId) {
           oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
           return;
         }
         // Rotation: every refresh token works once, and a parallel request finds nothing
-        refreshGrants.delete(refreshToken);
+        refreshGrants.delete(key);
         if (grant.expiresAt <= Date.now()) {
           oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
           return;
@@ -871,7 +893,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
         if (failure !== null) {
           if (failure.transient) {
             // The IBM i was not reached, so the credentials were never judged: keep the grant
-            refreshGrants.set(refreshToken, grant);
+            refreshGrants.set(key, grant);
             log.warn({ user: grant.config.username, system: grant.system, reason: failure.reason }, 'OAuth refresh deferred');
             res.setHeader('Retry-After', '30');
             oauthError(res, 503, 'temporarily_unavailable', 'The IBM i could not be reached. Try again shortly.');
@@ -905,7 +927,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       const token = body.token;
       if (token) {
         // Either kind of token ends the whole sign-in: its refresh token and every access token
-        const grant = refreshGrants.get(token);
+        const grant = refreshGrants.get(grantKey(token));
         const session = grant ? undefined : getTokenManager().getSession(token);
         const owner = grant ?? session;
         if (owner?.clientId === auth.clientId) {
