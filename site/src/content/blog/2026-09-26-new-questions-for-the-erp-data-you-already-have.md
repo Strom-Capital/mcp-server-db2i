@@ -44,8 +44,8 @@ Your IBM i team can take the logic of a trusted Excel query, or the definition b
 
 They'll have good questions, and they should. The short version:
 
-- **Read-only at three levels.** A read-only database connection, a check that only allows queries, and a time limit that stops long queries on the IBM i itself.
-- **People sign in as themselves.** Each person uses their own IBM i user, so they see exactly what they can already see.
+- **It only reads.** A read-only database connection and a check that only allows queries. A time limit also stops long queries on the IBM i itself.
+- **People sign in as themselves.** Each person uses their own IBM i user, often the same as for the ERP, and the IBM i decides what they can read.
 - **You choose what's visible.** Only the libraries you allow, with sensitive columns hidden or masked.
 - **Everything is logged.** Every request is written to an audit log.
 - **The data stays on the IBM i.** Nothing is copied into a new database.
