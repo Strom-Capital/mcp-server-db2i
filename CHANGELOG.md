@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.12.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.11.0...v2.12.0) (2026-09-26)
+
+
+### Features
+
+* add export_query to write query results to a CSV or XLSX file or download link ([#164](https://github.com/Strom-Capital/mcp-server-db2i/issues/164)) ([a907c69](https://github.com/Strom-Capital/mcp-server-db2i/commit/a907c69a166d23a1edf712c47eebc6f304c74c5c)), closes [#160](https://github.com/Strom-Capital/mcp-server-db2i/issues/160)
+* keep OAuth refresh grants across restarts ([#181](https://github.com/Strom-Capital/mcp-server-db2i/issues/181)) ([f80a55a](https://github.com/Strom-Capital/mcp-server-db2i/commit/f80a55a631268f2050d7f7ac5649c6243cc831b9))
+* new visual identity for the site, sign-in page and docs ([#186](https://github.com/Strom-Capital/mcp-server-db2i/issues/186)) ([3defd62](https://github.com/Strom-Capital/mcp-server-db2i/commit/3defd620fd1d847ee460ac13c0dde1717c01deaa))
+
+
+### Bug Fixes
+
+* accept aliased special registers in the schema allowlist check ([#184](https://github.com/Strom-Capital/mcp-server-db2i/issues/184)) ([77018fe](https://github.com/Strom-Capital/mcp-server-db2i/commit/77018fe761e4017ee7ae84d60b458c4ed89865c8)), closes [#183](https://github.com/Strom-Capital/mcp-server-db2i/issues/183)
+* accept Db2 for i cast syntax in the schema allowlist check ([#177](https://github.com/Strom-Capital/mcp-server-db2i/issues/177)) ([b1bf1e9](https://github.com/Strom-Capital/mcp-server-db2i/commit/b1bf1e91f9359cd29afe75ed9b8db32d80cd6352))
+* read ODBC text as UTF-8 so non-ASCII characters are not lost ([#169](https://github.com/Strom-Capital/mcp-server-db2i/issues/169)) ([aa9818f](https://github.com/Strom-Capital/mcp-server-db2i/commit/aa9818fb60abfff97ea5b3d461df75e0134e1763))
+* return BLOB columns as hex on the jt400 driver ([#175](https://github.com/Strom-Capital/mcp-server-db2i/issues/175)) ([89cc133](https://github.com/Strom-Capital/mcp-server-db2i/commit/89cc13338b994221bfa3c0bc4f70025711ba82f0)), closes [#166](https://github.com/Strom-Capital/mcp-server-db2i/issues/166)
+* return ODBC binary columns as hex and warn about rounded decimals ([#165](https://github.com/Strom-Capital/mcp-server-db2i/issues/165)) ([0511de7](https://github.com/Strom-Capital/mcp-server-db2i/commit/0511de7ef3b6e3641f7bd9ea4f2c98ef42a04179)), closes [#163](https://github.com/Strom-Capital/mcp-server-db2i/issues/163)
+
 ## [2.11.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.10.0...v2.11.0) (2026-09-25)
 
 
