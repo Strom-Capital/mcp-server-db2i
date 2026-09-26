@@ -822,11 +822,18 @@ describe('Config Module', () => {
       expect(Object.keys(keywords)).not.toContain('DATABASE');
     });
 
-    it('should default to system naming, ISO dates and trimmed CHAR columns', () => {
+    it('should default to system naming, ISO dates, trimmed CHAR columns and UTF-8 text', () => {
       const keywords = buildOdbcConnectionConfig(baseConfig);
       expect(keywords['NAM']).toBe('1');
       expect(keywords['DFT']).toBe('5');
       expect(keywords['TRIMCHAR']).toBe('1');
+      expect(keywords['CCSID']).toBe('1208');
+    });
+
+    it('should keep a client CCSID from DB2I_ODBC_OPTIONS', () => {
+      const keywords = buildOdbcConnectionConfig({ ...baseConfig, odbcOptions: { ccsid: '819' } });
+      expect(keywords['CCSID']).toBeUndefined();
+      expect(keywords['ccsid']).toBe('819');
     });
 
     it('should default the connection type to read only', () => {
