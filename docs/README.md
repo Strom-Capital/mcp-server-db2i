@@ -1,6 +1,6 @@
 # Documentation
 
-These guides cover configuring, deploying, and developing with mcp-server-db2i, the MCP server for IBM Db2 for i. They are also published as a documentation site at [mcp-server-db2i.mintlify.app](https://mcp-server-db2i.mintlify.app). This folder is its source: `docs.json` holds the navigation, and `index.mdx` and `quickstart.mdx` are site-only pages.
+These guides cover configuring, deploying, and developing with mcp-server-db2i, the MCP server for IBM Db2 for i. They are also published as a documentation site at [docs.db2i-mcp.com](https://docs.db2i-mcp.com). This folder is its source: `docs.json` holds the navigation, and `index.mdx` and `quickstart.mdx` are site-only pages.
 
 | Guide | Description |
 |-------|-------------|

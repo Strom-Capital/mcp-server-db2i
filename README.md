@@ -22,7 +22,7 @@
 
 Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.Strom-Capital/mcp-server-db2i`.
 
-**Website:** [db2i-mcp.com](https://db2i-mcp.com), with a [blog](https://db2i-mcp.com/blog) that explains each release. **Docs:** [mcp-server-db2i.mintlify.app](https://mcp-server-db2i.mintlify.app).
+**Website:** [db2i-mcp.com](https://db2i-mcp.com), with a [blog](https://db2i-mcp.com/blog) that explains each release. **Docs:** [docs.db2i-mcp.com](https://docs.db2i-mcp.com).
 
 ## Architecture
 
