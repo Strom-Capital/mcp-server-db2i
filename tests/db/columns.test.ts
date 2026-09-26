@@ -66,8 +66,13 @@ describe('normalizeValue', () => {
     expect(normalizeValue('ABC   ', column('string', 'VARCHAR'))).toBe('ABC   ');
   });
 
-  it('writes binary data as upper-case hex', () => {
+  it('writes binary data as upper-case hex, from a Buffer or an ArrayBuffer', () => {
     expect(normalizeValue(Buffer.from([0x0a, 0xff]), column('binary', 'BINARY'))).toBe('0AFF');
+    expect(normalizeValue(new Uint8Array([0x0a, 0xff]).buffer, column('binary', 'BINARY'))).toBe('0AFF');
+  });
+
+  it('keeps a wide decimal the driver sent as a number as that number', () => {
+    expect(normalizeValue(12345678901234567000, column('decimal', 'DECIMAL', 31))).toBe(12345678901234567000);
   });
 
   it('puts dates, times and timestamps in one form', () => {

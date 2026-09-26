@@ -221,6 +221,23 @@ describe('export_query', () => {
     expect(await exportFiles()).toEqual([]);
   });
 
+  it('warns about columns the driver rounded', async () => {
+    openCursor.mockResolvedValueOnce(
+      fakeCursor(
+        [
+          { name: 'ORDERNO', kind: 'int', dbType: 'INTEGER' },
+          { name: 'TOTAL', kind: 'decimal', dbType: 'DECIMAL', precision: 31, lossy: true },
+        ],
+        [[[1001, 12.5]]]
+      )
+    );
+
+    const result = await exportQueryTool(input());
+
+    expect(result.success).toBe(true);
+    expect(result.warnings?.[0]).toMatch(/TOTAL may not be exact.*CAST\(<column> AS VARCHAR\(40\)\)/);
+  });
+
   it('rejects a result with two columns of the same name', async () => {
     const cursor = fakeCursor(
       [

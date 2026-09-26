@@ -63,6 +63,8 @@ export type ExportQueryResult = SqlErrorDetails & {
   truncated?: false | 'rows' | 'bytes';
   columns?: Array<{ name: string; kind: ColumnKind }>;
   sample?: Record<string, unknown>[];
+  /** Things the user should know about the file, such as rounded columns. */
+  warnings?: string[];
   /** stdio: the file on this host. */
   path?: string;
   /** HTTP: the download link. */
@@ -219,6 +221,10 @@ export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQu
       return { success: false, error: maskError };
     }
     const masks: Array<MaskRule | undefined> = names.map((name) => prepared.maskRules.get(name.toUpperCase()));
+    // A masked column is text, so its rounding does not matter
+    const lossyColumns = cursor.columns
+      .filter((column, index) => column.lossy && masks[index] === undefined)
+      .map((column) => column.name);
     const columns: ExportColumn[] = cursor.columns.map((column, index) => ({
       name: column.name,
       kind: column.kind,
@@ -279,6 +285,12 @@ export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQu
       sample,
       expiresAt: new Date(entry.expiresAt).toISOString(),
     };
+    if (lossyColumns.length > 0) {
+      result.warnings = [
+        `The ODBC driver rounds DECIMAL and NUMERIC values past 15 digits, so ${lossyColumns.join(', ')} may not be exact. ` +
+          'Select the column as CAST(<column> AS VARCHAR(40)) to keep every digit, or use the jt400 or mapepire driver.',
+      ];
+    }
     if (input.delivery === 'link') {
       result.url = `${config.publicUrl}/exports/${entry.id}`;
       result.singleUse = config.singleUse;

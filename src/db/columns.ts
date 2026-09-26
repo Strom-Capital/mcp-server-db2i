@@ -152,7 +152,9 @@ function decimalValue(value: unknown, column: DbColumn): unknown {
     return integerValue(value);
   }
   if (typeof value === 'number') {
-    return exact ? value : String(value);
+    // A driver that hands over a wide decimal as a number has already rounded
+    // it; text would only make the rounded value look exact
+    return value;
   }
   if (typeof value === 'string') {
     const text = value.trim();
@@ -214,7 +216,8 @@ function temporalValue(value: unknown, kind: 'date' | 'time' | 'timestamp'): unk
  * One value in the shape file writers expect for its column:
  * - null for null
  * - numbers for integers and for decimals a JavaScript number holds exactly;
- *   wider integers and decimals as exact text
+ *   wider integers and decimals as exact text when the driver sent text, and
+ *   as the driver's number otherwise (see DbColumn.lossy)
  * - canonical text for dates, times and timestamps
  * - upper-case hex for binary data
  * - text with CHAR padding removed for character columns
@@ -225,6 +228,10 @@ export function normalizeValue(value: unknown, column: DbColumn): unknown {
   }
   if (value instanceof Uint8Array) {
     return hex(value);
+  }
+  if (value instanceof ArrayBuffer) {
+    // node-odbc returns binary columns as an ArrayBuffer
+    return hex(new Uint8Array(value));
   }
   switch (column.kind) {
     case 'int':

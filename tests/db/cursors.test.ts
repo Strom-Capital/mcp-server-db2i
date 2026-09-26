@@ -38,38 +38,45 @@ vi.mock('odbc', () => ({
     async close() {},
     async connect() {
       return {
-        async query(_sql: string, _params: unknown[], options: Record<string, unknown>) {
-          state.odbc.lastOptions = options;
-          if (state.odbc.hang) {
-            await new Promise<void>((resolve) => {
-              state.odbc.release = resolve;
-            });
-            throw Object.assign(new Error('cancelled'), {
-              odbcErrors: [{ state: 'HY008', code: 0, message: 'Operation canceled' }],
-            });
-          }
-          if (state.odbc.queryError) {
-            throw state.odbc.queryError;
-          }
-          let index = 0;
-          const cursor = {
-            get noData() {
-              return index >= state.odbc.batches.length;
+        // The cursor runs through a prepared statement, so SQLCancel can reach it
+        async createStatement() {
+          return {
+            async prepare() {},
+            async bind() {},
+            async execute(options: Record<string, unknown>) {
+              state.odbc.lastOptions = options;
+              if (state.odbc.hang) {
+                await new Promise<void>((resolve) => {
+                  state.odbc.release = resolve;
+                });
+                throw Object.assign(new Error('cancelled'), {
+                  odbcErrors: [{ state: 'HY008', code: 0, message: 'Operation canceled' }],
+                });
+              }
+              if (state.odbc.queryError) {
+                throw state.odbc.queryError;
+              }
+              let index = 0;
+              return {
+                get noData() {
+                  return index >= state.odbc.batches.length;
+                },
+                async fetch() {
+                  const rows = state.odbc.batches[index] ?? [];
+                  index += 1;
+                  return Object.assign([...rows], { columns: state.odbc.columns, count: rows.length });
+                },
+                async close() {
+                  state.odbc.cursorCloses += 1;
+                },
+              };
             },
-            async fetch() {
-              const rows = state.odbc.batches[index] ?? [];
-              index += 1;
-              return Object.assign([...rows], { columns: state.odbc.columns, count: rows.length });
+            async cancel() {
+              state.odbc.cancels += 1;
+              state.odbc.release?.();
             },
-            async close() {
-              state.odbc.cursorCloses += 1;
-            },
+            async close() {},
           };
-          return cursor;
-        },
-        async cancel() {
-          state.odbc.cancels += 1;
-          state.odbc.release?.();
         },
         async close() {
           state.odbc.connectionCloses += 1;

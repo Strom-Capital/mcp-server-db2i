@@ -162,6 +162,7 @@ const exportOutputSchema = z.object({
     .describe('rows or bytes when the file stops at max_rows / EXPORT_MAX_ROWS or EXPORT_MAX_BYTES'),
   columns: z.array(z.object({ name: z.string(), kind: z.string() })).optional(),
   sample: z.array(z.record(z.string(), z.unknown())).optional().describe('First rows of the file, masked'),
+  warnings: z.array(z.string()).optional().describe('Tell the user these, such as columns the driver rounded'),
   path: z.string().optional().describe('The file on the server host (stdio)'),
   url: z.string().optional().describe('Download link for the user (HTTP)'),
   expiresAt: z.string().optional(),

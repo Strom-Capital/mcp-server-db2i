@@ -47,6 +47,11 @@ export interface DbColumn {
   dbType: string;
   precision?: number;
   scale?: number;
+  /**
+   * The driver rounds this column's values: node-odbc reads every DECIMAL and
+   * NUMERIC as a JavaScript number, so digits past 15 are lost.
+   */
+  lossy?: boolean;
 }
 
 export interface DbCursorOptions {

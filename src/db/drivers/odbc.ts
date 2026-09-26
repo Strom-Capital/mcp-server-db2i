@@ -126,21 +126,33 @@ export const odbcDriver: DbDriver = {
   },
 };
 
+/** Digits a JavaScript number holds exactly. */
+const MAX_EXACT_DIGITS = 15;
+
 function odbcColumns(columns: readonly ColumnDefinition[]): DbColumn[] {
-  return columns.map((column) => ({
-    name: column.name,
-    kind: kindFromOdbcType(column.dataType, column.dataTypeName),
-    dbType: column.dataTypeName || String(column.dataType),
-    precision: column.columnSize,
-    scale: column.decimalDigits,
-  }));
+  return columns.map((column) => {
+    const kind = kindFromOdbcType(column.dataType, column.dataTypeName);
+    return {
+      name: column.name,
+      kind,
+      dbType: column.dataTypeName || String(column.dataType),
+      precision: column.columnSize,
+      scale: column.decimalDigits,
+      // node-odbc converts DECIMAL and NUMERIC with atof, whatever the precision
+      ...(kind === 'decimal' && column.columnSize > MAX_EXACT_DIGITS ? { lossy: true } : {}),
+    };
+  });
 }
 
+type OdbcStatement = Awaited<ReturnType<Connection['createStatement']>>;
+
 /**
- * Open a cursor on a connection of its own. node-odbc reports the columns with
- * each fetch, so the first batch is read here and handed out by the first
- * next(). An abort calls SQLCancel on the connection, which ends the running
- * execute or fetch. The connection goes back to the pool on close.
+ * Open a cursor on a connection of its own, through a prepared statement so an
+ * abort can call SQLCancel on the statement handle. Checked on IBM i Access:
+ * SQLCancel on the statement ends a running statement, SQLCancel on the
+ * connection does not. node-odbc reports the columns with each fetch, so the
+ * first batch is read here and handed out by the first next(). The connection
+ * goes back to the pool on close.
  */
 async function openOdbcCursor(
   connection: Connection,
@@ -148,10 +160,11 @@ async function openOdbcCursor(
   params: readonly QueryParam[],
   options: DbCursorOptions
 ): Promise<RowCursor> {
+  let statement: OdbcStatement | undefined;
   let cursor: Cursor | undefined;
   let closed = false;
   const onAbort = (): void => {
-    void connection.cancel().catch(() => undefined);
+    void statement?.cancel().catch(() => undefined);
   };
   options.signal?.addEventListener('abort', onAbort, { once: true });
 
@@ -162,12 +175,23 @@ async function openOdbcCursor(
     closed = true;
     options.signal?.removeEventListener('abort', onAbort);
     await cursor?.close().catch(() => undefined);
+    await statement?.close().catch(() => undefined);
     await connection.close().catch(() => undefined);
   };
 
   try {
     options.signal?.throwIfAborted();
-    cursor = await connection.query(sql, bindParams(params), { cursor: true, fetchSize: options.fetchSize });
+    statement = await connection.createStatement();
+    await statement.prepare(sql);
+    if (params.length > 0) {
+      await statement.bind(bindParams(params));
+    }
+    options.signal?.throwIfAborted();
+    // node-odbc returns a Cursor when execute gets cursor options; its typings leave that out
+    const execute = statement.execute.bind(statement) as unknown as (
+      options: { cursor: boolean; fetchSize: number }
+    ) => Promise<Cursor>;
+    cursor = await execute({ cursor: true, fetchSize: options.fetchSize });
     const first = await cursor.fetch<Record<string, unknown>>();
     const columns = odbcColumns(first.columns ?? []);
     let pending: Record<string, unknown>[] | undefined = Array.from(first);
