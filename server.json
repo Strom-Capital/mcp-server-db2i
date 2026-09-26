@@ -8,12 +8,12 @@
     "source": "github"
   },
   "websiteUrl": "https://db2i-mcp.com",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-server-db2i",
-      "version": "2.11.0",
+      "version": "2.12.0",
       "transport": {
         "type": "stdio"
       },
