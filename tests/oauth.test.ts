@@ -327,7 +327,7 @@ describe('OAuth authorization server', () => {
     expect(res.headers.get('referrer-policy')).toBe('same-origin');
     const html = await res.text();
     expect(html).toContain('<svg class="logo"');
-    expect(html).toContain('<span class="brand-name">Db2 for i MCP Server</span>');
+    expect(html).toContain('aria-label="db2i/mcp"');
     expect(html).toContain('<title>Sign in to IBM i · Db2 for i MCP Server</title>');
     expect(html).toContain('rel="icon" type="image/svg+xml" href="data:image/svg+xml,');
     expect(html).toContain('<option value="prod" selected>prod</option>');

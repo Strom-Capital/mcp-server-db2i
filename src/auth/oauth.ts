@@ -25,7 +25,7 @@
 import crypto from 'node:crypto';
 import express, { type Request, type RequestHandler, type Response, type Router } from 'express';
 
-import { FAVICON_SVG, LOGO_SHAPES } from '../branding.js';
+import { FAVICON_SVG, LOCKUP_SHAPES, LOCKUP_VIEWBOX } from '../branding.js';
 import { getHttpConfig, isLoopbackHost, normalizeDbHost, type DB2iConfig, type OAuthConfig } from '../config.js';
 import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -298,10 +298,10 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Page logo: the route mark, cropped to the artwork. Ink follows the text color and the end node uses --accent. */
+/** Page logo: the db2i/mcp lockup. Ink follows the text color and the end node uses --accent. */
 const LOGO_SVG =
-  '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0.5 3.5 23 17" width="31" height="23" aria-hidden="true">' +
-  LOGO_SHAPES +
+  `<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="${LOCKUP_VIEWBOX}" width="120" height="20" role="img" aria-label="db2i/mcp">` +
+  LOCKUP_SHAPES +
   '</svg>';
 
 /** The same logo as a favicon. */
@@ -318,9 +318,8 @@ const PAGE_STYLE = `
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 32px 20px; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
   main { width: 100%; max-width: 380px; }
-  .brand { display: flex; align-items: center; gap: 12px; margin: 0 0 40px; }
+  .brand { margin: 0 0 40px; }
   .logo { display: block; flex: none; color: var(--fg); }
-  .brand-name { font: 500 11px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
   h1 { font-size: 30px; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 10px; }
   p { margin: 0 0 8px; color: var(--muted); }
   strong { color: var(--fg); font-weight: 500; }
@@ -367,9 +366,7 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
         `<title>${escapeHtml(brand ? `${title} · ${brand}` : title)}</title>` +
         `<link rel="icon" type="image/svg+xml" href="${FAVICON_HREF}">` +
         `<style>${PAGE_STYLE}</style></head>` +
-        `<body><main><div class="brand">${LOGO_SVG}` +
-        (brand ? `<span class="brand-name">${escapeHtml(brand)}</span>` : '') +
-        `</div>${body}</main></body></html>`
+        `<body><main><div class="brand">${LOGO_SVG}</div>${body}</main></body></html>`
     );
 }
 
