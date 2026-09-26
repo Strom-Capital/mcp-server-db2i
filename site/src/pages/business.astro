@@ -24,7 +24,7 @@ Security: ${links.security}`;
   starterQuestions={[
     'What does my IT team need to set up?',
     'How is our data kept read-only and private?',
-    'Can people sign in with their own IBM i user?',
+    'Can everyone sign in with their own user?',
   ]}
 >
 
@@ -33,7 +33,7 @@ Security: ${links.security}`;
       <p class="label">For business teams</p>
       <h1>For the questions that don't have a report yet.</h1>
       <p class="lead">
-        If your ERP runs on IBM i, years of orders, customers, items and invoices are already there.
+        If your ERP runs on IBM i (many still call it AS/400), years of orders, customers, items and invoices are already there.
         Your team can ask about them in plain language, in an AI assistant such as Claude, and get the answer
         from live data. Your reports and tools stay as they are.
       </p>
@@ -50,18 +50,18 @@ Security: ${links.security}`;
         <p class="label">Today</p>
         <div>
           <h2>Next to what you already have.</h2>
-          <p class="lead">Companies with an ERP on IBM i usually get their answers in one of three ways. Each one handles the questions it was built for.</p>
+          <p class="lead">Companies with an ERP like yours usually get their answers in one of three ways. Each one handles the questions it was built for.</p>
         </div>
       </div>
       <div class="cols3">
         <div><p class="label">01</p><h3>ERP screens and reports</h3><p class="muted">The system your team works in every day, with the reports that were built for it.</p></div>
-        <div><p class="label">02</p><h3>Excel over ODBC</h3><p class="muted">Workbooks that pull data straight from the ERP, so the numbers land in a sheet your team can work with.</p></div>
+        <div><p class="label">02</p><h3>Excel linked to the ERP</h3><p class="muted">Workbooks that pull data straight from the ERP, so the numbers land in a sheet your team can work with.</p></div>
         <div><p class="label">03</p><h3>A data warehouse or BI tool</h3><p class="muted">ERP data copied into a warehouse or data lake, with dashboards and reports on top.</p></div>
       </div>
       <p class="bridge">
         Then there is the one-off question, such as why a large customer ordered less this month.
-        This is for those. It reads the ERP data directly from Db2 for i on your IBM i. It doesn't connect to
-        your reports, spreadsheets or warehouse, and it doesn't replace them. If your reports use their own
+        This is for those. It reads the ERP's own database directly. It doesn't connect to your reports,
+        spreadsheets or warehouse, and it doesn't replace them. If your reports use their own
         definitions, such as what counts as an open order, your IT team can give the assistant the same ones.
       </p>
     </div>
@@ -73,7 +73,7 @@ Security: ${links.security}`;
         <p class="label">Examples</p>
         <div>
           <h2>The kind of questions people ask.</h2>
-          <p class="lead">Your team types a question. The assistant finds the right tables, writes a read-only query, and answers with the numbers.</p>
+          <p class="lead">Your team types a question. The assistant finds where the data is, looks it up, and answers with the numbers.</p>
         </div>
       </div>
       <div class="groups">
@@ -91,11 +91,11 @@ Security: ${links.security}`;
     <div class="container two">
       <div>
         <p class="label">Definitions</p>
-        <h2 class="h2s">Your definitions, not the model's guesses.</h2>
+        <h2 class="h2s">Your definitions, not the assistant's guesses.</h2>
         <p>
           Every company has its own meaning of “open order”, “active customer” or “on time”. Your IT team can write
-          those definitions down once, in a plain text file: what a status code means, how two tables join, which query
-          answers “late purchase orders”.
+          those definitions down once: what a status code means, which data belongs together, and how to answer common
+          questions such as “late purchase orders”.
         </p>
         <p>
           The assistant then uses your definitions instead of guessing. The logic that already lives in your reports and
@@ -107,11 +107,11 @@ Security: ${links.security}`;
         <p class="label">Safeguards</p>
         <h2 class="h2s">What it can and can't do with your data.</h2>
         <ul class="rows ticks">
-          <li><strong>It only reads.</strong> A read-only connection, and a check that only lets queries through. If a question takes too long, it is stopped automatically so it doesn't keep your system busy.</li>
-          <li><strong>Everyone signs in as themselves.</strong> People use their own IBM i user, often the same user name and password as for the ERP. The IBM i decides what each person can read.</li>
-          <li><strong>You choose what is visible.</strong> Only the libraries you allow, with sensitive columns hidden or masked.</li>
-          <li><strong>Everything is logged.</strong> Every request is written to an audit log.</li>
-          <li><strong>The data stays on your IBM i.</strong> Nothing is copied into a new database.</li>
+          <li><strong>It only reads.</strong> It can look data up but never change it, and every request is checked before it runs. If a question takes too long, it is stopped automatically so it doesn't keep your system busy.</li>
+          <li><strong>Everyone signs in as themselves.</strong> People sign in with their own user on the system, often the same user name and password as for the ERP. The system decides what each person can read.</li>
+          <li><strong>You choose what is visible.</strong> Your IT team decides which parts of the ERP data it can see, and can hide sensitive fields such as personal details.</li>
+          <li><strong>Everything is logged.</strong> Every request is recorded, so your IT team can see what was asked.</li>
+          <li><strong>No copy of your database.</strong> Nothing is copied into a new database. The answer to each question goes to the AI assistant you use, so use one your company has approved.</li>
         </ul>
         <a class="link-rule" href={links.security}>Security details <span aria-hidden="true">→</span></a>
       </div>
@@ -125,9 +125,9 @@ Security: ${links.security}`;
         <div><h2>Before you start.</h2></div>
       </div>
       <div class="cols3">
-        <div><p class="label">Setup</p><h3>Someone sets it up once</h3><p class="muted">Your IT team installs and configures the server. After that, people only add a link in their assistant and sign in.</p></div>
+        <div><p class="label">Setup</p><h3>Someone sets it up once</h3><p class="muted">Your IT team sets it up. After that, people only add a link in their assistant and sign in.</p></div>
         <div><p class="label">Scope</p><h3>It is not your financial reporting</h3><p class="muted">Official figures still come from the reports your finance team relies on. This is for exploring and for the questions in between.</p></div>
-        <div><p class="label">Quality</p><h3>Better notes, better answers</h3><p class="muted">The assistant is only as good as what it knows about your tables. A few definitions make a big difference.</p></div>
+        <div><p class="label">Quality</p><h3>Better notes, better answers</h3><p class="muted">The assistant is only as good as what it knows about your data. A few definitions make a big difference.</p></div>
       </div>
     </div>
   </section>
