@@ -54,8 +54,8 @@ They'll have good questions, and they should. The short version:
 
 It doesn't replace your financial reporting. Official figures still come from the reports your finance team relies on. It doesn't replace the BI team either. If a question turns out to be asked every week, it deserves a proper report, and now you know which one to build.
 
-Someone on the IBM i team sets it up once. After that, people add a link in their assistant and sign in.
+Your IT team sets it up once. After that, people add a link in their assistant and sign in.
 
 ## Next step
 
-The project is free and open source, with nothing to buy. Ask the documentation assistant on this site what setup would involve for your company, or send the business page to your IBM i team.
+It is free and open source, with nothing to buy. The [page for business teams](/business#send-to-it) has a short email you can copy and send to your IT team. If you have questions first, ask the documentation assistant on this site.
