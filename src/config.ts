@@ -959,6 +959,8 @@ export function applyQueryLimit(
  */
 export const TOOL_NAMES = [
   'execute_query',
+  // Registered only when EXPORT_ENABLED is set as well
+  'export_query',
   'list_schemas',
   'list_tables',
   'search_tables',
@@ -1194,6 +1196,75 @@ export function getAuditConfig(): AuditConfig | undefined {
   };
 }
 
+export interface ExportConfig {
+  /** Directory export files are written to. */
+  dir: string;
+  maxRows: number;
+  /** Largest export file in bytes. */
+  maxBytes: number;
+  /** Seconds an export may take, the open and every fetch together. 0 means no limit. */
+  timeoutSeconds: number;
+  /** Minutes a finished export can be downloaded. */
+  ttlMinutes: number;
+  /** Downloads a link allows before it stops working. HEAD requests do not count. */
+  maxDownloads: number;
+  /** Exports running at the same time. Each holds a connection or job. */
+  maxConcurrent: number;
+  /** Bytes all export files in the directory may take together. */
+  dirMaxBytes: number;
+  /** MCP_PUBLIC_URL, the origin download links use in HTTP mode. */
+  publicUrl?: string;
+}
+
+/** 100 MB. */
+const DEFAULT_EXPORT_MAX_BYTES = 100 * 1024 * 1024;
+/** 1 GB. */
+const DEFAULT_EXPORT_DIR_MAX_BYTES = 1024 * 1024 * 1024;
+
+/**
+ * Query exports (export_query). Off unless EXPORT_ENABLED is true and
+ * EXPORT_DIR is set.
+ *
+ * - EXPORT_ENABLED: `true` or `1` turns exports on.
+ * - EXPORT_DIR: directory for export files, created with mode 0700.
+ * - EXPORT_MAX_ROWS: rows per export (default 100000).
+ * - EXPORT_MAX_BYTES: bytes per export file (default 100 MB).
+ * - EXPORT_TIMEOUT: seconds per export (default QUERY_TIMEOUT, 0 for none).
+ * - EXPORT_TTL_MINUTES: minutes a file can be downloaded (default 15).
+ * - EXPORT_MAX_DOWNLOADS: downloads per link before it stops working (default 3).
+ * - EXPORT_MAX_CONCURRENT: exports at the same time (default 2).
+ * - EXPORT_DIR_MAX_BYTES: bytes all export files may take (default 1 GB).
+ *
+ * @returns The settings, or undefined when exports are off
+ * @throws Error when exports are on and a setting is invalid
+ */
+export function getExportConfig(): ExportConfig | undefined {
+  const enabled = process.env.EXPORT_ENABLED?.trim().toLowerCase();
+  if (enabled !== 'true' && enabled !== '1') {
+    return undefined;
+  }
+  const dir = process.env.EXPORT_DIR?.trim();
+  if (!dir) {
+    throw new Error('EXPORT_DIR is required when EXPORT_ENABLED is set');
+  }
+  return {
+    dir,
+    maxRows: readIntEnvInRange('EXPORT_MAX_ROWS', 100_000, 1, 10_000_000),
+    maxBytes: readIntEnvInRange('EXPORT_MAX_BYTES', DEFAULT_EXPORT_MAX_BYTES, 1024, Number.MAX_SAFE_INTEGER),
+    timeoutSeconds: readIntEnvInRange(
+      'EXPORT_TIMEOUT',
+      getQueryTimeoutSeconds(),
+      0,
+      MAX_QUERY_TIMEOUT_SECONDS
+    ),
+    ttlMinutes: readIntEnvInRange('EXPORT_TTL_MINUTES', 15, 1, 1440),
+    maxDownloads: readIntEnvInRange('EXPORT_MAX_DOWNLOADS', 3, 1, 100),
+    maxConcurrent: readIntEnvInRange('EXPORT_MAX_CONCURRENT', 2, 1, 100),
+    dirMaxBytes: readIntEnvInRange('EXPORT_DIR_MAX_BYTES', DEFAULT_EXPORT_DIR_MAX_BYTES, 1024, Number.MAX_SAFE_INTEGER),
+    publicUrl: readPublicUrl(),
+  };
+}
+
 function auditSqlMode(): AuditSqlMode {
   const sqlRaw = process.env.MCP_AUDIT_SQL?.trim().toLowerCase() || 'hash';
   if (sqlRaw === 'hash' || sqlRaw === 'full') {
@@ -1346,19 +1417,18 @@ export function getOAuthConfig(authMode: AuthMode): OAuthConfig | null {
   return oauthConfigCache.config;
 }
 
-function parseOAuthConfig(authMode: AuthMode): OAuthConfig | null {
-  const enabled = process.env.MCP_OAUTH_ENABLED?.trim().toLowerCase();
-  if (enabled !== 'true' && enabled !== '1') {
-    return null;
-  }
-
-  if (authMode !== 'required') {
-    throw new Error('MCP_OAUTH_ENABLED requires MCP_AUTH_MODE=required');
-  }
-
+/**
+ * MCP_PUBLIC_URL, the server's external origin: https unless loopback, with no
+ * path, query or credentials. Read only by the features that need it (OAuth
+ * and export download links), so an unused value never stops startup.
+ *
+ * @returns The origin, or undefined when the variable is unset
+ * @throws Error when the value is set but not a valid origin
+ */
+export function readPublicUrl(): string | undefined {
   const rawUrl = process.env.MCP_PUBLIC_URL?.trim();
   if (!rawUrl) {
-    throw new Error('MCP_PUBLIC_URL is required when MCP_OAUTH_ENABLED is set, for example https://mcp.example.com');
+    return undefined;
   }
   let url: URL;
   try {
@@ -1372,7 +1442,23 @@ function parseOAuthConfig(authMode: AuthMode): OAuthConfig | null {
   if ((url.pathname !== '/' && url.pathname !== '') || url.search || url.hash || url.username || url.password) {
     throw new Error('MCP_PUBLIC_URL must be an origin only, without a path, query or credentials');
   }
-  const publicUrl = url.origin;
+  return url.origin;
+}
+
+function parseOAuthConfig(authMode: AuthMode): OAuthConfig | null {
+  const enabled = process.env.MCP_OAUTH_ENABLED?.trim().toLowerCase();
+  if (enabled !== 'true' && enabled !== '1') {
+    return null;
+  }
+
+  if (authMode !== 'required') {
+    throw new Error('MCP_OAUTH_ENABLED requires MCP_AUTH_MODE=required');
+  }
+
+  const publicUrl = readPublicUrl();
+  if (!publicUrl) {
+    throw new Error('MCP_PUBLIC_URL is required when MCP_OAUTH_ENABLED is set, for example https://mcp.example.com');
+  }
 
   const redirectUris = (process.env.MCP_OAUTH_REDIRECT_URIS ?? '')
     .split(',')
@@ -1665,7 +1751,8 @@ export function getHttpConfig(): HttpConfig {
     tokenExpiry: readIntEnv('MCP_TOKEN_EXPIRY', 3600),
     maxSessions: readIntEnv('MCP_MAX_SESSIONS', 100),
     corsOrigins: getCorsOrigins(),
-    allowedHosts: getAllowedHosts(host, oauth?.publicUrl),
+    // Export download links point at MCP_PUBLIC_URL too, so its host must pass the Host check
+    allowedHosts: getAllowedHosts(host, oauth?.publicUrl ?? getExportConfig()?.publicUrl),
     allowUnauthenticatedHttp: allowUnauthenticatedHttp(),
     authAllowedDbHosts: getAuthAllowedDbHosts(),
     authRateLimit: getAuthRateLimitConfig(),

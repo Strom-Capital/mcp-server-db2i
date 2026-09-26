@@ -6,9 +6,11 @@
  * dynamic and happens only when an odbc pool is first needed.
  */
 
+import type { ColumnDefinition, Connection, Cursor } from 'odbc';
 import type { DB2iConfig } from '../../config.js';
 import { buildOdbcConnectionConfig, serializeOdbcConnectionString } from '../../config.js';
-import type { CreatePoolOptions, DbDriver, DbPool, QueryParam } from '../driver.js';
+import { kindFromOdbcType, rowFromObject } from '../columns.js';
+import type { CreatePoolOptions, DbColumn, DbCursorOptions, DbDriver, DbPool, QueryParam, RowCursor } from '../driver.js';
 import { DbError, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
 
 /** One diagnostic record from the ODBC driver manager. */
@@ -108,12 +110,122 @@ export const odbcDriver: DbDriver = {
           throw toOdbcError(error);
         }
       },
+      async openCursor(sql, params, options) {
+        let connection: Connection;
+        try {
+          connection = await pool.connect();
+        } catch (error) {
+          throw toOdbcError(error);
+        }
+        return openOdbcCursor(connection, sql, params, options);
+      },
       async close() {
         await pool.close();
       },
     };
   },
 };
+
+/** Digits a JavaScript number holds exactly. */
+const MAX_EXACT_DIGITS = 15;
+
+function odbcColumns(columns: readonly ColumnDefinition[]): DbColumn[] {
+  return columns.map((column) => {
+    const kind = kindFromOdbcType(column.dataType, column.dataTypeName);
+    return {
+      name: column.name,
+      kind,
+      dbType: column.dataTypeName || String(column.dataType),
+      precision: column.columnSize,
+      scale: column.decimalDigits,
+      // node-odbc converts DECIMAL and NUMERIC with atof, whatever the precision
+      ...(kind === 'decimal' && column.columnSize > MAX_EXACT_DIGITS ? { lossy: true } : {}),
+    };
+  });
+}
+
+type OdbcStatement = Awaited<ReturnType<Connection['createStatement']>>;
+
+/**
+ * Open a cursor on a connection of its own, through a prepared statement so an
+ * abort can call SQLCancel on the statement handle. Checked on IBM i Access:
+ * SQLCancel on the statement ends a running statement, SQLCancel on the
+ * connection does not. node-odbc reports the columns with each fetch, so the
+ * first batch is read here and handed out by the first next(). The connection
+ * goes back to the pool on close.
+ */
+async function openOdbcCursor(
+  connection: Connection,
+  sql: string,
+  params: readonly QueryParam[],
+  options: DbCursorOptions
+): Promise<RowCursor> {
+  let statement: OdbcStatement | undefined;
+  let cursor: Cursor | undefined;
+  let closed = false;
+  const onAbort = (): void => {
+    void statement?.cancel().catch(() => undefined);
+  };
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+
+  const close = async (): Promise<void> => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    options.signal?.removeEventListener('abort', onAbort);
+    await cursor?.close().catch(() => undefined);
+    await statement?.close().catch(() => undefined);
+    await connection.close().catch(() => undefined);
+  };
+
+  try {
+    options.signal?.throwIfAborted();
+    statement = await connection.createStatement();
+    await statement.prepare(sql);
+    if (params.length > 0) {
+      await statement.bind(bindParams(params));
+    }
+    options.signal?.throwIfAborted();
+    // node-odbc returns a Cursor when execute gets cursor options; its typings leave that out
+    const execute = statement.execute.bind(statement) as unknown as (
+      options: { cursor: boolean; fetchSize: number }
+    ) => Promise<Cursor>;
+    cursor = await execute({ cursor: true, fetchSize: options.fetchSize });
+    const first = await cursor.fetch<Record<string, unknown>>();
+    const columns = odbcColumns(first.columns ?? []);
+    let pending: Record<string, unknown>[] | undefined = Array.from(first);
+
+    return {
+      columns,
+      async next() {
+        if (closed) {
+          return null;
+        }
+        if (pending) {
+          const rows = pending;
+          pending = undefined;
+          if (rows.length > 0) {
+            return rows.map((row) => rowFromObject(row, columns));
+          }
+        }
+        if (!cursor || cursor.noData) {
+          return null;
+        }
+        try {
+          const batch = Array.from(await cursor.fetch<Record<string, unknown>>());
+          return batch.length > 0 ? batch.map((row) => rowFromObject(row, columns)) : null;
+        } catch (error) {
+          throw toOdbcError(error);
+        }
+      },
+      close,
+    };
+  } catch (error) {
+    await close();
+    throw toOdbcError(error);
+  }
+}
 
 /**
  * Run a statement on a connection of its own, so it can be cancelled with

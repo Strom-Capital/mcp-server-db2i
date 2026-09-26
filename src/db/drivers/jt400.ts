@@ -8,17 +8,44 @@
 
 import type { DB2iConfig } from '../../config.js';
 import { buildConnectionConfig } from '../../config.js';
-import type { CreatePoolOptions, DbDriver, DbPool, DbQueryOptions, QueryParam, SqlDiagnostics } from '../driver.js';
+import { kindFromTypeName, normalizeValue } from '../columns.js';
+import type {
+  CreatePoolOptions,
+  DbColumn,
+  DbCursorOptions,
+  DbDriver,
+  DbPool,
+  DbQueryOptions,
+  QueryParam,
+  RowCursor,
+  SqlDiagnostics,
+} from '../driver.js';
 import { DbError, QueryTimeoutError, sqlcodeFromMessageId, withQueryTimeout } from '../driver.js';
 
 type Row = Record<string, unknown>;
 
 // The subset of node-jt400 used here. Typed locally so the project type-checks
 // when the optional package is not installed.
+interface Jt400Metadata {
+  name: string;
+  typeName: string;
+  precision: number;
+  scale: number;
+}
+
+interface Jt400Statement {
+  metadata(): Promise<Jt400Metadata[]>;
+  /** One row per step, every value as text or null. */
+  asIterable(): AsyncIterable<unknown[]>;
+  close(): Promise<void> | void;
+}
+
 interface Jt400Queryable {
   query(sql: string, params: unknown[]): Promise<unknown[]>;
   /** executeUpdate: for statements without a result set. */
   update(sql: string, params: unknown[]): Promise<number>;
+  /** A prepared statement whose result set is read row by row. */
+  execute(sql: string, params: unknown[]): Promise<Jt400Statement>;
 }
 
 interface Jt400Connection extends Jt400Queryable {
@@ -67,12 +94,111 @@ export const jt400Driver: DbDriver = {
           throw toJt400Error(error);
         }
       },
+      openCursor(sql, params, options) {
+        return openJt400Cursor(connection, sql, params, options);
+      },
       async close() {
         await connection.close();
       },
     };
   },
 };
+
+/**
+ * Open a cursor inside a transaction, which keeps one pooled connection for
+ * as long as the cursor is open. With cancelJob, the job name is read first so
+ * an abort can end the statement with QSYS2.CANCEL_SQL. Closing the cursor
+ * closes the statement and lets the transaction return its connection.
+ */
+function openJt400Cursor(
+  connection: Jt400Connection,
+  sql: string,
+  params: readonly QueryParam[],
+  options: DbCursorOptions
+): Promise<RowCursor> {
+  return new Promise<RowCursor>((resolveOpen, rejectOpen) => {
+    let opened = false;
+    let closed = false;
+    let jobName: string | undefined;
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const onAbort = (): void => {
+      if (jobName && options.cancelJob) {
+        void options.cancelJob(jobName).catch(() => undefined);
+      }
+    };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
+    const transaction = connection.transaction(async (pinned) => {
+      if (options.cancelJob) {
+        const [row] = (await pinned.query('VALUES QSYS2.JOB_NAME', [])) as Row[];
+        jobName = String(Object.values(row ?? {})[0] ?? '').trim() || undefined;
+      }
+      options.signal?.throwIfAborted();
+      const statement = await pinned.execute(sql, [...params]);
+      try {
+        const columns: DbColumn[] = (await statement.metadata()).map((column) => ({
+          name: column.name,
+          kind: kindFromTypeName(column.typeName),
+          dbType: column.typeName,
+          precision: column.precision,
+          scale: column.scale,
+        }));
+        const rows = statement.asIterable()[Symbol.asyncIterator]();
+        let done = false;
+
+        const cursor: RowCursor = {
+          columns,
+          async next() {
+            if (done || closed) {
+              return null;
+            }
+            const batch: unknown[][] = [];
+            try {
+              while (batch.length < options.fetchSize) {
+                const step = await rows.next();
+                if (step.done || !step.value) {
+                  done = true;
+                  break;
+                }
+                const values = step.value;
+                batch.push(columns.map((column, index) => normalizeValue(values[index], column)));
+              }
+            } catch (error) {
+              throw toJt400Error(error);
+            }
+            return batch.length > 0 ? batch : null;
+          },
+          async close() {
+            if (closed) {
+              return;
+            }
+            closed = true;
+            options.signal?.removeEventListener('abort', onAbort);
+            release();
+            await transaction.catch(() => undefined);
+          },
+        };
+        opened = true;
+        resolveOpen(cursor);
+        await released;
+      } finally {
+        await Promise.resolve(statement.close()).catch(() => undefined);
+      }
+    });
+
+    // Observed at once, so a failure before the cursor opens rejects the open
+    // instead of becoming an unhandled rejection.
+    transaction.catch((error: unknown) => {
+      if (!opened) {
+        options.signal?.removeEventListener('abort', onAbort);
+        rejectOpen(toJt400Error(error));
+      }
+    });
+  });
+}
 
 /** The part of a java.sql.SQLException proxy that node-java exposes. */
 interface JavaSqlException {

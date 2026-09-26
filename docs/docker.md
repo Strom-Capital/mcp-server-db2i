@@ -224,6 +224,11 @@ environment:
   - QUERY_ALLOWED_SCHEMAS=${QUERY_ALLOWED_SCHEMAS:-}
   - QUERY_PARSE_CHECK=${QUERY_PARSE_CHECK:-}
   
+  # Query exports (export_query)
+  - EXPORT_ENABLED=${EXPORT_ENABLED:-}
+  - EXPORT_DIR=${EXPORT_DIR:-/data/exports}
+  - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-}
+  
   # Tool selection and response format
   - MCP_TOOLS_ENABLED=${MCP_TOOLS_ENABLED:-}
   - MCP_TOOLS_DISABLED=${MCP_TOOLS_DISABLED:-}
@@ -249,6 +254,27 @@ services:
 ```
 
 The server reads the files at startup. A statement that is not a query, or that names a library outside `QUERY_ALLOWED_SCHEMAS`, stops the container. See [Business SQL tools](custom-tools.md).
+
+## Query exports
+
+The image has an empty `/data/exports` directory owned by `mcpuser` with mode `0700`. Point `EXPORT_DIR` at it and mount a named volume there, which takes the same owner:
+
+```yaml
+services:
+  mcp-server-db2i:
+    environment:
+      - EXPORT_ENABLED=true
+      - EXPORT_DIR=/data/exports
+      # HTTP: download links are <MCP_PUBLIC_URL>/exports/<id>
+      - MCP_PUBLIC_URL=https://mcp.example.com
+    volumes:
+      - exports:/data/exports
+
+volumes:
+  exports:
+```
+
+Over HTTP, users download through the link and never see the path. Over stdio the result is a path inside the container, which is only useful on the host through a bind mount: mount a host directory at `/data/exports` and make it writable by the container's `mcpuser`. See [Query exports](configuration.md#query-exports).
 
 ## Multi-Stage Build
 

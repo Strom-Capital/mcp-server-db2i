@@ -20,6 +20,8 @@ export interface AuditCall {
   params?: unknown[];
   args?: Record<string, unknown>;
   rowCount?: number;
+  /** Size of the file an export wrote. */
+  bytes?: number;
   durationMs?: number;
   outcome: 'success' | 'error' | 'rate_limited';
   error?: string;
@@ -68,17 +70,27 @@ export function writeAudit(entry: AuditCall): void {
 }
 
 /** A server event that is not a tool call. */
-export interface AuditEvent {
-  event: 'shutdown';
-  reason: string;
-}
+export type AuditEvent =
+  | { event: 'shutdown'; reason: string }
+  | {
+      /** A request for an export download link. */
+      event: 'export_download';
+      /** The first 8 characters of the export id. The full id is the link, so it is never logged. */
+      exportId: string;
+      /** Who ran the export. */
+      identity: string;
+      ip?: string;
+      outcome: 'success' | 'not_found' | 'error';
+      bytes?: number;
+      rowCount?: number;
+    };
 
 /** Append one event line, such as why the server shut down. No-op when the audit log is off. Never throws. */
 export function writeAuditEvent(entry: AuditEvent): void {
   if (!config) {
     return;
   }
-  writeLine({ time: new Date().toISOString(), event: entry.event, reason: entry.reason });
+  writeLine({ time: new Date().toISOString(), ...entry });
 }
 
 function writeLine(record: Record<string, unknown>): void {
@@ -123,6 +135,9 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
   }
   if (entry.rowCount !== undefined) {
     line.rowCount = entry.rowCount;
+  }
+  if (entry.bytes !== undefined) {
+    line.bytes = entry.bytes;
   }
   if (entry.durationMs !== undefined) {
     line.durationMs = entry.durationMs;

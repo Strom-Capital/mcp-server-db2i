@@ -26,6 +26,63 @@ export interface DbQueryOptions {
   noResultSet?: boolean;
 }
 
+/** How a column's values are written to a file. */
+export type ColumnKind =
+  | 'int'
+  | 'bigint'
+  | 'decimal'
+  | 'float'
+  | 'string'
+  | 'date'
+  | 'time'
+  | 'timestamp'
+  | 'binary'
+  | 'other';
+
+/** One result column, the same shape from every driver. */
+export interface DbColumn {
+  name: string;
+  kind: ColumnKind;
+  /** The type name the driver reported, such as DECIMAL or CHAR. */
+  dbType: string;
+  precision?: number;
+  scale?: number;
+  /**
+   * The driver rounds this column's values: node-odbc reads every DECIMAL and
+   * NUMERIC as a JavaScript number, so digits past 15 are lost.
+   */
+  lossy?: boolean;
+}
+
+export interface DbCursorOptions {
+  /** Rows per round trip. */
+  fetchSize: number;
+  /**
+   * Aborting cancels whatever the cursor is doing on the IBM i, the open or a
+   * fetch. The pending call then rejects.
+   */
+  signal?: AbortSignal;
+  /** Cancel the statement running in another job with QSYS2.CANCEL_SQL. */
+  cancelJob?: (jobName: string) => Promise<void>;
+  /**
+   * The caller's overall time limit in milliseconds. A driver that times each
+   * request itself allows a request at least this long plus CANCEL_GRACE_MS.
+   */
+  timeoutMs?: number;
+}
+
+/**
+ * A result set read a batch at a time, so a large result never sits in memory.
+ * Values are normalized with normalizeValue.
+ */
+export interface RowCursor {
+  readonly columns: readonly DbColumn[];
+  /** The next batch of rows as arrays in column order, or null at the end. */
+  next(): Promise<unknown[][] | null>;
+  /** Release the connection or job. Safe to call twice, and never throws. */
+  close(): Promise<void>;
+}
+
 export interface DbPool {
   /** Run a statement with positional `?` parameters and return its rows. */
   query(
@@ -33,6 +90,11 @@ export interface DbPool {
     params: readonly QueryParam[],
     options?: DbQueryOptions
   ): Promise<Record<string, unknown>[]>;
+  /**
+   * Run a query and read its rows in batches. The cursor holds one connection
+   * or job until it is closed. Optional, so test pools need not implement it.
+   */
+  openCursor?(sql: string, params: readonly QueryParam[], options: DbCursorOptions): Promise<RowCursor>;
   /** Close every connection in the pool. */
   close(): Promise<void>;
 }

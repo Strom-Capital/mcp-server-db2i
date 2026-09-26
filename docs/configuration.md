@@ -101,6 +101,27 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 | `QUERY_TIMEOUT` | `120` | Seconds a statement may run before it is cancelled on the IBM i. Applies to every statement a tool runs, including catalog queries. `0` turns the limit off; at most `86400`. A profile's `queryTimeout` overrides it. How each driver cancels is in [Security](security.md#query-timeout) |
 | `QUERY_PARSE_CHECK` | on | `execute_query` and business SQL tools parse the statement with `QSYS2.PARSE_STATEMENT` before running it. One extra round trip, often a few hundred milliseconds. Business tools cache that result. Set to `false` or `0` to turn the check off |
 
+### Query exports
+
+[`export_query`](tools.md#query-exports) writes query results to files on the server host. It is off until both of the first two variables are set.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EXPORT_ENABLED` | off | `true` or `1` registers `export_query` and, over HTTP, the `/exports/:id` download route |
+| `EXPORT_DIR` | - | Directory for export files. Created with mode `0700`; it must not be a symbolic link and must belong to the user the server runs as. Export files left by an earlier run are deleted at startup; other files are left alone |
+| `EXPORT_MAX_ROWS` | `100000` | Most rows per export. `max_rows` can only lower it |
+| `EXPORT_MAX_BYTES` | `104857600` | Largest export file in bytes (100 MB). The export stops after the batch that reaches it, and the result says `truncated: "bytes"` |
+| `EXPORT_TIMEOUT` | `QUERY_TIMEOUT` | Seconds an export may take, from the query to the last row. The statement is cancelled on the IBM i at the limit, as with `QUERY_TIMEOUT`. `0` turns the limit off |
+| `EXPORT_TTL_MINUTES` | `15` | Minutes a finished file is kept. Then the file and its link are gone |
+| `EXPORT_MAX_DOWNLOADS` | `3` | Downloads a link allows. After the last one the link stops working and the file is deleted. `HEAD` requests do not count. `1` makes links single use |
+| `EXPORT_MAX_CONCURRENT` | `2` | Exports that may run at the same time. Each holds a connection (or a Mapepire job) until it finishes |
+| `EXPORT_DIR_MAX_BYTES` | `1073741824` | Bytes all export files may take together (1 GB). A new export is refused when it could go over |
+| `MCP_PUBLIC_URL` | - | Needed over HTTP: download links are `<MCP_PUBLIC_URL>/exports/<id>`. The same variable the OAuth server uses; its host is added to the allowed hosts |
+
+Over stdio the result is the file path, so the user can open the file from the same machine. Over HTTP it is a download link, and the server only ever hands out links, never host paths. With `MCP_TRANSPORT=both`, each caller gets the form for its transport.
+
+The Mapepire driver gives an export a job of its own and never shares one, because cancelling at `EXPORT_TIMEOUT` ends whatever the job is running. When every job allowed by `maxJobs` is busy, the export is refused and can be tried again.
+
 ### Tool Selection
 
 | Variable | Default | Description |
@@ -108,7 +129,7 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 | `MCP_TOOLS_ENABLED` | - | Comma-separated allowlist. If set, only these tools are registered |
 | `MCP_TOOLS_DISABLED` | - | Comma-separated denylist, applied after the allowlist |
 
-Valid built-in names: `execute_query`, `list_schemas`, `list_tables`, `search_tables`, `search_columns`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`, `list_routines`, `describe_routine`, `validate_query`, `get_object_ddl`, `get_related_objects`, `get_journal_info`, `index_advice`, `profile_table`, `get_business_context`, `search_ibmi_services`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
+Valid built-in names: `execute_query`, `export_query` (also needs `EXPORT_ENABLED`), `list_schemas`, `list_tables`, `search_tables`, `search_columns`, `describe_table`, `list_views`, `list_indexes`, `get_table_constraints`, `list_routines`, `describe_routine`, `validate_query`, `get_object_ddl`, `get_related_objects`, `get_journal_info`, `index_advice`, `profile_table`, `get_business_context`, `search_ibmi_services`. Names are case-insensitive. An unknown name stops the server at startup, so a typo can't silently leave a tool exposed.
 
 When [business SQL tools](custom-tools.md) are loaded, the same variables also accept a custom tool name or `toolset:<name>`. A toolset selector matches only custom tools in that group. `toolset:sales` does not register `execute_query`.
 
@@ -221,6 +242,11 @@ QUERY_TIMEOUT=120
 # Libraries execute_query and the SQL service tools may reference (unset = no restriction)
 # QUERY_ALLOWED_SCHEMAS=MYLIB,QSYS2
 # QUERY_PARSE_CHECK=true
+
+# Query exports (export_query); links need MCP_PUBLIC_URL over HTTP
+# EXPORT_ENABLED=true
+# EXPORT_DIR=/data/exports
+# MCP_PUBLIC_URL=https://mcp.example.com
 
 # Tool selection and response format
 # MCP_TOOLS_ENABLED=list_schemas,list_tables,describe_table
