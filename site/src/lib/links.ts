@@ -1,5 +1,5 @@
-/** External links used across the site. Change the docs origin here when docs.db2i-mcp.com is live. */
-export const DOCS = 'https://mcp-server-db2i.mintlify.app';
+/** External links used across the site. Change the docs origin here. */
+export const DOCS = 'https://docs.db2i-mcp.com';
 export const GITHUB = 'https://github.com/Strom-Capital/mcp-server-db2i';
 
 export const links = {
@@ -29,6 +29,7 @@ export const links = {
   npm: 'https://www.npmjs.com/package/mcp-server-db2i',
   registry: 'https://registry.modelcontextprotocol.io/',
   mcp: 'https://modelcontextprotocol.io/',
+  ibmMcp: 'https://github.com/IBM/ibmi-mcp-server',
 } as const;
 
 /** A path inside this site, with the configured base. */
