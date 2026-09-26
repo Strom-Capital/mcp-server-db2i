@@ -47,7 +47,7 @@ const { Content } = await render(post);
 </Base>
 
 <style>
-  .post-head, .post-body { display: grid; gap: var(--space-5); }
+  .post-head, .post-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
   @media (min-width: 1000px) { .post-head, .post-body { grid-template-columns: 200px minmax(0, 1fr); column-gap: 64px; } }
   .post-head { padding-bottom: var(--space-6); border-bottom: 1px solid var(--line-strong); margin-bottom: var(--space-6); }
   .side { display: grid; gap: var(--space-4); align-content: start; }

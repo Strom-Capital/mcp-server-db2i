@@ -65,9 +65,9 @@ Thanks!`;
         </div>
       </div>
       <div class="cols3">
-        <div><p class="label">01</p><h3>ERP screens and reports</h3><p class="muted">The system your team works in every day, with the reports that were built for it.</p></div>
-        <div><p class="label">02</p><h3>Excel linked to the ERP</h3><p class="muted">Workbooks that pull data straight from the ERP, so the numbers land in a sheet your team can work with.</p></div>
-        <div><p class="label">03</p><h3>A data warehouse or BI tool</h3><p class="muted">ERP data copied into a warehouse or data lake, with dashboards and reports on top.</p></div>
+        <div><h3>ERP screens and reports</h3><p class="muted">The system your team works in every day, with the reports that were built for it.</p></div>
+        <div><h3>Excel linked to the ERP</h3><p class="muted">Workbooks that pull data straight from the ERP, so the numbers land in a sheet your team can work with.</p></div>
+        <div><h3>A data warehouse or BI tool</h3><p class="muted">ERP data copied into a warehouse or data lake, with dashboards and reports on top.</p></div>
       </div>
       <p class="bridge">
         Then there is the one-off question, such as why a large customer ordered less this month.
@@ -207,7 +207,7 @@ Thanks!`;
   @media (min-width: 1000px) { .group { grid-template-columns: 200px minmax(0, 1fr); } }
   .group .rows li { padding: 8px 0; font-size: 1.1rem; }
   .group .rows li:first-child { padding-top: 0; }
-  .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-7); border-top: 1px solid var(--line-strong); padding-top: var(--space-6); }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-7); padding-top: var(--space-6); position: relative; }
   @media (min-width: 900px) { .two { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 64px; } }
   .two > div > .label { margin-bottom: var(--space-4); }
   .h2s { font-size: clamp(1.8rem, 3.4vw, 2.6rem); max-width: 18ch; margin-bottom: var(--space-5); }
@@ -215,7 +215,9 @@ Thanks!`;
   .ticks { margin: 0 0 var(--space-5); }
   .ticks li { padding: 12px 0 12px 22px; position: relative; }
   .ticks li::before { content: ''; position: absolute; left: 0; top: 20px; width: 7px; height: 7px; background: var(--accent); }
-  .next { border-top: 1px solid var(--line-strong); padding-top: var(--space-6); }
+  .next { padding-top: var(--space-6); position: relative; }
+  /* The top rule spans the content, not the container's side padding */
+  .two::before, .next::before { content: ''; position: absolute; top: 0; left: var(--gutter); right: var(--gutter); height: 1px; background: var(--line-strong); }
   .share { max-width: 760px; padding: var(--space-5) var(--space-6) var(--space-6); }
   .share-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
   .copy { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; background: var(--fg); color: var(--bg); border: 0; border-radius: var(--radius-btn); padding: 8px 12px; cursor: pointer; }
