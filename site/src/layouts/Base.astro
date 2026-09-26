@@ -71,14 +71,19 @@ const favicon = 'data:image/svg+xml,' + encodeURIComponent(faviconSvg);
         <a class="brand" href={url('/')} aria-label="db2i/mcp home">
           <Logo variant="lockup" height={20} />
         </a>
-        <nav aria-label="Main">
+        <nav id="site-nav" aria-label="Main">
           <a href={url('/')} aria-current={path === url('/') ? 'page' : undefined}>Product</a>
           <a href={url('/business')} aria-current={current('/business')}>For business</a>
           <a href={url('/blog')} aria-current={current('/blog')}>Blog</a>
           <a href={links.docs}>Docs</a>
           <a href={links.github}>GitHub</a>
-          <ThemeSwitch />
         </nav>
+        <div class="tools">
+          <ThemeSwitch />
+          <button type="button" class="menu-toggle" aria-controls="site-nav" aria-expanded="false" aria-label="Open menu" data-menu-toggle>
+            <span aria-hidden="true"></span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -88,45 +93,43 @@ const favicon = 'data:image/svg+xml,' + encodeURIComponent(faviconSvg);
 
     <footer class="site-footer">
       <div class="container">
-        <div class="cols">
-          <div class="about">
-            <a class="brand" href={url('/')} aria-label="db2i/mcp home"><Logo variant="lockup" height={20} /></a>
-            <p class="muted">An open-source MCP server for IBM Db2 for i. MIT licensed.</p>
-          </div>
-          <div>
-            <h2 class="label">Project</h2>
-            <ul>
-              <li><a href={links.docs}>Docs</a></li>
-              <li><a href={url('/blog')}>Blog</a></li>
-              <li><a href={url('/rss.xml')}>RSS</a></li>
-              <li><a href={links.changelog}>Changelog</a></li>
-            </ul>
-          </div>
-          <div>
-            <h2 class="label">Get it</h2>
-            <ul>
-              <li><a href={links.npm}>npm</a></li>
-              <li><a href={links.github}>GitHub</a></li>
-              <li><a href={links.registry}>MCP Registry</a></li>
-            </ul>
-          </div>
-          <div>
-            <h2 class="label">Community</h2>
-            <ul>
-              <li><a href={links.issues}>Issues</a></li>
-              <li><a href={links.sponsor}>Sponsor</a></li>
-            </ul>
-          </div>
+        <div class="foot-top">
+          <a class="brand" href={url('/')} aria-label="db2i/mcp home"><Logo variant="lockup" height={18} /></a>
+          <nav class="foot-links" aria-label="Footer">
+            <a href={links.docs}>Docs</a>
+            <a href={url('/blog')}>Blog</a>
+            <a href={links.changelog}>Changelog</a>
+            <a href={links.github}>GitHub</a>
+            <a href={links.npm}>npm</a>
+            <a href={links.sponsor}>Sponsor</a>
+          </nav>
         </div>
         <p class="legal">
-          <span>db2i/mcp · npm: <a href={links.npm}>mcp-server-db2i</a> · MIT</span>
-          <span>IBM, IBM i and Db2 are trademarks of International Business Machines Corporation. This project is not affiliated with IBM.</span>
+          <span>mcp-server-db2i · MIT</span>
+          <span>IBM, IBM i and Db2 are trademarks of International Business Machines Corporation. Not affiliated with IBM.</span>
         </p>
       </div>
     </footer>
 
     <AskDocs starterQuestions={starterQuestions} />
     <CodeCopy />
+    <script>
+      // Mobile menu: the button shows and hides the header nav.
+      const toggle = document.querySelector<HTMLButtonElement>('[data-menu-toggle]');
+      const nav = document.getElementById('site-nav');
+      if (toggle && nav) {
+        const set = (open: boolean) => {
+          nav.classList.toggle('open', open);
+          toggle.setAttribute('aria-expanded', String(open));
+          toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        };
+        toggle.addEventListener('click', () => set(!nav.classList.contains('open')));
+        nav.addEventListener('click', (event) => { if ((event.target as HTMLElement).closest('a')) set(false); });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && nav.classList.contains('open')) { set(false); toggle.focus(); }
+        });
+      }
+    </script>
   </body>
 </html>
 
@@ -135,29 +138,34 @@ const favicon = 'data:image/svg+xml,' + encodeURIComponent(faviconSvg);
   .skip:focus { left: 8px; }
 
   .site-header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
-  .bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: 64px; }
-  .brand { display: inline-flex; align-items: center; color: var(--fg); text-decoration: none; }
+  .bar { display: flex; align-items: center; gap: var(--space-4) 28px; min-height: 64px; }
+  .brand { display: inline-flex; align-items: center; color: var(--fg); text-decoration: none; margin-right: auto; }
   .brand:hover { color: var(--fg); }
-  nav { display: flex; align-items: center; gap: 28px; font-size: 0.9rem; }
-  nav a { display: inline-flex; align-items: center; min-height: 34px; color: var(--muted); text-decoration: none; white-space: nowrap; }
-  nav a:hover, nav a[aria-current] { color: var(--fg); }
+  .site-header nav { display: flex; align-items: center; gap: 28px; font-size: 0.9rem; }
+  .site-header nav a { display: inline-flex; align-items: center; min-height: 34px; color: var(--muted); text-decoration: none; white-space: nowrap; }
+  .site-header nav a:hover, .site-header nav a[aria-current] { color: var(--fg); }
+  .tools { display: flex; align-items: center; gap: 8px; }
+
+  /* Two-line menu button, turning into a cross when open. Phones only. */
+  .menu-toggle { display: none; width: 34px; height: 34px; padding: 0; background: none; border: 1px solid var(--line); border-radius: var(--radius-btn); color: var(--fg); cursor: pointer; place-items: center; }
+  .menu-toggle span, .menu-toggle span::before { display: block; width: 16px; height: 1.5px; background: currentColor; position: relative; transition: transform 0.15s; }
+  .menu-toggle span { transform: translateY(-3px); }
+  .menu-toggle span::before { content: ''; position: absolute; left: 0; top: 6px; }
+  .menu-toggle[aria-expanded='true'] span { transform: rotate(45deg); }
+  .menu-toggle[aria-expanded='true'] span::before { top: 0; transform: rotate(-90deg); }
 
   @media (max-width: 759px) {
-    nav { gap: var(--space-4); font-size: 0.85rem; }
-    nav a:first-child { display: none; }
-  }
-  @media (max-width: 479px) {
-    .bar { flex-wrap: wrap; padding-block: 10px; }
-    nav { width: 100%; justify-content: space-between; gap: 10px; }
+    .menu-toggle { display: inline-grid; }
+    .site-header nav { display: none; position: absolute; left: 0; right: 0; top: 100%; flex-direction: column; align-items: stretch; gap: 0; padding: 4px var(--gutter) 16px; background: var(--bg); border-bottom: 1px solid var(--line-strong); font-size: 1.05rem; }
+    .site-header nav.open { display: flex; }
+    .site-header nav a { min-height: 48px; border-top: 1px solid var(--line); color: var(--fg); }
+    .site-header nav a:first-child { border-top: 0; }
   }
 
-  .site-footer { border-top: 1px solid var(--line-strong); padding: var(--space-7) 0 var(--space-5); margin-top: var(--space-8); font-size: 0.95rem; }
-  .cols { display: grid; gap: var(--space-6); grid-template-columns: 1fr 1fr; }
-  .about { grid-column: 1 / -1; }
-  @media (min-width: 760px) { .cols { grid-template-columns: 2fr 1fr 1fr 1fr; } .about { grid-column: auto; } }
-  .about p { margin-top: var(--space-4); max-width: 24rem; }
-  .site-footer .label { margin-bottom: var(--space-3); }
-  .site-footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  .site-footer ul a { text-decoration: none; }
-  .legal { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3) var(--space-6); margin: var(--space-7) 0 0; padding-top: var(--space-4); border-top: 1px solid var(--line); font: 12px/1.5 var(--font-mono); color: var(--muted); }
+  .site-footer { border-top: 1px solid var(--line); padding: var(--space-6) 0 var(--space-5); margin-top: var(--space-8); }
+  .foot-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4) var(--space-6); }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 0.9rem; }
+  .foot-links a { color: var(--muted); text-decoration: none; min-height: 0; }
+  .foot-links a:hover { color: var(--fg); }
+  .legal { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-6); margin: var(--space-5) 0 0; font: 11px/1.5 var(--font-mono); color: var(--muted); }
 </style>
