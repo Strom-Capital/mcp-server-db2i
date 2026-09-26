@@ -16,34 +16,13 @@ const emailSubject = 'Could we try an AI assistant on our ERP data?';
 
 const summary = `Hi,
 
-I came across mcp-server-db2i, an open-source, self-hosted tool that lets AI assistants such as Claude answer questions about our ERP data in plain language. It only reads data, and people sign in with their own credentials.
+I came across mcp-server-db2i, an open-source, self-hosted tool that lets AI assistants such as Claude answer questions about our ERP data in plain language. It only reads data, and people sign in with their own credentials. It is free.
 
 I'd like to use it for the one-off questions we don't have reports for. Could you take a look and let me know if we could try it?
 
-The main points for you:
-
-What is enforced
-- Read-only: a read-only database connection and a SQL validator that only accepts queries.
-- A query timeout cancels long-running statements on the IBM i.
-- A library allowlist limits which schemas can be queried or browsed. Sensitive columns can be masked.
-- Every tool call is written to an audit log (JSON lines, SQL hashed by default).
-
-Who sees what
-- With the HTTP transport, people sign in with their own IBM i user profile (OAuth 2.1), so object authority and exit programs apply as usual. With stdio, the server uses the credentials in its configuration.
-- Query results go to the AI assistant the user connects, so it should be one the company has approved.
-
-How it connects
-- Self-hosted: the server runs on a machine you choose, such as a workstation, an on-premises server or a container in the cloud.
-- In the cloud, it needs a private network connection to the IBM i, such as a VPN. The IBM i ports should not be open to the internet.
-- To use it from claude.ai, the server must be reachable over HTTPS. Access can be limited to Anthropic's IP range.
-- The ODBC driver (default) and JT400 use the IBM i host servers. Nothing is installed on the IBM i. The ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the server machine.
-- Mapepire over SSH works when only port 22 is open. It copies its server JAR to the user's home directory on first use.
-
 Overview: ${siteUrl}
-Quickstart: ${links.quickstart}
 Security: ${links.security}
-
-It is free and MIT licensed, so there is nothing to buy.
+Setup: ${links.quickstart}
 
 Thanks!`;
 ---
@@ -173,8 +152,8 @@ Thanks!`;
         <div>
           <h2>Share it with your IT team.</h2>
           <p class="lead">
-            Copy the email below and send it to your IT team. It covers what they need to decide, with links to the
-            setup and security docs.
+            Copy the email below and send it to your IT team. It links to the security and setup
+            docs, so they have what they need to decide.
           </p>
         </div>
       </div>
