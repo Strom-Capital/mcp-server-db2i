@@ -42,7 +42,7 @@
   "bugs": {
     "url": "https://github.com/Strom-Capital/mcp-server-db2i/issues"
   },
-  "homepage": "https://github.com/Strom-Capital/mcp-server-db2i#readme",
+  "homepage": "https://db2i-mcp.com",
   "dependencies": {
     "@modelcontextprotocol/node": "^2.1.0",
     "@modelcontextprotocol/server": "^2.1.0",

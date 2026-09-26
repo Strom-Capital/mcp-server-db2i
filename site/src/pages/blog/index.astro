@@ -1,0 +1,29 @@
+---
+import Base from '../../layouts/Base.astro';
+import PostList from '../../components/PostList.astro';
+import { getPosts } from '../../lib/posts';
+import { url } from '../../lib/links';
+
+const posts = await getPosts();
+const years = [...new Set(posts.map((p) => p.data.date.getUTCFullYear()))];
+---
+<Base title="Blog" description="Release write-ups and posts about asking IBM i data new questions with AI assistants.">
+  <section class="section">
+    <div class="container narrow">
+      <h1>Blog</h1>
+      <p class="lead">What each release changes and why, and posts for business teams about getting more from ERP data on IBM i. Also as <a href={url('/rss.xml')}>RSS</a>.</p>
+      {years.map((year) => (
+        <section class="year">
+          <h2>{year}</h2>
+          <PostList posts={posts.filter((p) => p.data.date.getUTCFullYear() === year)} />
+        </section>
+      ))}
+    </div>
+  </section>
+</Base>
+
+<style>
+  .narrow { max-width: 760px; }
+  .year { margin-top: var(--space-6); }
+  .year h2 { font-size: 1rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
+</style>

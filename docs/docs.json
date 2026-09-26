@@ -38,6 +38,16 @@
     "global": {
       "anchors": [
         {
+          "anchor": "Website",
+          "icon": "globe",
+          "href": "https://db2i-mcp.com"
+        },
+        {
+          "anchor": "Blog",
+          "icon": "newspaper",
+          "href": "https://db2i-mcp.com/blog"
+        },
+        {
           "anchor": "GitHub",
           "icon": "github",
           "href": "https://github.com/Strom-Capital/mcp-server-db2i"

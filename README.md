@@ -22,6 +22,8 @@
 
 Listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.Strom-Capital/mcp-server-db2i`.
 
+**Website:** [db2i-mcp.com](https://db2i-mcp.com), with a [blog](https://db2i-mcp.com/blog) that explains each release. **Docs:** [mcp-server-db2i.mintlify.app](https://mcp-server-db2i.mintlify.app).
+
 ## Architecture
 
 AI clients connect to the MCP Server in one of two ways. Local clients such as Claude Desktop, Claude Code and Cursor can start it as a process and talk over stdio. Remote clients connect over Streamable HTTP at `/mcp`, signing in with OAuth 2.1 (claude.ai custom connectors) or a bearer token (custom agents). Local clients can also use the HTTP endpoint. The server executes read-only queries against Db2 for i using the IBM i Access ODBC driver (default, no Java), the optional JT400 JDBC driver (`DB2I_DRIVER=jt400`), or Mapepire over SSH (`DB2I_DRIVER=mapepire`) for systems where only SSH is reachable. One server can reach several IBM i systems through connection profiles, each with its own driver.

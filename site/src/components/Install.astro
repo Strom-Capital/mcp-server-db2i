@@ -1,0 +1,93 @@
+---
+import { links } from '../lib/links';
+
+const clientConfig = `{
+  "mcpServers": {
+    "db2i": {
+      "command": "npx",
+      "args": ["mcp-server-db2i"],
+      "env": {
+        "DB2I_HOSTNAME": "ibmi.example.com",
+        "DB2I_USERNAME": "\${env:DB2I_USERNAME}",
+        "DB2I_PASSWORD": "\${env:DB2I_PASSWORD}",
+        "QUERY_ALLOWED_SCHEMAS": "MYLIB"
+      }
+    }
+  }
+}`;
+
+const docker = `git clone https://github.com/Strom-Capital/mcp-server-db2i
+cd mcp-server-db2i
+docker build -t mcp-server-db2i .
+
+# stdio: your MCP client starts the container
+docker run -i --rm --env-file .env mcp-server-db2i
+
+# HTTP for a team: uncomment "ports" in docker-compose.yml
+docker-compose up -d`;
+
+const oauth = `MCP_TRANSPORT=http
+MCP_OAUTH_ENABLED=true
+MCP_PUBLIC_URL=https://mcp.example.com
+MCP_OAUTH_SECRET=<a long random string>
+
+# Then, in claude.ai: Settings > Connectors > Add custom connector
+#   URL: https://mcp.example.com/mcp`;
+
+const tabs = [
+  { id: 'npx', label: 'npx', intro: 'Add the server to your MCP client config. Claude Desktop, Cursor and Claude Code all use this shape.', code: clientConfig, more: links.clientSetup, moreLabel: 'Client setup guide' },
+  { id: 'docker', label: 'Docker', intro: 'Run it as a container: started by your MCP client over stdio, or as a shared HTTP server for your team.', code: docker, more: links.docker, moreLabel: 'Docker guide' },
+  { id: 'connector', label: 'claude.ai connector', intro: 'Run the server over HTTPS with OAuth. Everyone else adds one URL and signs in with their own IBM i profile.', code: oauth, more: links.oauth, moreLabel: 'Remote clients and OAuth' },
+];
+---
+<section class="section" id="install">
+  <div class="container">
+    <p class="eyebrow">Install</p>
+    <h2>Pick how you run it</h2>
+    <p class="lead">The default ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the machine that runs the server. Nothing is installed on the IBM i.</p>
+
+    <div class="tabs">
+      <div class="tablist" role="tablist" aria-label="Install options">
+        {tabs.map((t, i) => (
+          <button type="button" role="tab" id={`tab-${t.id}`} aria-controls={`panel-${t.id}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1}>{t.label}</button>
+        ))}
+      </div>
+      {tabs.map((t, i) => (
+        <div class="panel" role="tabpanel" id={`panel-${t.id}`} aria-labelledby={`tab-${t.id}`} hidden={i !== 0}>
+          <p>{t.intro}</p>
+          <pre><code>{t.code}</code></pre>
+          <a href={t.more}>{t.moreLabel} →</a>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<script>
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('.tablist [role="tab"]')];
+  function select(tab: HTMLButtonElement) {
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')!)!.hidden = !on;
+    }
+    tab.focus();
+  }
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => select(tab));
+    tab.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') select(tabs[(i + 1) % tabs.length]);
+      if (e.key === 'ArrowLeft') select(tabs[(i - 1 + tabs.length) % tabs.length]);
+    });
+  });
+</script>
+
+<style>
+  .tabs { margin-top: var(--space-5); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .tablist { display: flex; gap: 2px; border-bottom: 1px solid var(--line); background: var(--bg-subtle); padding: 6px 6px 0; overflow-x: auto; }
+  [role='tab'] { font: 600 0.9rem var(--font-sans); color: var(--muted); background: none; border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
+  [role='tab'][aria-selected='true'] { color: var(--fg); background: var(--card); border-color: var(--line); margin-bottom: -1px; }
+  .panel { padding: var(--space-5); }
+  .panel pre { font-size: 0.85rem; }
+</style>

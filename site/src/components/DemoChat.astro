@@ -1,0 +1,64 @@
+---
+/** A static example exchange. Generic data only: never a real system. */
+---
+<figure class="demo" aria-label="Example: an assistant answers a question using the MCP server">
+  <div class="window">
+    <div class="titlebar" aria-hidden="true"><span></span><span></span><span></span><em>Claude</em></div>
+    <div class="body">
+      <p class="msg user">Which customers have the most open orders right now?</p>
+
+      <div class="tool">
+        <div class="tool-head"><span class="dot"></span><code>describe_table</code><span class="muted">MYLIB.ORDERHDR</span></div>
+        <p class="note">Table note: <code>STATUS = 'O'</code> means open.</p>
+      </div>
+
+      <div class="tool">
+        <div class="tool-head"><span class="dot"></span><code>execute_query</code><span class="badge">read-only</span></div>
+        <pre><code>SELECT C.NAME, COUNT(*) AS OPEN_ORDERS
+FROM MYLIB.ORDERHDR H
+JOIN MYLIB.CUSTOMERS C ON C.CUSTNO = H.CUSTNO
+WHERE H.STATUS = 'O'
+GROUP BY C.NAME
+ORDER BY OPEN_ORDERS DESC
+FETCH FIRST 3 ROWS ONLY</code></pre>
+      </div>
+
+      <div class="msg assistant">
+        <p>Three customers account for most of the open orders:</p>
+        <table>
+          <thead><tr><th>Customer</th><th>Open orders</th></tr></thead>
+          <tbody>
+            <tr><td>Acme Tools</td><td>14</td></tr>
+            <tr><td>Birch Supply</td><td>9</td></tr>
+            <tr><td>Harbor Parts</td><td>7</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <figcaption class="muted">Illustration with example data.</figcaption>
+</figure>
+
+<style>
+  .demo { margin: 0; min-width: 0; }
+  .window { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .titlebar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--bg-subtle); }
+  .titlebar span { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .titlebar em { font-style: normal; font-size: 0.8rem; color: var(--muted); margin-left: 8px; }
+  .body { padding: var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); font-size: 0.92rem; }
+  .msg { margin: 0; }
+  .user { justify-self: end; max-width: 85%; background: var(--accent-soft); color: var(--fg); padding: 8px 12px; border-radius: 12px 12px 4px 12px; }
+  .tool { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg); }
+  .tool-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.85rem; }
+  .tool-head code { background: none; border: 0; padding: 0; font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--spark); }
+  .badge { font-size: 0.72rem; font-weight: 600; color: var(--accent); border: 1px solid currentColor; border-radius: 999px; padding: 0 7px; }
+  .note { margin: 6px 0 0; font-size: 0.85rem; color: var(--muted); }
+  pre { margin: 8px 0 0; padding: 10px; font-size: 0.78rem; border-radius: 6px; }
+  .assistant p { margin: 0 0 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td:last-child, th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  figcaption { font-size: 0.78rem; margin-top: 8px; text-align: right; }
+</style>

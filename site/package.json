@@ -1,0 +1,25 @@
+{
+  "name": "mcp-server-db2i-site",
+  "private": true,
+  "type": "module",
+  "description": "Website and blog for mcp-server-db2i, served at https://db2i-mcp.com",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/rss": "^4.0.19",
+    "@astrojs/sitemap": "^3.7.4",
+    "@lucide/astro": "^1.48.0",
+    "astro": "^7.3.5"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^6.0.3"
+  }
+}
