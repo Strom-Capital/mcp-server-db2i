@@ -4,7 +4,7 @@ const { command } = Astro.props;
 ---
 <div class="copycmd">
   <code><span aria-hidden="true" class="prompt">$</span> {command}</code>
-  <button type="button" data-copy={command} aria-label={`Copy ${command}`}>Copy</button>
+  <button type="button" data-copy={command} data-track="install_command_copied" aria-label={`Copy ${command}`}>Copy</button>
 </div>
 
 <script>

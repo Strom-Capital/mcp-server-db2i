@@ -7,6 +7,7 @@ import faviconSvg from '../../../docs/assets/brand/svg/favicon.svg?raw';
 import Logo from '../components/Logo.astro';
 import AskDocs from '../components/AskDocs.astro';
 import CodeCopy from '../components/CodeCopy.astro';
+import Analytics from '../components/Analytics.astro';
 import ThemeSwitch from '../components/ThemeSwitch.astro';
 import { links, url } from '../lib/links';
 
@@ -63,6 +64,7 @@ const favicon = 'data:image/svg+xml,' + encodeURIComponent(faviconSvg);
     <meta property="og:url" content={canonical} />
     <meta name="twitter:card" content="summary" />
     <slot name="head" />
+    <Analytics />
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
