@@ -3,16 +3,14 @@
  * A static example exchange, set as three columns: the question, the tool
  * calls the server makes, and the answer. Generic data only: never a real system.
  */
-import DataPath from './DataPath.astro';
 ---
 <figure class="query" aria-label="Example: an assistant answers a question using the MCP server">
-  <DataPath nodes={[{ at: '0%' }, { at: 'calc(50% - 3.5px)', on: true }, { at: '100%' }]} />
   <div class="cols">
     <div class="col">
       <div class="head"><span class="label">01 / Question</span><span class="who">Claude</span></div>
       <p class="question">Which customers have the most open orders right now?</p>
     </div>
-    <div class="col">
+    <div class="col on">
       <div class="head"><span class="label">02 / Tool calls</span><span class="who">mcp-server-db2i</span></div>
       <div class="call">
         <div class="call-h"><b>describe_table</b><span>MYLIB.ORDERHDR</span></div>
@@ -46,8 +44,26 @@ import DataPath from './DataPath.astro';
 
 <style>
   .query { margin: 0; min-width: 0; }
-  .cols { display: grid; border-bottom: 1px solid var(--line); }
-  @media (min-width: 1000px) { .cols { grid-template-columns: 1fr 1.35fr 1fr; } }
+  .cols { display: grid; border-bottom: 1px solid var(--line); position: relative; }
+  .col { position: relative; }
+  /* The data path: a line along the top with one square at the start of each column, as in Architecture.astro */
+  .cols::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 1px; background: var(--line-strong); }
+  .cols { padding-top: 18px; }
+  .col::before { content: ''; position: absolute; left: 0; top: -13px; width: 7px; height: 7px; background: var(--bg); border: 1px solid var(--line-strong); }
+  .col.on::before { background: var(--accent); border-color: var(--accent); }
+  .cols::after { content: ''; position: absolute; top: 7px; left: 0; width: 44px; height: 3px; background: var(--accent); animation: run 5.5s cubic-bezier(0.6, 0, 0.4, 1) infinite; }
+  @keyframes run {
+    0% { left: 0; opacity: 0; }
+    8% { opacity: 1; }
+    92% { opacity: 1; }
+    100% { left: calc(100% - 44px); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .cols::after { animation: none; left: 34%; } }
+  @media (max-width: 999px) { .col + .col::before { display: none; } }
+  @media (min-width: 1000px) {
+    .cols { grid-template-columns: 1fr 1.35fr 1fr; }
+    .col + .col::before { left: 32px; }
+  }
   .col { display: grid; gap: 18px; align-content: start; padding: 22px 0 32px; min-width: 0; }
   .col + .col { border-top: 1px solid var(--line); }
   @media (min-width: 1000px) {
