@@ -66,6 +66,9 @@ const { Content } = await render(post);
   .prose :global(table) { border-collapse: collapse; width: 100%; font-size: 0.95rem; display: block; overflow-x: auto; margin: var(--space-5) 0; }
   .prose :global(th) { font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong); padding: 8px 12px 8px 0; text-align: left; }
   .prose :global(td) { border-bottom: 1px solid var(--line); padding: 10px 12px 10px 0; text-align: left; vertical-align: top; }
+  .prose :global(.shot) { margin: var(--space-6) 0; }
+  .prose :global(.shot img) { width: 100%; max-width: 420px; height: auto; border: 1px solid var(--line); border-radius: var(--radius-code); }
+  .prose :global(.shot figcaption) { margin-top: var(--space-2); font: 12px/1.5 var(--font-mono); color: var(--muted); }
   .prose :global(blockquote) { margin: var(--space-5) 0; padding-left: var(--space-4); border-left: 2px solid var(--line-strong); color: var(--muted); }
   .after { margin-top: var(--space-8); padding-top: var(--space-5); border-top: 1px solid var(--line-strong); max-width: 68ch; }
   .after .label { margin-bottom: var(--space-3); }

@@ -39,6 +39,16 @@ pre { background: var(--surface); border: 1px solid var(--line); border-radius: 
 .code-head button:hover { background: var(--accent); color: var(--on-accent); }
 .code pre.astro-code { margin: 0 !important; border: 0; border-radius: 0; background: transparent !important; font-size: 0.85rem; }
 
+/* Screenshots with a light and a dark version, following the page theme (including the header switch) */
+.shot .light { display: block; }
+.shot .dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .shot .light { display: none; }
+  :root:not([data-theme='light']) .shot .dark { display: block; }
+}
+:root[data-theme='dark'] .shot .light { display: none; }
+:root[data-theme='dark'] .shot .dark { display: block; }
+
 /* Layout */
 .container { width: 100%; max-width: var(--max); margin: 0 auto; padding-inline: var(--gutter); }
 .section { padding-block: var(--space-8) 88px; }
