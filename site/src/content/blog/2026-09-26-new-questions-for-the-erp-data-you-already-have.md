@@ -3,7 +3,6 @@ title: New questions for the ERP data you already have
 description: How an AI assistant can answer the one-off questions between reports, against live ERP data on IBM i, alongside the screens, Excel workbooks and BI tools you already use.
 date: 2026-09-26T09:00:00Z
 audience: business
-icon: message-circle-question-mark
 tags: [business, erp]
 ---
 
@@ -45,8 +44,8 @@ Your IBM i team can take the logic of a trusted Excel query, or the definition b
 
 They'll have good questions, and they should. The short version:
 
-- **Read-only at three levels.** A read-only database connection, a check that only allows queries, and a time limit that stops long queries on the IBM i itself.
-- **People sign in as themselves.** Each person uses their own IBM i user, so they see exactly what they can already see.
+- **It only reads.** A read-only database connection and a check that only allows queries. A time limit also stops long queries on the IBM i itself.
+- **People sign in as themselves.** Each person uses their own IBM i user, often the same as for the ERP, and the IBM i decides what they can read.
 - **You choose what's visible.** Only the libraries you allow, with sensitive columns hidden or masked.
 - **Everything is logged.** Every request is written to an audit log.
 - **The data stays on the IBM i.** Nothing is copied into a new database.
@@ -55,8 +54,8 @@ They'll have good questions, and they should. The short version:
 
 It doesn't replace your financial reporting. Official figures still come from the reports your finance team relies on. It doesn't replace the BI team either. If a question turns out to be asked every week, it deserves a proper report, and now you know which one to build.
 
-Someone on the IBM i team sets it up once. After that, people add a link in their assistant and sign in.
+Your IT team sets it up once. After that, people add a link in their assistant and sign in.
 
 ## Next step
 
-The project is free and open source, with nothing to buy. Ask the documentation assistant on this site what setup would involve for your company, or send the business page to your IBM i team.
+It is free and open source, with nothing to buy. The [page for business teams](/business#send-to-it) has a short email you can copy and send to your IT team. If you have questions first, ask the documentation assistant on this site.

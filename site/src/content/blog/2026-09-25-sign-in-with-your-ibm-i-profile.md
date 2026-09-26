@@ -3,7 +3,6 @@ title: Sign in with your IBM i profile
 description: A built-in OAuth 2.1 server lets claude.ai, Cursor and Claude Code connect with one URL. Everyone signs in as themselves and queries run with their own authority.
 date: 2026-09-25T09:00:00Z
 audience: ibmi
-icon: key-round
 tags: [release, oauth, http]
 ---
 
@@ -16,6 +15,12 @@ Version 2.9 fixes that. With `MCP_OAUTH_ENABLED=true`, the server runs its own O
 1. They add `https://mcp.example.com/mcp` as a connector in claude.ai, or in Cursor or Claude Code. The client config holds no token and no password.
 2. When they connect, a sign-in page opens. They log in with their own IBM i user profile, and pick the system if `DB2I_PROFILES` lists more than one.
 3. That's it. The assistant can now use the tools.
+
+<figure class="shot">
+  <img class="light" src="/images/blog/sign-in.png" width="560" height="640" alt="The sign-in page: the db2i/mcp logo, the heading Sign in to IBM i, a line naming the client and where you return to, a system picker with PROD selected, user and password fields, and a Sign in button" />
+  <img class="dark" src="/images/blog/sign-in-dark.png" width="560" height="640" alt="The sign-in page: the db2i/mcp logo, the heading Sign in to IBM i, a line naming the client and where you return to, a system picker with PROD selected, user and password fields, and a Sign in button" />
+  <figcaption>The sign-in page, with two systems to choose from.</figcaption>
+</figure>
 
 ## What happens underneath
 

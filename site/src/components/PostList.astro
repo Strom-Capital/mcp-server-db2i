@@ -1,36 +1,37 @@
 ---
-import IconTile from './IconTile.astro';
-import { audienceLabel, postIcons, type Post } from '../lib/posts';
+import type { Post } from '../lib/posts';
 import { formatDate, url } from '../lib/links';
 
 interface Props { posts: Post[]; headingLevel?: 'h2' | 'h3' }
 const { posts, headingLevel: H = 'h3' } = Astro.props;
 ---
-<ul class="posts">
+<ul class="posts rows">
   {posts.map((post) => (
     <li>
-      <a class="card post" href={url(`/blog/${post.id}`)}>
-        <IconTile icon={postIcons[post.data.icon]} />
+      <a class="post" href={url(`/blog/${post.id}`)}>
+        <span class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time></span>
         <span class="body">
-          <span class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time> · {audienceLabel[post.data.audience]}</span>
           <H class="title">{post.data.title}</H>
-          <p class="muted">{post.data.description}</p>
+          <span class="desc">{post.data.description}</span>
         </span>
+        <em aria-hidden="true">→</em>
       </a>
     </li>
   ))}
 </ul>
 
 <style>
-  .posts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
-  /* The icon sits above the text in narrow cards (home page columns, phones) and beside it in wide ones. */
+  .posts { border-top: 1px solid var(--line-strong); }
   .posts li { container-type: inline-size; }
-  .post { display: grid; align-items: start; gap: var(--space-3); text-decoration: none; color: var(--fg); height: 100%; transition: border-color 0.15s; }
-  .post:hover { border-color: var(--accent); color: var(--fg); }
-  .post :global(.icon-tile) { margin-bottom: 0; }
-  @container (min-width: 560px) { .post { grid-template-columns: auto 1fr; gap: var(--space-4); } }
+  .post { display: grid; gap: 8px 32px; padding: 18px 0 20px; text-decoration: none; color: var(--fg); }
+  @container (min-width: 640px) { .post { grid-template-columns: 180px minmax(0, 1fr) auto; } }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font: 12px/1.5 var(--font-mono); color: var(--muted); }
+  @container (min-width: 640px) { .meta { flex-direction: column; gap: 2px; } }
   .body { display: grid; gap: 6px; min-width: 0; }
-  .meta { font-size: 0.82rem; color: var(--muted); }
-  .title { font-size: 1.1rem; margin: 0; }
-  .post p { margin: 0; font-size: 0.95rem; }
+  .title { margin: 0; font-size: 1.2rem; font-weight: 500; letter-spacing: -0.015em; }
+  .desc { color: var(--muted); font-size: 0.95rem; max-width: 64ch; }
+  em { font-style: normal; color: var(--muted); display: none; transition: transform 0.15s, color 0.15s; }
+  @container (min-width: 640px) { em { display: block; } }
+  .post:hover { color: var(--fg); }
+  .post:hover em { color: var(--accent); transform: translateX(3px); }
 </style>

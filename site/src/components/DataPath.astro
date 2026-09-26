@@ -1,0 +1,42 @@
+---
+/**
+ * The data path motif: a hairline with square nodes and a slow pulse along it.
+ * Decorative only. The pulse stops when the reader prefers reduced motion.
+ */
+interface Node {
+  /** Position along the line, as a CSS length or percentage. */
+  at: string;
+  /** Filled with the accent: the node the reader should notice. */
+  on?: boolean;
+  /** Drawn open and faded: a stop that is not reached (used on the 404 page). */
+  off?: boolean;
+}
+interface Props {
+  nodes: Node[];
+  pulse?: boolean;
+  class?: string;
+}
+const { nodes, pulse = true, class: className } = Astro.props;
+---
+<div class:list={['data-path', className]} aria-hidden="true">
+  {nodes.map((n) => <i class:list={{ on: n.on, off: n.off }} style={`left: min(${n.at}, calc(100% - 7px))`} />)}
+  {pulse && <span class="pulse" />}
+</div>
+
+<style>
+  .data-path { position: relative; height: 18px; }
+  .data-path::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 1px; background: var(--line-strong); }
+  i { position: absolute; top: 5px; width: 7px; height: 7px; background: var(--bg); border: 1px solid var(--line-strong); }
+  i.on { background: var(--accent); border-color: var(--accent); }
+  i.off { border-style: dashed; opacity: 0.5; }
+  .pulse { position: absolute; top: 7px; left: 0; width: 44px; height: 3px; background: var(--accent); animation: run 5.5s cubic-bezier(0.6, 0, 0.4, 1) infinite; }
+  @keyframes run {
+    0% { left: 0; opacity: 0; }
+    8% { opacity: 1; }
+    92% { opacity: 1; }
+    100% { left: calc(100% - 44px); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pulse { animation: none; left: 34%; opacity: 1; }
+  }
+</style>

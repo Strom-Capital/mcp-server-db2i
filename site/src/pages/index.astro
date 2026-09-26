@@ -23,36 +23,41 @@ const latest = (await getPosts()).slice(0, 3);
 
   <section class="section">
     <div class="container">
-      <div class="head">
-        <div>
-          <p class="eyebrow">From the blog</p>
-          <h2>What's new, and why</h2>
+      <div class="sec-head">
+        <p class="label">From the blog</p>
+        <div class="head">
+          <h2>What's new, and why.</h2>
+          <a class="link-rule" href={url('/blog')}>All posts <span aria-hidden="true">→</span></a>
         </div>
-        <a href={url('/blog')}>All posts →</a>
       </div>
-      <div class="latest"><PostList posts={latest} /></div>
+      <PostList posts={latest} />
     </div>
   </section>
 
-  <section class="section section--subtle">
-    <div class="container cta">
-      <h2>Free, open source, and yours to run</h2>
-      <p class="lead">MIT licensed. It runs on your own machines and talks only to your IBM i. Questions, ideas and bug reports are welcome on GitHub.</p>
-      <div class="btn-row">
-        <a class="btn btn--primary" href={links.quickstart}>Get started</a>
-        <a class="btn" href={links.issues}>Open an issue</a>
-        <a class="btn" href={links.sponsor}>Sponsor</a>
+  <section class="section section--tight">
+    <div class="container">
+      <div class="sec-head cta">
+        <p class="label">Open source</p>
+        <div>
+          <h2>Free, open source, and yours to run.</h2>
+          <p class="lead">MIT licensed. It runs on your own machines and talks only to your IBM i. Questions, ideas and bug reports are welcome on GitHub.</p>
+          <div class="btn-row">
+            <a class="btn btn--primary" href={links.quickstart}>Get started <span aria-hidden="true">→</span></a>
+            <a class="link-rule" href={links.issues}>Open an issue</a>
+          </div>
+          <p class="sponsor">
+            If it saves your team time, <a href={links.sponsor}>sponsoring</a> pays for testing against real IBM i
+            systems and new features.
+          </p>
+        </div>
       </div>
     </div>
   </section>
 </Base>
 
 <style>
-  .head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-5); }
-  .head h2 { margin: 0; }
-  .latest :global(.posts) { grid-template-columns: 1fr; }
-  @media (min-width: 900px) { .latest :global(.posts) { grid-template-columns: repeat(3, 1fr); } }
-  .cta { text-align: center; }
-  .cta .lead { margin: 0 auto var(--space-5); }
-  .cta .btn-row { justify-content: center; }
+  .head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+  .cta { border-top: 1px solid var(--line-strong); padding-top: var(--space-6); margin-bottom: 0; }
+  .cta .btn-row { margin-top: var(--space-6); }
+  .sponsor { margin: var(--space-5) 0 0; color: var(--muted); max-width: 56ch; }
 </style>

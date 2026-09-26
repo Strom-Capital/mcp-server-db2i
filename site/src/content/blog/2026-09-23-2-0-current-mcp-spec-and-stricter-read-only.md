@@ -3,7 +3,6 @@ title: "2.0: the current MCP spec and stricter read-only guarantees"
 description: The server now speaks the 2026-07-28 MCP spec, the database connection itself is read-only, and a library allowlist limits what the model can reach.
 date: 2026-09-23T09:00:00Z
 audience: ibmi
-icon: lock
 tags: [release, security, breaking]
 ---
 

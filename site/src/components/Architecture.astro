@@ -1,58 +1,77 @@
 ---
 import { links } from '../lib/links';
 ---
-<section class="section section--subtle" id="how-it-works">
+<section class="section" id="how-it-works">
   <div class="container">
-    <p class="eyebrow">How it fits together</p>
-    <h2>From a question to Db2 for i and back</h2>
-    <p class="lead">The server sits between your AI assistant and the IBM i. Every request passes the same checks, whichever client or driver you use.</p>
-
-    <ol class="flow">
-      <li class="node">
-        <span class="label">AI assistant</span>
-        <strong>Claude, Cursor, Claude Code</strong>
-        <span class="muted">Any client that speaks the <a href={links.mcp}>Model Context Protocol</a>.</span>
+    <div class="sec-head">
+      <p class="label">How it fits together</p>
+      <div>
+        <h2>From a question to Db2 for i and back.</h2>
+        <p class="lead">The server sits between your AI assistant and the IBM i. Every request passes the same checks, whichever client or driver you use.</p>
+      </div>
+    </div>
+    <ol class="nodes">
+      <li>
+        <span class="label">Client</span>
+        <h3>AI assistant</h3>
+        <p>Claude, Cursor, Claude Code, or any client that speaks the <a href={links.mcp}>Model Context Protocol</a>.</p>
       </li>
-      <li class="arrow" aria-hidden="true"></li>
-      <li class="node main">
-        <span class="label">mcp-server-db2i</span>
-        <strong>stdio, or HTTP with OAuth</strong>
-        <ul class="checks">
-          <li>Read-only SQL validation</li>
-          <li>Library allowlist</li>
-          <li>Column masking</li>
-          <li>Rate limits and audit log</li>
+      <li>
+        <span class="label">Server</span>
+        <h3>mcp-server-db2i</h3>
+        <p>stdio on your machine, or HTTP with OAuth for a team.</p>
+      </li>
+      <li class="policy">
+        <span class="label">Policy</span>
+        <h3>Checks on every call</h3>
+        <ul>
+          <li>Read-only SQL validation <span>ON</span></li>
+          <li>Library allowlist <span>ON</span></li>
+          <li>Column masking <span>OPT</span></li>
+          <li>Rate limits and audit log <span>OPT</span></li>
         </ul>
       </li>
-      <li class="arrow" aria-hidden="true"></li>
-      <li class="node">
+      <li>
         <span class="label">Driver</span>
-        <strong>ODBC, JT400 or Mapepire</strong>
-        <span class="muted">Host server ports, or SSH only.</span>
+        <h3>ODBC, JT400 or Mapepire</h3>
+        <p>Host server ports, or SSH only.</p>
       </li>
-      <li class="arrow" aria-hidden="true"></li>
-      <li class="node">
-        <span class="label">IBM i</span>
-        <strong>Db2 for i</strong>
-        <span class="muted">Runs with the user's own authority. Exit programs still apply.</span>
+      <li>
+        <span class="label">System</span>
+        <h3>Db2 for i</h3>
+        <p>Runs with the user's own authority. Exit programs still apply.</p>
       </li>
     </ol>
   </div>
 </section>
 
 <style>
-  .flow { list-style: none; padding: 0; margin: var(--space-6) 0 0; display: grid; gap: var(--space-2); }
-  .node { display: grid; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); }
-  .node.main { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--spark) 18%, transparent); }
-  .label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
-  .node .muted { font-size: 0.9rem; }
-  .checks { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 0.9rem; color: var(--muted); }
-  .checks li::before { content: '✓ '; color: var(--accent); font-weight: 700; }
-  .arrow { height: 22px; display: grid; place-items: center; }
-  .arrow::before { content: ''; width: 2px; height: 100%; background: var(--line); }
-  @media (min-width: 900px) {
-    .flow { grid-template-columns: 1fr 28px 1.15fr 28px 1fr 28px 1fr; align-items: stretch; gap: var(--space-2); }
-    .arrow { height: auto; }
-    .arrow::before { width: 100%; height: 2px; }
+  .nodes { list-style: none; padding: 0; margin: 0; display: grid; gap: 28px; position: relative; }
+  .nodes > li { display: grid; gap: 6px; align-content: start; position: relative; }
+
+  /* Wide: the data path runs along the top, with one square at the start of each column */
+  @media (min-width: 1000px) {
+    .nodes { grid-template-columns: 1fr 1fr 1.3fr 1fr 1fr; gap: 32px; padding-top: 40px; }
+    .nodes::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 1px; background: var(--line-strong); }
+    .nodes > li::before { content: ''; position: absolute; left: 0; top: -35px; width: 7px; height: 7px; background: var(--bg); border: 1px solid var(--line-strong); }
+    .nodes > li.policy::before { background: var(--accent); border-color: var(--accent); }
+    .nodes::after { content: ''; position: absolute; top: 7px; left: 0; width: 44px; height: 3px; background: var(--accent); animation: run 5.5s cubic-bezier(0.6, 0, 0.4, 1) infinite; }
   }
+  @keyframes run {
+    0% { left: 0; opacity: 0; }
+    8% { opacity: 1; }
+    92% { opacity: 1; }
+    100% { left: calc(100% - 44px); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .nodes::after { animation: none; left: 34%; } }
+
+  /* Narrow: stacked, separated by rules */
+  @media (max-width: 999px) { .nodes > li { border-top: 1px solid var(--line); padding-top: 16px; } .nodes > li:first-of-type { border-top: 1px solid var(--line-strong); } }
+
+  .nodes h3 { margin: 0; font-size: 1.15rem; }
+  .nodes p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+  .policy h3 { color: var(--accent); }
+  .policy ul { list-style: none; margin: 6px 0 0; padding: 0; font: 12.5px/1.4 var(--font-mono); }
+  .policy ul li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .policy ul span { color: var(--accent); }
 </style>

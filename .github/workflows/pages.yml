@@ -53,6 +53,8 @@ jobs:
         env:
           # Public widget ID for the Mintlify assistant. Unset: the site builds without the widget.
           PUBLIC_MINTLIFY_WIDGET_ID: ${{ vars.MINTLIFY_WIDGET_ID }}
+          # Public PostHog project key (EU cloud). Unset: the site builds without analytics.
+          PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'

@@ -25,7 +25,7 @@
 import crypto from 'node:crypto';
 import express, { type Request, type RequestHandler, type Response, type Router } from 'express';
 
-import { FAVICON_SVG, LOGO_SHAPES } from '../branding.js';
+import { FAVICON_SVG, LOCKUP_SHAPES, LOCKUP_VIEWBOX } from '../branding.js';
 import { getHttpConfig, isLoopbackHost, normalizeDbHost, type DB2iConfig, type OAuthConfig } from '../config.js';
 import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -298,34 +298,39 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Page logo, cropped to the artwork. The strokes follow the page's text color, so it works in both themes. */
+/** Page logo: the db2i/mcp lockup. Ink follows the text color and the end node uses --accent. */
 const LOGO_SVG =
-  '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="54 42 160 142" width="60" height="53" fill="none" aria-hidden="true">' +
-  '<style>g{stroke:currentColor}</style>' +
-  LOGO_SHAPES +
+  `<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="${LOCKUP_VIEWBOX}" width="120" height="20" role="img" aria-label="db2i/mcp">` +
+  LOCKUP_SHAPES +
   '</svg>';
 
 /** The same logo as a favicon. */
 const FAVICON_HREF = `data:image/svg+xml,${encodeURIComponent(FAVICON_SVG)}`;
 
+/*
+ * Brand palette (docs/assets/brand, site/src/styles/tokens.css). The CSP allows no
+ * fonts, so the page uses the system sans and mono stacks.
+ */
 const PAGE_STYLE = `
-  :root { color-scheme: light dark; --fg: #1f2328; --muted: #59636e; --bg: #f6f8fa; --card: #fff; --line: #d1d9e0; --accent: #15803d; --error: #cf222e; --on-accent: #fff; }
-  @media (prefers-color-scheme: dark) { :root { --fg: #f0f6fc; --muted: #9198a1; --bg: #0d1117; --card: #151b23; --line: #3d444d; --accent: #22c55e; --error: #f85149; --on-accent: #052e16; } }
+  :root { color-scheme: light dark; --bg: #f3f1eb; --surface: #faf9f6; --fg: #161716; --muted: #666962; --line: #d8d6cf; --accent: #3159e8; --on-accent: #fff; --error: #b42318;
+    --sans: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121312; --surface: #181918; --fg: #ecebe4; --muted: #9c9e97; --line: #2e302d; --accent: #7d97ff; --on-accent: #0d1330; --error: #f97066; } }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px; }
-  .brand { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 32px 20px; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  main { width: 100%; max-width: 380px; }
+  .brand { margin: 0 0 40px; }
   .logo { display: block; flex: none; color: var(--fg); }
-  .brand-name { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0.01em; }
-  h1 { font-size: 20px; margin: 0 0 8px; }
-  p { margin: 0 0 16px; color: var(--muted); }
-  strong { color: var(--fg); }
-  label { display: block; font-weight: 600; margin: 14px 0 6px; }
-  input, select { width: 100%; padding: 9px 11px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 8px; }
-  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button { width: 100%; margin-top: 22px; padding: 10px; font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
-  .error { color: var(--error); margin: 0 0 12px; }
-  .note { font-size: 13px; margin: 16px 0 0; }
+  h1 { font-size: 30px; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 10px; }
+  p { margin: 0 0 8px; color: var(--muted); }
+  strong { color: var(--fg); font-weight: 500; }
+  label { display: block; font: 500 11px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 20px 0 8px; }
+  input, select { width: 100%; padding: 11px 12px; font: 15px/1.2 var(--mono); color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+  #username { text-transform: uppercase; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  button { width: 100%; margin-top: 28px; padding: 14px 16px; display: flex; justify-content: space-between; font: 500 15px/1 var(--sans); color: var(--on-accent); background: var(--accent); border: 0; border-radius: 3px; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .error { color: var(--error); margin: 16px 0 0; }
+  .note { font: 12px/1.5 var(--mono); margin: 20px 0 0; }
 `;
 
 /** Server name shown next to the logo and in the tab title. The OAuth router sets it on every request. */
@@ -361,9 +366,7 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
         `<title>${escapeHtml(brand ? `${title} · ${brand}` : title)}</title>` +
         `<link rel="icon" type="image/svg+xml" href="${FAVICON_HREF}">` +
         `<style>${PAGE_STYLE}</style></head>` +
-        `<body><main><div class="brand">${LOGO_SVG}` +
-        (brand ? `<span class="brand-name">${escapeHtml(brand)}</span>` : '') +
-        `</div>${body}</main></body></html>`
+        `<body><main><div class="brand">${LOGO_SVG}</div>${body}</main></body></html>`
     );
 }
 
@@ -411,19 +414,18 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
     status,
     'Sign in to IBM i',
     `<h1>Sign in to IBM i</h1>` +
-      `<p><strong>${escapeHtml(clientName)}</strong> wants to query IBM i with your user profile. ` +
-      `After you sign in, you return to <strong>${escapeHtml(returnTo)}</strong>.</p>` +
+      `<p><strong>${escapeHtml(clientName)}</strong> is asking to connect. After you sign in, you return to <strong>${escapeHtml(returnTo)}</strong>.</p>` +
       (page.error ? `<p class="error" role="alert">${escapeHtml(page.error)}</p>` : '') +
       `<form method="post" action="/oauth/authorize">` +
       `<input type="hidden" name="request" value="${escapeHtml(page.request)}">` +
       systemField +
-      `<label for="username">User profile</label>` +
+      `<label for="username">User</label>` +
       `<input id="username" name="username" autocomplete="username" autocapitalize="characters" required maxlength="128" value="${escapeHtml(page.username ?? '')}">` +
       `<label for="password">Password</label>` +
       `<input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">` +
-      `<button type="submit">Sign in</button>` +
+      `<button type="submit"><span>Sign in</span><span aria-hidden="true">→</span></button>` +
       `</form>` +
-      `<p class="note">Only continue if you started this connection yourself.</p>`,
+      `<p class="note">Only continue if you started this connection.</p>`,
     formAction
   );
 }
@@ -764,7 +766,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       res.locals.onLoginRateLimited = onRateLimited;
 
       if (!form.username || !form.password || form.username.length > 128 || form.password.length > 256) {
-        renderSignIn(res, form, 400, 'Enter your user profile and password.');
+        renderSignIn(res, form, 400, 'Enter your user and password.');
         return;
       }
       next();
@@ -785,7 +787,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       if (!login.ok) {
         log.warn({ user: username, system, client: client.name, reason: login.description }, 'OAuth sign-in failed');
         // Driver errors can describe the host; the page only says what the user can fix
-        retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user profile and password.');
+        retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user and password.');
         return;
       }
 

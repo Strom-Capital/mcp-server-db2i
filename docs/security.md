@@ -18,6 +18,19 @@ This guide covers security features and best practices for mcp-server-db2i.
 - **Structured logging**: Automatic redaction of sensitive fields like passwords
 - **HTTP auth**: `required` (per-user credentials via `/auth`), `token` (static bearer), or `none` (trusted networks)
 
+## Where data goes
+
+The server runs where you host it and connects only to your IBM i. It does not copy data into another database.
+
+Tool results, including the rows a query returns, go back to the MCP client, and the client passes them to its language model. With a hosted assistant such as Claude or Cursor, those results leave your network and are processed by the assistant's provider under its own terms. Use an assistant your organization has approved for this data, and limit what can come back with the [schema allowlist](#schema-allowlist), [column masking](#column-masking) and [result limits](#result-limiting).
+
+## Hosting in the cloud
+
+The server runs anywhere Node.js 22 or Docker runs, including a cloud host. It needs a network path to the IBM i: the database host server ports for the `odbc` and `jt400` drivers, or SSH (port 22) for `mapepire`.
+
+- When the IBM i is on premises, connect the cloud host over a private link such as a site-to-site VPN. Do not open the host server ports or SSH to the internet.
+- Remote clients such as claude.ai reach the server over HTTPS. Limit that endpoint to the clients' address ranges, as described in [Limiting who can reach the server](http-transport.md#limiting-who-can-reach-the-server).
+
 ## Credential Management
 
 The server supports multiple methods for providing credentials, listed from most to least secure.

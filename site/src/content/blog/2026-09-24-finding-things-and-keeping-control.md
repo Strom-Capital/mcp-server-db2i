@@ -3,7 +3,6 @@ title: Finding things and keeping control
 description: Search across libraries, profile a table, check journaling, read tables as MCP resources, and mask sensitive columns with every call written to an audit log.
 date: 2026-09-24T09:00:00Z
 audience: ibmi
-icon: telescope
 tags: [release, tools, security]
 ---
 

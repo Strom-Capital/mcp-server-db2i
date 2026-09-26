@@ -1,4 +1,5 @@
 ---
+import CodeBlock from './CodeBlock.astro';
 import { links } from '../lib/links';
 
 const clientConfig = `{
@@ -35,16 +36,20 @@ MCP_OAUTH_SECRET=<a long random string>
 #   URL: https://mcp.example.com/mcp`;
 
 const tabs = [
-  { id: 'npx', label: 'npx', intro: 'Add the server to your MCP client config. Claude Desktop, Cursor and Claude Code all use this shape.', code: clientConfig, more: links.clientSetup, moreLabel: 'Client setup guide' },
-  { id: 'docker', label: 'Docker', intro: 'Run it as a container: started by your MCP client over stdio, or as a shared HTTP server for your team.', code: docker, more: links.docker, moreLabel: 'Docker guide' },
-  { id: 'connector', label: 'claude.ai connector', intro: 'Run the server over HTTPS with OAuth. Everyone else adds one URL and signs in with their own IBM i profile.', code: oauth, more: links.oauth, moreLabel: 'Remote clients and OAuth' },
+  { id: 'npx', label: 'npx', lang: 'json', title: 'MCP client config', intro: 'Add the server to your MCP client config. Claude Desktop, Cursor and Claude Code all use this shape.', code: clientConfig, more: links.clientSetup, moreLabel: 'Client setup guide' },
+  { id: 'docker', label: 'Docker', lang: 'bash', title: 'Shell', intro: 'Run it as a container: started by your MCP client over stdio, or as a shared HTTP server for your team.', code: docker, more: links.docker, moreLabel: 'Docker guide' },
+  { id: 'connector', label: 'claude.ai connector', lang: 'dotenv', title: '.env', intro: 'Run the server over HTTPS with OAuth. Everyone else adds one URL and signs in with their own IBM i profile. The same connector works in Claude for Excel.', code: oauth, more: links.oauth, moreLabel: 'Remote clients and OAuth', extra: links.claudeForExcel, extraLabel: 'Claude for Excel' },
 ];
 ---
 <section class="section" id="install">
   <div class="container">
-    <p class="eyebrow">Install</p>
-    <h2>Pick how you run it</h2>
-    <p class="lead">The default ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the machine that runs the server. Nothing is installed on the IBM i.</p>
+    <div class="sec-head">
+      <p class="label">Install</p>
+      <div>
+        <h2>Pick how you run it.</h2>
+        <p class="lead">The default ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the machine that runs the server. Nothing is installed on the IBM i.</p>
+      </div>
+    </div>
 
     <div class="tabs">
       <div class="tablist" role="tablist" aria-label="Install options">
@@ -55,8 +60,11 @@ const tabs = [
       {tabs.map((t, i) => (
         <div class="panel" role="tabpanel" id={`panel-${t.id}`} aria-labelledby={`tab-${t.id}`} hidden={i !== 0}>
           <p>{t.intro}</p>
-          <pre><code>{t.code}</code></pre>
-          <a href={t.more}>{t.moreLabel} →</a>
+          <CodeBlock code={t.code} lang={t.lang as 'json'} title={t.title} />
+          <div class="more">
+            <a class="link-rule" href={t.more}>{t.moreLabel} <span aria-hidden="true">→</span></a>
+            {t.extra && <a class="link-rule" href={t.extra}>{t.extraLabel} <span aria-hidden="true">→</span></a>}
+          </div>
         </div>
       ))}
     </div>
@@ -84,10 +92,14 @@ const tabs = [
 </script>
 
 <style>
-  .tabs { margin-top: var(--space-5); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-  .tablist { display: flex; gap: 2px; border-bottom: 1px solid var(--line); background: var(--bg-subtle); padding: 6px 6px 0; overflow-x: auto; }
-  [role='tab'] { font: 600 0.9rem var(--font-sans); color: var(--muted); background: none; border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
-  [role='tab'][aria-selected='true'] { color: var(--fg); background: var(--card); border-color: var(--line); margin-bottom: -1px; }
-  .panel { padding: var(--space-5); }
-  .panel pre { font-size: 0.85rem; }
+  .tabs { border-top: 1px solid var(--line-strong); }
+  .tablist { display: flex; gap: 28px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  [role='tab'] { font: 500 12px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; padding: 18px 0 14px; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
+  [role='tab']:hover { color: var(--fg); }
+  [role='tab'][aria-selected='true'] { color: var(--fg); border-bottom-color: var(--accent); }
+  .tabs .panel { background: none; border: 0; padding: 24px 0 0; display: grid; gap: 16px; max-width: 860px; }
+  .tabs .panel[hidden] { display: none; }
+  .tabs .panel p { margin: 0; color: var(--muted); }
+  .tabs .panel :global(.code) { margin: 0; }
+  .tabs .panel .more { display: flex; flex-wrap: wrap; gap: 12px 28px; }
 </style>

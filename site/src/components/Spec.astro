@@ -1,0 +1,25 @@
+---
+/** A key/value block in mono, like the spec sheet of a system. */
+interface Row {
+  key: string;
+  value: string;
+  /** Show the value in the accent color. */
+  on?: boolean;
+}
+interface Props {
+  /** Optional heading row above the pairs. */
+  title?: string;
+  meta?: string;
+  rows: Row[];
+  label?: string;
+}
+const { title, meta, rows, label } = Astro.props;
+---
+<div class:list={['spec', { untitled: !title }]} aria-label={label ?? title}>
+  {title && <div class="spec-title"><span>{title}</span>{meta && <span>{meta}</span>}</div>}
+  <dl>
+    {rows.map((r) => (
+      <div><dt>{r.key}</dt><dd class:list={{ on: r.on }}>{r.value}</dd></div>
+    ))}
+  </dl>
+</div>

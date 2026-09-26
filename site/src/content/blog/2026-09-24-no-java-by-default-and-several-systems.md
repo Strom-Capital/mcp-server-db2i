@@ -3,7 +3,6 @@ title: No Java by default, and several systems from one server
 description: The IBM i Access ODBC driver is now the default, JT400 is optional, and one server can reach production, test and development side by side.
 date: 2026-09-24T12:00:00Z
 audience: ibmi
-icon: network
 tags: [release, drivers, breaking]
 ---
 

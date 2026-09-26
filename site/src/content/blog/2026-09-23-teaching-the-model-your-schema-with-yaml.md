@@ -3,7 +3,6 @@ title: Teaching the model your schema with YAML
 description: Table notes and named business tools, written once in YAML, so the model uses your definitions instead of guessing.
 date: 2026-09-23T15:00:00Z
 audience: ibmi
-icon: file-code
 tags: [release, business-tools]
 ---
 

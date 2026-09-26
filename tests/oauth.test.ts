@@ -327,7 +327,7 @@ describe('OAuth authorization server', () => {
     expect(res.headers.get('referrer-policy')).toBe('same-origin');
     const html = await res.text();
     expect(html).toContain('<svg class="logo"');
-    expect(html).toContain('<span class="brand-name">Db2 for i MCP Server</span>');
+    expect(html).toContain('aria-label="db2i/mcp"');
     expect(html).toContain('<title>Sign in to IBM i · Db2 for i MCP Server</title>');
     expect(html).toContain('rel="icon" type="image/svg+xml" href="data:image/svg+xml,');
     expect(html).toContain('<option value="prod" selected>prod</option>');
@@ -382,7 +382,7 @@ describe('OAuth authorization server', () => {
     const res = await postLogin(hiddenRequest(await page.text()), { username: 'CALLER', password: 'wrong', system: 'prod' });
     expect(res.status).toBe(401);
     const html = await res.text();
-    expect(html).toContain('Sign-in failed. Check the user profile and password.');
+    expect(html).toContain('Sign-in failed. Check the user and password.');
     expect(html).not.toContain('SQL30082');
     expect(html).not.toContain('wrong');
     expect(html).toContain('value="CALLER"');
