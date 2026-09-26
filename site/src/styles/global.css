@@ -49,6 +49,10 @@ pre { background: var(--surface); border: 1px solid var(--line); border-radius: 
 .sec-head h2, .sec-head h1 { margin: 0; max-width: 16ch; }
 .sec-head .lead { margin: var(--space-5) 0 0; }
 
+/* Smaller heading for blocks inside a section, such as the query example and the audience paths */
+.mini-head { display: grid; gap: var(--space-3); margin-bottom: var(--space-6); }
+.mini-head h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.25rem); letter-spacing: -0.03em; max-width: 24ch; }
+
 /* Type helpers */
 .label { font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
 .lead { font-size: 1.15rem; line-height: 1.55; color: var(--muted); max-width: 56ch; }

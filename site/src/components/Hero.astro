@@ -36,7 +36,11 @@ import { links, url } from '../lib/links';
     <DemoChat />
   </div>
 
-  <div class="container">
+  <div class="container start">
+    <div class="mini-head">
+      <p class="label">Where to start</p>
+      <h2>Two ways in, depending on your role.</h2>
+    </div>
     <div class="paths">
       <a class="path" href={url('/business')}>
         <span class="label">For business teams</span>
@@ -62,7 +66,8 @@ import { links, url } from '../lib/links';
   .sub strong { color: var(--fg); }
   .actions { margin: 36px 0 24px; }
 
-  .paths { display: grid; margin-top: var(--space-7); border-top: 1px solid var(--line-strong); }
+  .start { margin-top: var(--space-8); }
+  .paths { display: grid; border-top: 1px solid var(--line-strong); }
   @media (min-width: 760px) { .paths { grid-template-columns: 1fr 1fr; } }
   .path { display: grid; gap: var(--space-2); align-content: start; padding: 22px 0 28px; text-decoration: none; color: var(--fg); }
   .path + .path { border-top: 1px solid var(--line); }
