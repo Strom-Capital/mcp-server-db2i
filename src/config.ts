@@ -32,13 +32,14 @@
  * - MCP_OAUTH_REDIRECT_URIS: Redirect URIs OAuth clients may register
  * - MCP_OAUTH_SECRET: Key that signs OAuth client IDs and login requests
  * - MCP_OAUTH_REFRESH_EXPIRY: OAuth refresh token lifetime in seconds (default: 7 days)
+ * - MCP_OAUTH_STATE_FILE: File that keeps OAuth refresh grants across restarts
  * - MCP_TRUST_PROXY: Express 'trust proxy' setting, so rate limits see the client address behind a proxy
  */
 
 import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 /**
  * Database drivers. `jt400` is the JDBC bridge (needs a JRE). `odbc` uses the
@@ -1369,6 +1370,8 @@ export interface OAuthConfig {
   ephemeralSecret: boolean;
   /** Refresh token lifetime in seconds. 0 turns refresh tokens off. */
   refreshExpiry: number;
+  /** Encrypted file that keeps refresh grants across restarts. Unset keeps them in memory only. */
+  stateFile?: string;
 }
 
 /**
@@ -1396,6 +1399,7 @@ let oauthConfigCache: { key: string; config: OAuthConfig | null } | undefined;
  * - MCP_OAUTH_REDIRECT_URIS: comma-separated redirect URIs or `prefix*` entries.
  * - MCP_OAUTH_SECRET: signing key, at least 32 characters.
  * - MCP_OAUTH_REFRESH_EXPIRY: refresh token lifetime in seconds (default: 7 days).
+ * - MCP_OAUTH_STATE_FILE: encrypted file for refresh grants. Requires MCP_OAUTH_SECRET.
  *
  * @param authMode - The configured MCP_AUTH_MODE
  * @returns The settings, or null when OAuth is off
@@ -1410,6 +1414,7 @@ export function getOAuthConfig(authMode: AuthMode): OAuthConfig | null {
     process.env.MCP_OAUTH_REDIRECT_URIS,
     process.env.MCP_OAUTH_SECRET,
     process.env.MCP_OAUTH_REFRESH_EXPIRY,
+    process.env.MCP_OAUTH_STATE_FILE,
   ]);
   if (oauthConfigCache?.key !== key) {
     oauthConfigCache = { key, config: parseOAuthConfig(authMode) };
@@ -1490,6 +1495,12 @@ function parseOAuthConfig(authMode: AuthMode): OAuthConfig | null {
     throw new Error('MCP_OAUTH_REFRESH_EXPIRY must be 0 or more seconds');
   }
 
+  const stateFile = process.env.MCP_OAUTH_STATE_FILE?.trim() || undefined;
+  if (stateFile && !rawSecret) {
+    // A random key could never read the file again after a restart
+    throw new Error('MCP_OAUTH_STATE_FILE requires MCP_OAUTH_SECRET. Generate with: openssl rand -hex 32');
+  }
+
   return {
     publicUrl,
     resource: `${publicUrl}/mcp`,
@@ -1497,6 +1508,7 @@ function parseOAuthConfig(authMode: AuthMode): OAuthConfig | null {
     secret: rawSecret ? Buffer.from(rawSecret, 'utf8') : (ephemeralOAuthSecret as Buffer),
     ephemeralSecret: !rawSecret,
     refreshExpiry,
+    ...(stateFile ? { stateFile: resolve(stateFile) } : {}),
   };
 }
 
