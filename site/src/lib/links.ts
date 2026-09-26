@@ -6,6 +6,8 @@ export const links = {
   docs: DOCS,
   quickstart: `${DOCS}/quickstart`,
   clientSetup: `${DOCS}/client-setup`,
+  claudeForExcel: `${DOCS}/client-setup#claude-for-excel`,
+  claudeForOffice: 'https://claude.com/claude-for-microsoft-365',
   tools: `${DOCS}/tools`,
   configuration: `${DOCS}/configuration`,
   multipleSystems: `${DOCS}/configuration#multiple-systems`,

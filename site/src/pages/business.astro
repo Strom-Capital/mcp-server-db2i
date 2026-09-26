@@ -19,7 +19,7 @@ const emailSubject = 'Could we try an AI assistant on our ERP data?';
 
 const summary = `Hi,
 
-I came across mcp-server-db2i, an open-source, self-hosted tool that lets AI assistants such as Claude answer questions about our ERP data in plain language. It only reads data, and people sign in with their own credentials. It is free.
+I came across mcp-server-db2i, an open-source, self-hosted tool that lets AI assistants such as Claude answer questions about our ERP data in plain language. It only reads data, people sign in with their own credentials, and it also works inside Excel through Claude for Excel. It is free.
 
 I'd like to use it for the one-off questions we don't have reports for. Could you take a look and let me know if we could try it?
 
@@ -99,6 +99,22 @@ Thanks!`;
             <ul class="rows">{q.items.map((item) => <li>“{item}”</li>)}</ul>
           </div>
         ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight">
+    <div class="container excel">
+      <div class="sec-head">
+        <p class="label">In Excel</p>
+        <div>
+          <h2>Ask from Excel, too.</h2>
+          <p class="lead">
+            With Claude for Excel, people ask the question in the Claude sidebar and the answer goes straight into the
+            sheet. It uses the same connection and sign-in, so your IT team sets it up once for both.
+          </p>
+          <a class="link-rule" href={links.claudeForOffice}>About Claude for Excel</a>
+        </div>
       </div>
     </div>
   </section>

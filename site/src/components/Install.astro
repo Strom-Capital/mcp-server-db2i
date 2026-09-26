@@ -38,7 +38,7 @@ MCP_OAUTH_SECRET=<a long random string>
 const tabs = [
   { id: 'npx', label: 'npx', lang: 'json', title: 'MCP client config', intro: 'Add the server to your MCP client config. Claude Desktop, Cursor and Claude Code all use this shape.', code: clientConfig, more: links.clientSetup, moreLabel: 'Client setup guide' },
   { id: 'docker', label: 'Docker', lang: 'bash', title: 'Shell', intro: 'Run it as a container: started by your MCP client over stdio, or as a shared HTTP server for your team.', code: docker, more: links.docker, moreLabel: 'Docker guide' },
-  { id: 'connector', label: 'claude.ai connector', lang: 'dotenv', title: '.env', intro: 'Run the server over HTTPS with OAuth. Everyone else adds one URL and signs in with their own IBM i profile.', code: oauth, more: links.oauth, moreLabel: 'Remote clients and OAuth' },
+  { id: 'connector', label: 'claude.ai connector', lang: 'dotenv', title: '.env', intro: 'Run the server over HTTPS with OAuth. Everyone else adds one URL and signs in with their own IBM i profile. The same connector works in Claude for Excel.', code: oauth, more: links.oauth, moreLabel: 'Remote clients and OAuth', extra: links.claudeForExcel, extraLabel: 'Claude for Excel' },
 ];
 ---
 <section class="section" id="install">
@@ -61,7 +61,10 @@ const tabs = [
         <div class="panel" role="tabpanel" id={`panel-${t.id}`} aria-labelledby={`tab-${t.id}`} hidden={i !== 0}>
           <p>{t.intro}</p>
           <CodeBlock code={t.code} lang={t.lang as 'json'} title={t.title} />
-          <a class="link-rule" href={t.more}>{t.moreLabel} <span aria-hidden="true">→</span></a>
+          <div class="more">
+            <a class="link-rule" href={t.more}>{t.moreLabel} <span aria-hidden="true">→</span></a>
+            {t.extra && <a class="link-rule" href={t.extra}>{t.extraLabel} <span aria-hidden="true">→</span></a>}
+          </div>
         </div>
       ))}
     </div>
@@ -98,5 +101,5 @@ const tabs = [
   .tabs .panel[hidden] { display: none; }
   .tabs .panel p { margin: 0; color: var(--muted); }
   .tabs .panel :global(.code) { margin: 0; }
-  .tabs .panel a { justify-self: start; }
+  .tabs .panel .more { display: flex; flex-wrap: wrap; gap: 12px 28px; }
 </style>
