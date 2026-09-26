@@ -16,7 +16,7 @@ const emailSubject = 'Could we try an AI assistant on our ERP data?';
 
 const summary = `Hi,
 
-I came across mcp-server-db2i, an open-source tool that lets AI assistants such as Claude answer questions about our ERP data in plain language. It only reads data, and people sign in with their own user.
+I came across mcp-server-db2i, an open-source, self-hosted tool that lets AI assistants such as Claude answer questions about our ERP data in plain language. It only reads data, and people sign in with their own credentials.
 
 I'd like to use it for the one-off questions we don't have reports for. Could you take a look and let me know if we could try it?
 
@@ -33,7 +33,7 @@ Who sees what
 - Query results go to the AI assistant the user connects, so it should be one the company has approved.
 
 How it connects
-- The server runs on a machine you choose: a workstation, a server or Docker.
+- Self-hosted: the server runs on a machine you choose, such as a workstation, a server or Docker.
 - The ODBC driver (default) and JT400 use the IBM i host servers. Nothing is installed on the IBM i. The ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the server machine.
 - Mapepire over SSH works when only port 22 is open. It copies its server JAR to the user's home directory on first use.
 
