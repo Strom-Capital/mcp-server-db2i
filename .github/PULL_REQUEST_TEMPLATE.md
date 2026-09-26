@@ -5,7 +5,7 @@
 ## Related Issue
 
 <!-- Link to the issue this PR addresses, if applicable -->
-<!-- Fixes #123 -->
+<!-- Closes #123 -->
 
 ## Type of Change
 
@@ -16,9 +16,10 @@
 
 ## Checklist
 
-- [ ] My code builds successfully (`npm run build`)
+- [ ] `npm run build`, `npm run typecheck`, `npm run lint` and `npm test` pass
 - [ ] I have tested my changes locally
 - [ ] I have updated the documentation (if applicable)
+- [ ] No real hostnames, user profiles or library, table or column names from a real system
 - [ ] The PR title is a [Conventional Commit](https://www.conventionalcommits.org/) (it becomes the squash-merge subject)
 
 ## Testing
