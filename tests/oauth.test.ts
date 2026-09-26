@@ -13,14 +13,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Express } from 'express';
 
 // A password of "wrong" fails the test connection; anything else logs in
-vi.mock('node-jt400', () => ({
-  pool: vi.fn((config: { password: string }) => ({
-    query: config.password === 'wrong'
-      ? vi.fn().mockRejectedValue(new Error('SQL30082 password incorrect on ibmi.example.com'))
-      : vi.fn().mockResolvedValue([]),
-    close: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
+vi.mock('node-jt400', async () => {
+  const { withExecute } = await import('./helpers/jt400Fake.js');
+  return {
+    pool: vi.fn((config: { password: string }) => withExecute({
+      query: config.password === 'wrong'
+        ? vi.fn().mockRejectedValue(new Error('SQL30082 password incorrect on ibmi.example.com'))
+        : vi.fn().mockResolvedValue([]),
+      close: vi.fn().mockResolvedValue(undefined),
+    })),
+  };
+});
 
 import { createHttpApp } from '../src/transports/http.js';
 import { getTokenManager } from '../src/auth/tokenManager.js';
@@ -28,6 +31,7 @@ import { isRedirectUriAllowed, resetOAuthState } from '../src/auth/oauth.js';
 import { isTransientConnectionError } from '../src/auth/login.js';
 import { getOAuthConfig } from '../src/config.js';
 import { resetSystems } from '../src/systems.js';
+import { withExecute } from './helpers/jt400Fake.js';
 
 const PROFILES = `
 profiles:
@@ -180,7 +184,7 @@ describe('OAuth authorization server', () => {
   /** Make the next test connection fail with this error. */
   async function failNextConnection(message: string): Promise<void> {
     const { pool } = await import('node-jt400');
-    vi.mocked(pool).mockImplementationOnce(() => ({
+    vi.mocked(pool).mockImplementationOnce(() => withExecute({
       query: vi.fn().mockRejectedValue(new Error(message)),
       close: vi.fn().mockResolvedValue(undefined),
     }) as never);
@@ -589,7 +593,7 @@ describe('OAuth authorization server', () => {
     const session = getTokenManager().getSession(tokens.access_token);
     expect(session).toBeDefined();
     const { pool } = await import('node-jt400');
-    vi.mocked(pool).mockImplementationOnce(() => ({
+    vi.mocked(pool).mockImplementationOnce(() => withExecute({
       query: vi.fn().mockRejectedValue(new Error('password expired')),
       close: vi.fn().mockResolvedValue(undefined),
     }) as never);

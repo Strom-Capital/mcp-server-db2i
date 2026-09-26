@@ -6,11 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 
 const mockQuery = vi.fn();
-vi.mock('node-jt400', () => ({
-  pool: vi.fn(() => ({
-    query: mockQuery,
-  })),
-}));
+vi.mock('node-jt400', async () => {
+  const { withExecute } = await import('../helpers/jt400Fake.js');
+  return {
+    pool: vi.fn(() => withExecute({
+      query: mockQuery,
+    })),
+  };
+});
 
 const checkLimit = vi.fn(() => ({ allowed: true, remaining: 99 }));
 vi.mock('../../src/utils/rateLimiter.js', async (importOriginal) => {

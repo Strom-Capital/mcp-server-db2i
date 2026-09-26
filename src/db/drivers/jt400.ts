@@ -37,6 +37,8 @@ interface Jt400Statement {
   metadata(): Promise<Jt400Metadata[]>;
   /** One row per step, every value as text or null. */
   asIterable(): AsyncIterable<unknown[]>;
+  /** Every row, every value as text or null. Closes the statement itself. */
+  asArray(): Promise<unknown[][]>;
   close(): Promise<void> | void;
 }
 
@@ -255,6 +257,35 @@ function toJt400Error(error: unknown): unknown {
 }
 
 /**
+ * Run a query and return its rows keyed by column name. node-jt400's query()
+ * returns BLOB values as base64; a prepared statement returns them as hex, the
+ * same as the other drivers. Duplicate column names keep the last value, as
+ * query() does.
+ *
+ * asArray() closes the statement on success and on failure, and a second
+ * close() would return the connection to the pool twice, so the statement is
+ * closed here only when reading the metadata fails.
+ */
+async function queryRows(target: Jt400Queryable, sql: string, params: readonly QueryParam[]): Promise<Row[]> {
+  const statement = await target.execute(sql, [...params]);
+  let columns: Jt400Metadata[];
+  try {
+    columns = await statement.metadata();
+  } catch (error) {
+    await Promise.resolve(statement.close()).catch(() => undefined);
+    throw error;
+  }
+  const values = await statement.asArray();
+  return values.map((value) => {
+    const row: Row = {};
+    columns.forEach((column, index) => {
+      row[column.name] = value[index] ?? null;
+    });
+    return row;
+  });
+}
+
+/**
  * Run a statement, cancelling it with QSYS2.CANCEL_SQL once it runs past the
  * time limit. node-jt400 exposes neither a query timeout nor a cancel, and its
  * pool does not say which connection ran a statement. A transaction keeps one
@@ -277,7 +308,7 @@ async function runStatement(
       await target.update(sql, [...params]);
       return [];
     }
-    return (await target.query(sql, [...params])) as Row[];
+    return queryRows(target, sql, params);
   };
   if (timeoutMs <= 0 || !cancelJob) {
     const execution = run(connection);

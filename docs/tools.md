@@ -105,7 +105,7 @@ The result tells the model where the file is and what is in it:
 - **CSV** is UTF-8 with a byte order mark, so Excel opens accented characters correctly, and fields are quoted as in RFC 4180. A text value that starts with `=`, `+`, `-` or `@` gets a leading `'`, so a spreadsheet does not run it as a formula. Numbers are never changed.
 - With the `odbc` driver, node-odbc reads `DECIMAL` and `NUMERIC` values as JavaScript numbers, so digits past the 15th are rounded. When a value in the export has 15 or more significant digits, the result has a `warnings` entry naming the column. Use the `jt400` or `mapepire` driver when such values must be exact.
 - Text that contains the replacement character `�` means characters were lost when the driver decoded it. The result then has a `warnings` entry naming the columns. With the `odbc` driver, set `CCSID=1208` in `DB2I_ODBC_OPTIONS`.
-- CHAR padding is removed. Binary columns are written as hex with `odbc`. With `jt400` and `mapepire`, `FOR BIT DATA` columns arrive as text translated by the driver, the same as in `execute_query`.
+- CHAR padding is removed. Binary columns are written as upper-case hex, unless `translate binary=true` is set for `jt400` or `mapepire` (see [Values that differ by driver](configuration.md#values-that-differ-by-driver)).
 - Give every column a unique name. A result with two columns of the same name, such as `a.ORDERNO` and `b.ORDERNO`, is rejected; use `AS`.
 
 ### Failed statements

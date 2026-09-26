@@ -7,17 +7,21 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Express } from 'express';
 
-vi.mock('node-jt400', () => ({
-  pool: vi.fn(() => ({
-    query: vi.fn().mockResolvedValue([]),
-  })),
-}));
+vi.mock('node-jt400', async () => {
+  const { withExecute } = await import('./helpers/jt400Fake.js');
+  return {
+    pool: vi.fn(() => withExecute({
+      query: vi.fn().mockResolvedValue([]),
+    })),
+  };
+});
 
 import { createHttpApp, startHttpServer } from '../src/transports/http.js';
 import { getSessionManager } from '../src/transports/sessionManager.js';
 import { getTokenManager } from '../src/auth/tokenManager.js';
 import { createServer } from '../src/server.js';
 import type { DB2iConfig } from '../src/config.js';
+import { withExecute } from './helpers/jt400Fake.js';
 
 const dbConfig: DB2iConfig = {
   hostname: 'test-host',
@@ -312,7 +316,7 @@ describe('HTTP /auth rate limiting', () => {
 
   afterEach(async () => {
     const { pool } = await import('node-jt400');
-    vi.mocked(pool).mockImplementation(() => ({
+    vi.mocked(pool).mockImplementation(() => withExecute({
       query: vi.fn().mockResolvedValue([]),
     }) as unknown as ReturnType<typeof pool>);
     vi.useRealTimers();
@@ -322,7 +326,7 @@ describe('HTTP /auth rate limiting', () => {
 
   async function mockDbLogin(succeeds: boolean): Promise<void> {
     const { pool } = await import('node-jt400');
-    vi.mocked(pool).mockImplementation(() => ({
+    vi.mocked(pool).mockImplementation(() => withExecute({
       query: vi.fn(() =>
         new Promise((resolve, reject) => {
           setTimeout(() => (succeeds ? resolve([]) : reject(new Error('Password not correct'))), 50);

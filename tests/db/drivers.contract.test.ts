@@ -27,6 +27,12 @@ const created = vi.hoisted(() => ({
   sshClients: [] as Array<{ config: Record<string, unknown>; end: Mock<() => void> }>,
   failNext: { jt400: false, odbc: false, mapepire: false },
   rows: [] as Record<string, unknown>[],
+  // jt400: a fixed result for execute(), for duplicate column names
+  jt400Result: undefined as { columns: string[]; rows: unknown[][] } | undefined,
+  jt400MetadataFails: false,
+  jt400Closes: 0,
+  // jt400: statements run through execute(), in order
+  jt400Executed: [] as string[],
   // Column definitions the odbc fake reports with each result
   odbcColumns: [] as Array<Record<string, unknown>>,
   // Statement time limit: the next statement waits until something cancels it
@@ -93,12 +99,35 @@ vi.mock('node-jt400', () => ({
       }
       return rows;
     });
+    // execute() prepares the statement; it runs through the pool's query fake
+    // so tests see one call log. Columns come from the row keys unless a test
+    // sets created.jt400Result.
+    const execute = vi.fn(async (sql: string, params: unknown[]) => {
+      created.jt400Executed.push(sql);
+      const rows = (await pool.query(sql, params)) as Record<string, unknown>[];
+      const fixed = created.jt400Result;
+      const names = fixed ? fixed.columns : Object.keys(rows[0] ?? {});
+      return {
+        metadata: vi.fn(async () => {
+          if (created.jt400MetadataFails) {
+            throw new Error('metadata failed');
+          }
+          return names.map((name) => ({ name, typeName: 'VARCHAR', precision: 0, scale: 0 }));
+        }),
+        asArray: vi.fn(async () => fixed?.rows ?? rows.map((row) => names.map((name) => row[name]))),
+        close: vi.fn(() => {
+          created.jt400Closes += 1;
+        }),
+      };
+    });
     return {
       query,
       update,
+      execute,
       close: pool.close,
-      transaction: vi.fn(async (fn: (t: { query: typeof query; update: typeof update }) => Promise<unknown>) =>
-        fn({ query, update })
+      transaction: vi.fn(
+        async (fn: (t: { query: typeof query; update: typeof update; execute: typeof execute }) => Promise<unknown>) =>
+          fn({ query, update, execute })
       ),
     };
   }),
@@ -614,12 +643,51 @@ describe('driver contract: jt400 specifics', () => {
     created.jt400.length = 0;
     created.failNext.jt400 = false;
     created.rows = [];
+    created.jt400Result = undefined;
+    created.jt400MetadataFails = false;
+    created.jt400Closes = 0;
+    created.jt400Executed = [];
     vi.resetModules();
     connection = await import('../../src/db/connection.js');
   });
 
   afterEach(async () => {
     await connection.closeGlobalPool();
+  });
+
+  it('reads rows through a prepared statement, so BLOB values come back as hex', async () => {
+    connection.initializePool(baseConfig('jt400'));
+    // asArray() returns what getString gives, which is hex for BLOB; query() would give base64
+    created.rows = [{ BL: '0102', BNULL: null, C: 'a' }];
+    const { rows } = await connection.executeQuery('SELECT BL, BNULL, C FROM SYSIBM.SYSDUMMY1');
+    expect(rows).toEqual([{ BL: '0102', BNULL: null, C: 'a' }]);
+    expect(created.jt400Executed).toEqual(['SELECT BL, BNULL, C FROM SYSIBM.SYSDUMMY1']);
+    expect(created.jt400Closes).toBe(0);
+  });
+
+  it('keeps the last value of a duplicate column name, like query()', async () => {
+    connection.initializePool(baseConfig('jt400'));
+    created.jt400Result = { columns: ['IBMREQD', 'IBMREQD', 'N'], rows: [['Y', 'N', '1']] };
+    const { rows } = await connection.executeQuery('SELECT A.IBMREQD, B.IBMREQD, 1 AS N FROM SYSIBM.SYSDUMMY1 A, SYSIBM.SYSDUMMY1 B');
+    expect(rows).toEqual([{ IBMREQD: 'N', N: '1' }]);
+  });
+
+  it('closes the statement once when its metadata cannot be read', async () => {
+    connection.initializePool(baseConfig('jt400'));
+    created.jt400MetadataFails = true;
+    await expect(connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1')).rejects.toThrow('metadata failed');
+    expect(created.jt400Closes).toBe(1);
+  });
+
+  it('uses a prepared statement on the pinned connection when a time limit is set', async () => {
+    connection.initializePool({ ...baseConfig('jt400'), queryTimeout: 30 });
+    created.rows = [{ BL: '0102' }];
+    const { rows } = await connection.executeQuery('SELECT BL FROM SYSIBM.SYSDUMMY1');
+    expect(rows).toEqual([{ BL: '0102' }]);
+    const [pool] = created.jt400.map((c) => c.pool);
+    const sqls = pool.query.mock.calls.map(([sql]) => sql);
+    expect(sqls).toEqual(['VALUES QSYS2.JOB_NAME', 'SELECT BL FROM SYSIBM.SYSDUMMY1']);
+    expect(created.jt400Executed).toEqual(['SELECT BL FROM SYSIBM.SYSDUMMY1']);
   });
 
   it('reads the SQLCODE from the message ID when the Java exception is not available', async () => {
