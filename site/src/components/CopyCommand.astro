@@ -23,7 +23,7 @@ const { command } = Astro.props;
 
 <style>
   .copycmd { display: inline-flex; align-items: stretch; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-code); background: var(--surface); font: 14px/1 var(--font-mono); }
-  .copycmd code { padding: 12px 14px; background: none; border: 0; font-size: inherit; white-space: nowrap; overflow-x: auto; }
+  .copycmd code { display: flex; align-items: center; gap: 0.5ch; padding: 12px 14px; background: none; border: 0; font-size: inherit; white-space: nowrap; overflow-x: auto; }
   .prompt { color: var(--muted); }
   .copycmd button { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; background: var(--fg); color: var(--bg); border: 0; padding: 0 14px; cursor: pointer; border-radius: 0 3px 3px 0; }
   .copycmd button:hover { background: var(--accent); color: var(--on-accent); }

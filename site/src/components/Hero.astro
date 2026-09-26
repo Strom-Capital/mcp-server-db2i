@@ -6,18 +6,16 @@ import { links, url } from '../lib/links';
 ---
 <section class="hero">
   <div class="container top">
+    <h1>Ask your IBM i<br />in plain language.</h1>
     <div class="copy">
-      <h1>Ask your IBM i<br />in plain language.</h1>
       <p class="sub">
         Give Claude, Cursor and other AI assistants <strong>read-only access to Db2 for i</strong>. It connects through
         the host servers your IBM i already runs, or over SSH, so there is nothing new to install on the system.
       </p>
-      <div class="btn-row actions">
+      <div class="actions">
         <a class="btn btn--primary" href={links.quickstart}>Get started <span aria-hidden="true">→</span></a>
-        <a class="link-rule" href={links.docs} data-ask-docs="hero">Ask the docs</a>
-        <a class="link-rule" href={links.github}>GitHub</a>
+        <CopyCommand command="npx mcp-server-db2i" />
       </div>
-      <CopyCommand command="npx mcp-server-db2i" />
     </div>
     <Spec
       title="At a glance"
@@ -59,12 +57,17 @@ import { links, url } from '../lib/links';
 </section>
 
 <style>
-  .top { display: grid; gap: var(--space-7); padding-block: 72px 56px; }
-  @media (min-width: 1000px) { .top { grid-template-columns: minmax(0, 1fr) 320px; align-items: end; column-gap: 64px; padding-block: 112px 72px; } }
-  .copy h1 { margin: 0; }
-  .sub { margin: 28px 0 0; font-size: 1.15rem; line-height: 1.55; color: var(--muted); max-width: 46ch; }
+  /* Headline on its own row; below it the intro and the spec block, top-aligned */
+  .top { display: grid; gap: var(--space-6) 64px; padding-block: 72px 56px; }
+  .top h1 { margin: 0 0 var(--space-3); }
+  @media (min-width: 1000px) {
+    .top { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; padding-block: 112px 80px; }
+    .top h1 { grid-column: 1 / -1; }
+  }
+  .sub { margin: 0; font-size: 1.15rem; line-height: 1.55; color: var(--muted); max-width: 46ch; }
   .sub strong { color: var(--fg); }
-  .actions { margin: 36px 0 24px; }
+  .actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; margin-top: 32px; }
+  .actions :global(.copycmd) { min-height: 46px; }
 
   .start { margin-top: var(--space-8); }
   .paths { display: grid; border-top: 1px solid var(--line-strong); }
