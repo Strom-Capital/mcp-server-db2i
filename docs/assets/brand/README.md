@@ -25,8 +25,8 @@ Primary horizontal lockup:
 
 - route mark on the left
 - lowercase `db2i/mcp` wordmark on the right
-- ink letters with the slash in the accent blue
-- blue used for the mark's destination node and the slash
+- monochrome wordmark
+- blue used only in the mark's destination node
 
 Asset:
 
@@ -290,6 +290,7 @@ Do not:
 - use gradient fills
 - outline the terminal square
 - make both endpoints equally dominant
+- use the accent slash together with the blue terminal
 - let the route touch the circle or the square
 - add arrows to the route
 - put the logo inside a generic rounded capsule
@@ -298,13 +299,13 @@ Do not:
 
 ## 12. Slash usage
 
-The slash is a custom wordmark feature: longer than a normal slash, and set in the accent blue.
+The slash is a custom wordmark feature: longer than a normal slash, so it reads as a route between the two names. It is set in the same ink as the letters.
 
-- Primary: ink letters, blue slash (`wordmark-primary.svg`, `lockup-primary.svg`)
-- Dark backgrounds: light ink with the dark-mode blue (`wordmark-dark.svg`, `lockup-dark.svg`)
-- One color only: everything in ink or white (`wordmark-monochrome.svg`, `lockup-monochrome.svg`, `wordmark-white.svg`)
+- Primary: `wordmark-primary.svg`, `lockup-primary.svg` (ink), `wordmark-dark.svg`, `lockup-dark.svg` (light ink)
+- One color: `wordmark-monochrome.svg`, `lockup-monochrome.svg`, `wordmark-white.svg`
+- Optional: `wordmark-accent-slash.svg`, only where the route mark is not present and the wordmark needs one controlled accent
 
-Do not color the letters.
+Avoid a blue slash next to the blue terminal node. One accent is enough.
 
 ## 13. Website usage
 
@@ -337,6 +338,7 @@ Dark mode is secondary and works especially well for:
 - `svg/favicon.svg` (switches to the dark colors with the browser theme)
 - `svg/icon-tile.svg` (the mark on a warm tile: MCP server icon, `/icon.svg`)
 - `svg/wordmark-primary.svg`
+- `svg/wordmark-accent-slash.svg`
 - `svg/wordmark-dark.svg`
 - `svg/wordmark-monochrome.svg`
 - `svg/wordmark-white.svg`
