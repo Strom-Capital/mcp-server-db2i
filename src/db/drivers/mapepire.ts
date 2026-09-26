@@ -20,7 +20,17 @@ import type { SQLJob } from '@ibm/mapepire-js';
 import type { Client, ConnectConfig } from 'ssh2';
 import type { DB2iConfig, MapepireSettings, MapepireSshSettings } from '../../config.js';
 import { buildMapepireJdbcOptions, resolveMapepireSettings } from '../../config.js';
-import type { CreatePoolOptions, DbDriver, DbPool, DbQueryOptions, QueryParam } from '../driver.js';
+import { kindFromTypeName, rowFromObject } from '../columns.js';
+import type {
+  CreatePoolOptions,
+  DbColumn,
+  DbCursorOptions,
+  DbDriver,
+  DbPool,
+  DbQueryOptions,
+  QueryParam,
+  RowCursor,
+} from '../driver.js';
 import { CANCEL_GRACE_MS, DbError, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
 import { createHostKeyVerifier } from './sshHostKey.js';
 
@@ -288,6 +298,141 @@ export class JobPool implements DbPool {
       slot.active -= 1;
       slot.lastUsed = Date.now();
     }
+  }
+
+  /**
+   * Open a cursor on a job of its own: an idle job, or a new one below
+   * maxJobs. A cursor never shares a job, because CANCEL_SQL ends whatever
+   * the job is running and another caller's query must not be hit. The job
+   * counts as busy until the cursor closes, so the idle sweeper leaves it.
+   */
+  async openCursor(sql: string, params: readonly QueryParam[], options: DbCursorOptions): Promise<RowCursor> {
+    if (this.closed) {
+      throw new Error('Mapepire pool is closed');
+    }
+    const slot = this.slots.find((candidate) => candidate.active === 0)
+      ?? (this.slots.length < this.options.maxJobs ? this.startSlot() : undefined);
+    if (!slot) {
+      throw new Error(
+        `All ${this.options.maxJobs} Mapepire jobs are busy. Try again when a query has finished, or raise maxJobs.`
+      );
+    }
+    slot.active += 1;
+
+    let released = false;
+    const release = (drop: boolean): void => {
+      if (released) {
+        return;
+      }
+      released = true;
+      slot.active -= 1;
+      slot.lastUsed = Date.now();
+      if (drop) {
+        this.drop(slot);
+        void slot.job?.close().catch(() => undefined);
+      }
+    };
+
+    let job: SQLJob;
+    try {
+      job = await slot.ready;
+    } catch (error) {
+      release(false);
+      throw new Error(describeMapepireError(error), { cause: error });
+    }
+
+    const timeoutMs = options.timeoutMs ?? 0;
+    const requestTimeout =
+      timeoutMs > 0 ? Math.max(this.options.requestTimeout, timeoutMs + CANCEL_GRACE_MS) : this.options.requestTimeout;
+    let cancelFailed = false;
+    let failed = false;
+    const onAbort = (): void => {
+      if (!options.cancelJob || !job.id) {
+        cancelFailed = true;
+        return;
+      }
+      options.cancelJob(job.id).catch(() => {
+        cancelFailed = true;
+      });
+    };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
+    const query = job.query<Row>(sql, params.length > 0 ? { parameters: bindParams(params) } : {});
+    let done = false;
+    let closed = false;
+
+    // A job that timed out, whose cancel failed, or whose server process is
+    // gone may still be running the statement. It is not reused.
+    const close = async (): Promise<void> => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      options.signal?.removeEventListener('abort', onAbort);
+      const drop = failed || cancelFailed || !jobIsUsable(job);
+      if (!done && !drop) {
+        await query.close().catch(() => undefined);
+      }
+      release(drop);
+    };
+
+    const fail = (error: unknown): Error => {
+      if (error instanceof RequestTimeoutError || !jobIsUsable(job)) {
+        failed = true;
+      }
+      return toMapepireError(error);
+    };
+
+    let first;
+    try {
+      options.signal?.throwIfAborted();
+      first = await withTimeout(query.execute(options.fetchSize), requestTimeout);
+    } catch (error) {
+      const wrapped = fail(error);
+      done = true;
+      await close();
+      throw wrapped;
+    }
+    done = first.is_done;
+    const columns: DbColumn[] = (first.metadata?.columns ?? []).map((column) => ({
+      name: column.label || column.name,
+      kind: kindFromTypeName(column.type),
+      dbType: column.type,
+      precision: column.precision,
+      scale: column.scale,
+    }));
+    let pending: Row[] | undefined = first.data ?? [];
+
+    return {
+      columns,
+      async next() {
+        if (closed) {
+          return null;
+        }
+        if (pending) {
+          const rows = pending;
+          pending = undefined;
+          if (rows.length > 0) {
+            return rows.map((row) => rowFromObject(row, columns));
+          }
+        }
+        while (!done) {
+          let result;
+          try {
+            result = await withTimeout(query.fetchMore(options.fetchSize), requestTimeout);
+          } catch (error) {
+            throw fail(error);
+          }
+          done = result.is_done;
+          const rows = result.data ?? [];
+          if (rows.length > 0) {
+            return rows.map((row) => rowFromObject(row, columns));
+          }
+        }
+        return null;
+      },
+      close,
+    };
   }
 
   async close(): Promise<void> {
