@@ -281,19 +281,9 @@ All driver packages are optional dependencies, so `npm install` succeeds when on
 
 ### Values that differ by driver
 
-<<<<<<< HEAD
 Every driver returns `BIGINT` beyond the JavaScript safe integer range as an exact string, and binary columns (`BINARY`, `VARBINARY`, `BLOB`, `CHAR FOR BIT DATA`, `VARCHAR FOR BIT DATA`) as upper-case hex text, such as `"0AFF"`.
 
 The JDBC option `translate binary=true` changes that for `jt400` and `mapepire`: `FOR BIT DATA` columns come back as text converted from EBCDIC. Bytes that have no character are lost (`X'00FF'` comes back as an empty string), so leave the option off and convert the columns that hold text in the query instead, for example `CAST(<column> AS CHAR(10) CCSID 37)`.
-=======
-Every driver returns `BIGINT` beyond the JavaScript safe integer range as an exact string. Binary values come back as text, but not the same text on every driver:
-
-| Column | `odbc` | `jt400` | `mapepire` |
-|--------|--------|---------|------------|
-| `BINARY`, `VARBINARY` | hex, `"0AFF"` | hex | hex |
-| `BLOB` | hex | base64 | hex |
-| `CHAR FOR BIT DATA` | hex | EBCDIC bytes read as text | EBCDIC bytes read as text |
->>>>>>> origin/main
 
 The `odbc` driver reads every `DECIMAL` and `NUMERIC` value as a JavaScript number, so a value with more than 15 digits comes back rounded: `DECIMAL(31,2)` `12345678901234567890.12` arrives as `12345678901234567000`. The `odbc` package has no setting to read these columns as text. When a result has such a value, `execute_query` and business SQL tools add a `warnings` entry that names the column. To keep every digit, select the column as `CAST(<column> AS VARCHAR(40))`, or use the `jt400` or `mapepire` driver, which return wide decimals as exact text.
 
