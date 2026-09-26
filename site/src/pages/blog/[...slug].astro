@@ -1,7 +1,7 @@
 ---
 import { render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
-import { audienceLabel, getPosts } from '../../lib/posts';
+import { getPosts } from '../../lib/posts';
 import { formatDate, links, url } from '../../lib/links';
 
 export async function getStaticPaths() {
@@ -18,7 +18,7 @@ const { Content } = await render(post);
       <div class="post-head">
         <div class="side">
           <a class="back" href={url('/blog')}><span aria-hidden="true">←</span> All posts</a>
-          <p class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time><span>{audienceLabel[post.data.audience]}</span></p>
+          <p class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time></p>
         </div>
         <div>
           <h1>{post.data.title}</h1>

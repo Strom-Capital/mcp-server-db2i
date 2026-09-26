@@ -6,6 +6,7 @@ import '../styles/global.css';
 import faviconSvg from '../../../docs/assets/brand/svg/favicon.svg?raw';
 import Logo from '../components/Logo.astro';
 import AskDocs from '../components/AskDocs.astro';
+import CodeCopy from '../components/CodeCopy.astro';
 import ThemeSwitch from '../components/ThemeSwitch.astro';
 import { links, url } from '../lib/links';
 
@@ -75,7 +76,7 @@ const favicon = 'data:image/svg+xml,' + encodeURIComponent(faviconSvg);
           <a href={url('/business')} aria-current={current('/business')}>For business</a>
           <a href={url('/blog')} aria-current={current('/blog')}>Blog</a>
           <a href={links.docs}>Docs</a>
-          <a href={links.github}>GitHub <span aria-hidden="true">↗</span></a>
+          <a href={links.github}>GitHub</a>
           <ThemeSwitch />
         </nav>
       </div>
@@ -125,6 +126,7 @@ const favicon = 'data:image/svg+xml,' + encodeURIComponent(faviconSvg);
     </footer>
 
     <AskDocs starterQuestions={starterQuestions} />
+    <CodeCopy />
   </body>
 </html>
 

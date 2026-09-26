@@ -7,15 +7,16 @@ interface Row {
   on?: boolean;
 }
 interface Props {
-  title: string;
+  /** Optional heading row above the pairs. */
+  title?: string;
   meta?: string;
   rows: Row[];
   label?: string;
 }
 const { title, meta, rows, label } = Astro.props;
 ---
-<div class="spec" aria-label={label ?? title}>
-  <div class="spec-title"><span>{title}</span>{meta && <span>{meta}</span>}</div>
+<div class:list={['spec', { untitled: !title }]} aria-label={label ?? title}>
+  {title && <div class="spec-title"><span>{title}</span>{meta && <span>{meta}</span>}</div>}
   <dl>
     {rows.map((r) => (
       <div><dt>{r.key}</dt><dd class:list={{ on: r.on }}>{r.value}</dd></div>

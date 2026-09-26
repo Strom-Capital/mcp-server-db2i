@@ -7,7 +7,6 @@ import { links, url } from '../lib/links';
 <section class="hero">
   <div class="container top">
     <div class="copy">
-      <p class="label">Open source / MCP server for Db2 for i</p>
       <h1>Ask your IBM i<br />in plain language.</h1>
       <p class="sub">
         Give Claude, Cursor and other AI assistants <strong>read-only access to Db2 for i</strong>. It connects through
@@ -16,13 +15,11 @@ import { links, url } from '../lib/links';
       <div class="btn-row actions">
         <a class="btn btn--primary" href={links.quickstart}>Get started <span aria-hidden="true">→</span></a>
         <a class="link-rule" href={links.docs} data-ask-docs="hero">Ask the docs</a>
-        <a class="link-rule" href={links.github}>GitHub <span aria-hidden="true">↗</span></a>
+        <a class="link-rule" href={links.github}>GitHub</a>
       </div>
       <CopyCommand command="npx mcp-server-db2i" />
     </div>
     <Spec
-      title="DB2I / MCP"
-      meta="MIT"
       label="At a glance"
       rows={[
         { key: 'Transport', value: 'stdio · HTTP' },
@@ -60,7 +57,7 @@ import { links, url } from '../lib/links';
 <style>
   .top { display: grid; gap: var(--space-7); padding-block: 72px 56px; }
   @media (min-width: 1000px) { .top { grid-template-columns: minmax(0, 1fr) 320px; align-items: end; column-gap: 64px; padding-block: 112px 72px; } }
-  .copy h1 { margin: 18px 0 0; }
+  .copy h1 { margin: 0; }
   .sub { margin: 28px 0 0; font-size: 1.15rem; line-height: 1.55; color: var(--muted); max-width: 46ch; }
   .sub strong { color: var(--fg); }
   .actions { margin: 36px 0 24px; }

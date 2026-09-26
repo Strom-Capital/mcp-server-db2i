@@ -7,8 +7,3 @@ export async function getPosts(): Promise<Post[]> {
   const posts = await getCollection('blog', ({ data }) => !data.draft);
   return posts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime() || b.filePath!.localeCompare(a.filePath!));
 }
-
-export const audienceLabel: Record<Post['data']['audience'], string> = {
-  ibmi: 'For IBM i teams',
-  business: 'For business teams',
-};

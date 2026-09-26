@@ -28,6 +28,17 @@ code, pre, kbd { font-family: var(--font-mono); font-size: 0.86em; }
 :not(pre) > code { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-input); padding: 0.05em 0.35em; }
 pre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-code); padding: var(--space-4); overflow-x: auto; line-height: 1.65; }
 
+/* Highlighted code (Shiki dual themes, see astro.config.mjs) with a header and copy button (CodeCopy.astro) */
+.astro-code { background: var(--surface); }
+.astro-code span { color: var(--shiki-light); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .astro-code span { color: var(--shiki-dark); } }
+:root[data-theme='dark'] .astro-code span { color: var(--shiki-dark); }
+.code { border: 1px solid var(--line); border-radius: var(--radius-code); background: var(--surface); overflow: hidden; margin: var(--space-5) 0; }
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 8px 7px 14px; border-bottom: 1px solid var(--line); font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.code-head button { font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--bg); background: var(--fg); border: 0; border-radius: var(--radius-btn); padding: 6px 10px; cursor: pointer; }
+.code-head button:hover { background: var(--accent); color: var(--on-accent); }
+.code pre.astro-code { margin: 0 !important; border: 0; border-radius: 0; background: transparent !important; font-size: 0.85rem; }
+
 /* Layout */
 .container { width: 100%; max-width: var(--max); margin: 0 auto; padding-inline: var(--gutter); }
 .section { padding-block: var(--space-8) 88px; }
@@ -76,6 +87,7 @@ pre { background: var(--surface); border: 1px solid var(--line); border-radius: 
 .spec dl div { display: grid; grid-template-columns: 128px 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .spec dt { color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
 .spec dd { margin: 0; }
+.spec.untitled dl { border-top: 1px solid var(--line-strong); }
 .spec .on { color: var(--accent); }
 
 .grid { display: grid; gap: var(--space-5); }

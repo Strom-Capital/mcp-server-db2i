@@ -6,7 +6,7 @@
 import DataPath from './DataPath.astro';
 ---
 <figure class="query" aria-label="Example: an assistant answers a question using the MCP server">
-  <DataPath nodes={[{ at: '0%' }, { at: '33.3%', on: true }, { at: '74%' }, { at: '100%' }]} />
+  <DataPath nodes={[{ at: '0%' }, { at: '29.4%', on: true }, { at: '69.1%' }]} />
   <div class="cols">
     <div class="col">
       <div class="head"><span class="label">01 / Question</span><span class="who">Claude</span></div>
@@ -42,7 +42,6 @@ import DataPath from './DataPath.astro';
       </table>
     </div>
   </div>
-  <figcaption><span>Fig. 1</span><span>Illustration with example data</span></figcaption>
 </figure>
 
 <style>
@@ -74,5 +73,4 @@ import DataPath from './DataPath.astro';
   th { font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 0 0 8px; border-bottom: 1px solid var(--line-strong); }
   td { padding: 11px 0; border-bottom: 1px solid var(--line); }
   td:last-child, th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-  figcaption { display: flex; justify-content: space-between; padding-top: 12px; font: 12px/1.4 var(--font-mono); color: var(--muted); }
 </style>

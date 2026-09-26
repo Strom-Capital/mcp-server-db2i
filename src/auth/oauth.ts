@@ -316,36 +316,22 @@ const PAGE_STYLE = `
     --sans: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   @media (prefers-color-scheme: dark) { :root { --bg: #121312; --surface: #181918; --fg: #ecebe4; --muted: #9c9e97; --line: #2e302d; --accent: #7d97ff; --on-accent: #0d1330; --error: #f97066; } }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
-  .page { min-height: 100vh; display: grid; }
-  @media (min-width: 860px) { .page { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-  .side { display: flex; flex-direction: column; gap: 28px; padding: 24px 20px; border-bottom: 1px solid var(--line); }
-  @media (min-width: 860px) { .side { padding: 36px 56px; border-bottom: 0; border-right: 1px solid var(--line); } }
-  .brand { display: flex; align-items: center; gap: 12px; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 32px 20px; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  main { width: 100%; max-width: 380px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin: 0 0 40px; }
   .logo { display: block; flex: none; color: var(--fg); }
   .brand-name { font: 500 11px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-  .big { display: none; margin: auto 0 0; color: var(--fg); font-size: clamp(32px, 4.2vw, 52px); font-weight: 400; line-height: 1.02; letter-spacing: -0.04em; max-width: 12ch; }
-  @media (min-width: 860px) { .big { display: block; } }
-  .spec { margin: 0; font: 12.5px/1.3 var(--mono); }
-  .spec div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); }
-  .spec div:first-child { border-top-color: var(--fg); }
-  .spec dt { color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
-  .spec dd { margin: 0; overflow-wrap: anywhere; }
-  .spec .on { color: var(--accent); }
-  main { display: grid; align-content: center; padding: 32px 20px 40px; }
-  @media (min-width: 860px) { main { padding: 56px; } }
-  .panel { width: 100%; max-width: 400px; }
-  h1 { font-size: 30px; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 12px; }
-  p { margin: 0 0 20px; color: var(--muted); }
+  h1 { font-size: 30px; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 10px; }
+  p { margin: 0 0 8px; color: var(--muted); }
   strong { color: var(--fg); font-weight: 500; }
-  label { display: block; font: 500 11px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+  label { display: block; font: 500 11px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 20px 0 8px; }
   input, select { width: 100%; padding: 11px 12px; font: 15px/1.2 var(--mono); color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
   #username { text-transform: uppercase; }
   input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  button { width: 100%; margin-top: 26px; padding: 14px 16px; display: flex; justify-content: space-between; font: 500 15px/1 var(--sans); color: var(--on-accent); background: var(--accent); border: 0; border-radius: 3px; cursor: pointer; }
+  button { width: 100%; margin-top: 28px; padding: 14px 16px; display: flex; justify-content: space-between; font: 500 15px/1 var(--sans); color: var(--on-accent); background: var(--accent); border: 0; border-radius: 3px; cursor: pointer; }
   button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
-  .error { color: var(--error); margin: 0 0 12px; }
-  .note { font: 12px/1.5 var(--mono); margin: 20px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+  .error { color: var(--error); margin: 16px 0 0; }
+  .note { font: 12px/1.5 var(--mono); margin: 20px 0 0; }
 `;
 
 /** Server name shown next to the logo and in the tab title. The OAuth router sets it on every request. */
@@ -353,27 +339,7 @@ function pageBrand(res: Response): string {
   return typeof res.locals.pageBrand === 'string' ? res.locals.pageBrand : '';
 }
 
-/** Left column of a page: a large line of text and optional key/value rows. Values are escaped here. */
-interface PageSide {
-  heading: string;
-  rows?: Array<{ key: string; value: string; on?: boolean }>;
-}
-
-function renderSide(side: PageSide): string {
-  const rows = side.rows?.length
-    ? `<dl class="spec">` +
-      side.rows
-        .map(
-          (row) =>
-            `<div><dt>${escapeHtml(row.key)}</dt><dd${row.on ? ' class="on"' : ''}>${escapeHtml(row.value)}</dd></div>`
-        )
-        .join('') +
-      `</dl>`
-    : '';
-  return `<p class="big">${escapeHtml(side.heading)}</p>${rows}`;
-}
-
-function sendPage(res: Response, status: number, title: string, side: PageSide, body: string, formAction?: string): void {
+function sendPage(res: Response, status: number, title: string, body: string, formAction?: string): void {
   const brand = pageBrand(res);
   noStore(res);
   // Not no-referrer: with it, browsers send `Origin: null` on the form post and the
@@ -401,21 +367,14 @@ function sendPage(res: Response, status: number, title: string, side: PageSide, 
         `<title>${escapeHtml(brand ? `${title} · ${brand}` : title)}</title>` +
         `<link rel="icon" type="image/svg+xml" href="${FAVICON_HREF}">` +
         `<style>${PAGE_STYLE}</style></head>` +
-        `<body><div class="page"><aside class="side"><div class="brand">${LOGO_SVG}` +
+        `<body><main><div class="brand">${LOGO_SVG}` +
         (brand ? `<span class="brand-name">${escapeHtml(brand)}</span>` : '') +
-        `</div>${renderSide(side)}</aside>` +
-        `<main><div class="panel">${body}</div></main></div></body></html>`
+        `</div>${body}</main></body></html>`
     );
 }
 
 function renderError(res: Response, status: number, message: string): void {
-  sendPage(
-    res,
-    status,
-    'Sign-in error',
-    { heading: 'Sign-in could not continue.' },
-    `<h1>Sign-in error</h1><p>${escapeHtml(message)}</p>`
-  );
+  sendPage(res, status, 'Sign-in error', `<h1>Sign-in error</h1><p>${escapeHtml(message)}</p>`);
 }
 
 interface LoginPage {
@@ -457,17 +416,8 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
     res,
     status,
     'Sign in to IBM i',
-    {
-      heading: 'Sign in with your IBM i user profile.',
-      rows: [
-        { key: 'Client', value: clientName },
-        { key: 'Returns to', value: returnTo },
-        { key: 'Access', value: 'Read only', on: true },
-      ],
-    },
     `<h1>Sign in to IBM i</h1>` +
-      `<p><strong>${escapeHtml(clientName)}</strong> wants to query IBM i with your user profile. ` +
-      `After you sign in, you return to <strong>${escapeHtml(returnTo)}</strong>.</p>` +
+      `<p><strong>${escapeHtml(clientName)}</strong> is asking to connect. After you sign in, you return to <strong>${escapeHtml(returnTo)}</strong>.</p>` +
       (page.error ? `<p class="error" role="alert">${escapeHtml(page.error)}</p>` : '') +
       `<form method="post" action="/oauth/authorize">` +
       `<input type="hidden" name="request" value="${escapeHtml(page.request)}">` +
@@ -478,7 +428,7 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
       `<input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">` +
       `<button type="submit"><span>Sign in</span><span aria-hidden="true">→</span></button>` +
       `</form>` +
-      `<p class="note">Only continue if you started this connection yourself.</p>`,
+      `<p class="note">Only continue if you started this connection.</p>`,
     formAction
   );
 }

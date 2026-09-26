@@ -1,4 +1,5 @@
 ---
+import CodeBlock from './CodeBlock.astro';
 import { links } from '../lib/links';
 
 const clientConfig = `{
@@ -35,9 +36,9 @@ MCP_OAUTH_SECRET=<a long random string>
 #   URL: https://mcp.example.com/mcp`;
 
 const tabs = [
-  { id: 'npx', label: 'npx', intro: 'Add the server to your MCP client config. Claude Desktop, Cursor and Claude Code all use this shape.', code: clientConfig, more: links.clientSetup, moreLabel: 'Client setup guide' },
-  { id: 'docker', label: 'Docker', intro: 'Run it as a container: started by your MCP client over stdio, or as a shared HTTP server for your team.', code: docker, more: links.docker, moreLabel: 'Docker guide' },
-  { id: 'connector', label: 'claude.ai connector', intro: 'Run the server over HTTPS with OAuth. Everyone else adds one URL and signs in with their own IBM i profile.', code: oauth, more: links.oauth, moreLabel: 'Remote clients and OAuth' },
+  { id: 'npx', label: 'npx', lang: 'json', title: 'MCP client config', intro: 'Add the server to your MCP client config. Claude Desktop, Cursor and Claude Code all use this shape.', code: clientConfig, more: links.clientSetup, moreLabel: 'Client setup guide' },
+  { id: 'docker', label: 'Docker', lang: 'bash', title: 'Shell', intro: 'Run it as a container: started by your MCP client over stdio, or as a shared HTTP server for your team.', code: docker, more: links.docker, moreLabel: 'Docker guide' },
+  { id: 'connector', label: 'claude.ai connector', lang: 'dotenv', title: '.env', intro: 'Run the server over HTTPS with OAuth. Everyone else adds one URL and signs in with their own IBM i profile.', code: oauth, more: links.oauth, moreLabel: 'Remote clients and OAuth' },
 ];
 ---
 <section class="section" id="install">
@@ -59,7 +60,7 @@ const tabs = [
       {tabs.map((t, i) => (
         <div class="panel" role="tabpanel" id={`panel-${t.id}`} aria-labelledby={`tab-${t.id}`} hidden={i !== 0}>
           <p>{t.intro}</p>
-          <pre><code>{t.code}</code></pre>
+          <CodeBlock code={t.code} lang={t.lang as 'json'} title={t.title} />
           <a class="link-rule" href={t.more}>{t.moreLabel} <span aria-hidden="true">→</span></a>
         </div>
       ))}
@@ -94,7 +95,8 @@ const tabs = [
   [role='tab']:hover { color: var(--fg); }
   [role='tab'][aria-selected='true'] { color: var(--fg); border-bottom-color: var(--accent); }
   .tabs .panel { background: none; border: 0; padding: 24px 0 0; display: grid; gap: 16px; max-width: 860px; }
+  .tabs .panel[hidden] { display: none; }
   .tabs .panel p { margin: 0; color: var(--muted); }
-  .tabs .panel pre { margin: 0; font-size: 0.82rem; }
+  .tabs .panel :global(.code) { margin: 0; }
   .tabs .panel a { justify-self: start; }
 </style>

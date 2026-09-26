@@ -1,5 +1,5 @@
 ---
-import { audienceLabel, type Post } from '../lib/posts';
+import type { Post } from '../lib/posts';
 import { formatDate, url } from '../lib/links';
 
 interface Props { posts: Post[]; headingLevel?: 'h2' | 'h3' }
@@ -9,7 +9,7 @@ const { posts, headingLevel: H = 'h3' } = Astro.props;
   {posts.map((post) => (
     <li>
       <a class="post" href={url(`/blog/${post.id}`)}>
-        <span class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time><span>{audienceLabel[post.data.audience]}</span></span>
+        <span class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time></span>
         <span class="body">
           <H class="title">{post.data.title}</H>
           <span class="desc">{post.data.description}</span>
