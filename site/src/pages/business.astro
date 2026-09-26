@@ -10,11 +10,23 @@ const questions = [
   { area: 'Finance', items: ['Which customers have invoices more than 60 days overdue?', 'How do this month’s sales compare with the same month last year, by product group?'] },
 ];
 
-const summary = `mcp-server-db2i is an open-source MCP server (MIT) that lets AI assistants such as Claude and Cursor read Db2 for i.
-- Read-only: a read-only connection and a SQL validator that only accepts queries. A query timeout also cancels long statements on the IBM i.
-- People sign in with their own IBM i profile (OAuth), so object authority and exit programs apply as usual.
-- A library allowlist, column masking and an audit log of every tool call.
-- Connects with the IBM i Access ODBC driver, JT400, or Mapepire over SSH. Nothing is installed on the IBM i.
+const summary = `mcp-server-db2i: an open-source (MIT) MCP server that lets AI assistants such as Claude, Cursor and Claude Code query Db2 for i, read-only.
+
+What is enforced
+- Read-only: a read-only database connection and a SQL validator that only accepts queries.
+- A query timeout cancels long-running statements on the IBM i.
+- A library allowlist limits which schemas can be queried or browsed. Sensitive columns can be masked.
+- Every tool call is written to an audit log (JSON lines, SQL hashed by default).
+
+Who sees what
+- With the HTTP transport, people sign in with their own IBM i user profile (OAuth 2.1), so object authority and exit programs apply as usual. With stdio, the server uses the credentials in its configuration.
+- Query results go to the AI assistant the user connects, so use one the company has approved.
+
+How it connects
+- The server runs on a machine you choose: a workstation, a server or Docker.
+- The ODBC driver (default) and JT400 use the IBM i host servers. Nothing is installed on the IBM i. The ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the server machine.
+- Mapepire over SSH works when only port 22 is open. It copies its server JAR to the user's home directory on first use.
+
 Quickstart: ${links.quickstart}
 Security: ${links.security}`;
 ---
