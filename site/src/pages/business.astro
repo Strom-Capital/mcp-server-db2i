@@ -167,17 +167,15 @@ Thanks!`;
   </section>
 
   <section class="section section--tight" id="send-to-it">
-    <div class="container two next">
-      <div>
+    <div class="container next">
+      <div class="sec-head">
         <p class="label">Next step</p>
-        <h2 class="h2s">Share it with your IT team.</h2>
-        <p>
-          Ask the documentation assistant anything about setup, security or what it can do. Or send the email on the
-          right to your IT team. It is free and open source, with nothing to buy.
-        </p>
-        <div class="btn-row">
-          <a class="btn btn--primary" href={links.docs} data-ask-docs="business-next">Ask the docs</a>
-          <a class="link-rule" href={url('/blog')}>Read the blog</a>
+        <div>
+          <h2>Share it with your IT team.</h2>
+          <p class="lead">
+            Copy the email below and send it to your IT team. It covers what they need to decide, with links to the
+            setup and security docs.
+          </p>
         </div>
       </div>
       <div class="panel share">
@@ -235,11 +233,12 @@ Thanks!`;
   .ticks { margin: 0 0 var(--space-5); }
   .ticks li { padding: 12px 0 12px 22px; position: relative; }
   .ticks li::before { content: ''; position: absolute; left: 0; top: 20px; width: 7px; height: 7px; background: var(--accent); }
-  .share { align-self: start; }
+  .next { border-top: 1px solid var(--line-strong); padding-top: var(--space-6); }
+  .share { max-width: 760px; padding: var(--space-5) var(--space-6) var(--space-6); }
   .share-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
   .copy { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; background: var(--fg); color: var(--bg); border: 0; border-radius: var(--radius-btn); padding: 8px 12px; cursor: pointer; }
   .copy:hover { background: var(--accent); color: var(--on-accent); }
   .subject { margin: 0 0 var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); font-size: 0.9rem; }
   .subject .label { margin-right: 8px; }
-  .share pre { margin: 0; padding: 0; border: 0; background: none; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; }
+  .share pre { margin: 0; padding: 0; border: 0; background: none; white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.6 var(--font-sans); }
 </style>
