@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
-    <img src="docs/assets/logo.svg" alt="mcp-server-db2i logo: a database with an AI sparkle" width="128" height="128">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/svg/lockup-dark.svg">
+    <img src="docs/assets/brand/svg/lockup-primary.svg" alt="db2i/mcp logo: a route from a small round node to a blue square, next to the db2i/mcp wordmark" width="280">
   </picture>
 </p>
 
