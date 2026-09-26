@@ -6,9 +6,15 @@ vi.mock('../../src/db/connection.js', () => ({
 }));
 
 import { executeQuery } from '../../src/db/connection.js';
-import { checkMaskedColumns, maskRows, tokenizeSql } from '../../src/customTools/masking.js';
+import {
+  checkMaskedColumns,
+  maskRows,
+  maskValue,
+  requireMaskedColumns,
+  tokenizeSql,
+} from '../../src/customTools/masking.js';
 import { resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
-import { executeQueryTool } from '../../src/tools/query.js';
+import { executeQueryTool, prepareReadQuery } from '../../src/tools/query.js';
 
 const query = vi.mocked(executeQuery);
 const masked = new Set(['EMAIL', 'PHONE']);
@@ -99,6 +105,27 @@ describe('maskRows', () => {
   });
 });
 
+describe('requireMaskedColumns and maskValue', () => {
+  const rules = new Map<string, 'redact' | 'last4'>([
+    ['EMAIL', 'redact'],
+    ['PHONE', 'last4'],
+  ]);
+
+  it('checks masked columns against a header, case-insensitively', () => {
+    expect(requireMaskedColumns(['CUSTNO', 'email', 'Phone'], rules)).toBeUndefined();
+    expect(requireMaskedColumns(['CUSTNO', 'EMAIL'], rules)).toMatch(/PHONE/);
+    expect(requireMaskedColumns([], new Map())).toBeUndefined();
+  });
+
+  it('masks one value and leaves null and undefined alone', () => {
+    expect(maskValue('ada@example.com', 'redact')).toBe('****');
+    expect(maskValue('555-0100', 'last4')).toBe('****0100');
+    expect(maskValue(5550100, 'last4')).toBe('***0100');
+    expect(maskValue(null, 'redact')).toBeNull();
+    expect(maskValue(undefined, 'last4')).toBeUndefined();
+  });
+});
+
 describe('execute_query masking', () => {
   const previousEnv = process.env;
 
@@ -176,5 +203,59 @@ describe('execute_query masking', () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toEqual([{ ORDERNO: 1001 }]);
+  });
+});
+
+describe('prepareReadQuery', () => {
+  const previousEnv = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCustomTools();
+    process.env = { ...previousEnv };
+    delete process.env.QUERY_PARSE_CHECK;
+    delete process.env.QUERY_ALLOWED_SCHEMAS;
+  });
+
+  afterEach(() => {
+    process.env = previousEnv;
+    resetCustomTools();
+  });
+
+  it('rejects a write without reaching the IBM i', async () => {
+    const result = await prepareReadQuery({ sql: 'DELETE FROM MYLIB.ORDERS' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/Security validation failed/);
+      expect(result.violations?.length).toBeGreaterThan(0);
+    }
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('returns the mask rules for the selected columns and runs nothing but the parse check', async () => {
+    setCustomTools({
+      tools: [],
+      annotations: [],
+      masking: new Map([['MYLIB.CUSTOMERS', new Map([['EMAIL', 'redact']])]]),
+    });
+    query.mockResolvedValueOnce({
+      rows: [parsedRow({ NAME_TYPE: 'TABLE', SCHEMA: 'MYLIB', NAME: 'CUSTOMERS' })],
+    });
+
+    const result = await prepareReadQuery({ sql: 'SELECT CUSTNO, EMAIL FROM MYLIB.CUSTOMERS' });
+
+    expect(result).toEqual({ ok: true, maskRules: new Map([['EMAIL', 'redact']]) });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(String(query.mock.calls[0][0])).toMatch(/PARSE_STATEMENT/);
+  });
+
+  it('returns no rules when the parse check is off and nothing is masked', async () => {
+    process.env.QUERY_PARSE_CHECK = 'false';
+
+    const result = await prepareReadQuery({ sql: 'SELECT ORDERNO FROM MYLIB.ORDERS' });
+
+    expect(result).toEqual({ ok: true, maskRules: new Map() });
+    expect(query).not.toHaveBeenCalled();
   });
 });
