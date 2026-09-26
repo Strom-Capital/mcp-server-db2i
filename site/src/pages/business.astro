@@ -22,7 +22,7 @@ Security: ${links.security}`;
   title="For business teams"
   description="Ask new questions of the ERP data on your IBM i in plain language, next to the screens, reports, Excel workbooks and BI tools you already use."
   starterQuestions={[
-    'What does my IBM i team need to set up?',
+    'What does my IT team need to set up?',
     'How is our data kept read-only and private?',
     'Can people sign in with their own IBM i user?',
   ]}
@@ -39,7 +39,7 @@ Security: ${links.security}`;
       </p>
       <div class="btn-row">
         <a class="btn btn--primary" href={links.docs} data-ask-docs="business-hero">Ask the docs</a>
-        <a class="link-rule" href="#send-to-it">Send this to your IBM i team</a>
+        <a class="link-rule" href="#send-to-it">Send this to your IT team</a>
       </div>
     </div>
   </section>
@@ -62,7 +62,7 @@ Security: ${links.security}`;
         Then there is the one-off question, such as why a large customer ordered less this month.
         This is for those. It reads the ERP data directly from Db2 for i on your IBM i. It doesn't connect to
         your reports, spreadsheets or warehouse, and it doesn't replace them. If your reports use their own
-        definitions, such as what counts as an open order, your IBM i team can give the assistant the same ones.
+        definitions, such as what counts as an open order, your IT team can give the assistant the same ones.
       </p>
     </div>
   </section>
@@ -93,7 +93,7 @@ Security: ${links.security}`;
         <p class="label">Definitions</p>
         <h2 class="h2s">Your definitions, not the model's guesses.</h2>
         <p>
-          Every company has its own meaning of “open order”, “active customer” or “on time”. Your IBM i team can write
+          Every company has its own meaning of “open order”, “active customer” or “on time”. Your IT team can write
           those definitions down once, in a plain text file: what a status code means, how two tables join, which query
           answers “late purchase orders”.
         </p>
@@ -105,7 +105,7 @@ Security: ${links.security}`;
       </div>
       <div>
         <p class="label">Safeguards</p>
-        <h2 class="h2s">Why your IBM i team can say yes.</h2>
+        <h2 class="h2s">Why your IT team can say yes.</h2>
         <ul class="rows ticks">
           <li><strong>Read-only at three levels.</strong> A read-only connection, a check that only allows queries, and a time limit that stops long queries on the IBM i.</li>
           <li><strong>Everyone signs in as themselves.</strong> People use their own IBM i user, so they see exactly what they can see today.</li>
@@ -125,7 +125,7 @@ Security: ${links.security}`;
         <div><h2>Before you start.</h2></div>
       </div>
       <div class="cols3">
-        <div><p class="label">Setup</p><h3>Someone sets it up once</h3><p class="muted">Your IBM i team installs and configures the server. After that, people only add a link in their assistant and sign in.</p></div>
+        <div><p class="label">Setup</p><h3>Someone sets it up once</h3><p class="muted">Your IT team installs and configures the server. After that, people only add a link in their assistant and sign in.</p></div>
         <div><p class="label">Scope</p><h3>It is not your financial reporting</h3><p class="muted">Official figures still come from the reports your finance team relies on. This is for exploring and for the questions in between.</p></div>
         <div><p class="label">Quality</p><h3>Better notes, better answers</h3><p class="muted">The assistant is only as good as what it knows about your tables. A few definitions make a big difference.</p></div>
       </div>
@@ -136,10 +136,10 @@ Security: ${links.security}`;
     <div class="container two next">
       <div>
         <p class="label">Next step</p>
-        <h2 class="h2s">Share it with your IBM i team.</h2>
+        <h2 class="h2s">Share it with your IT team.</h2>
         <p>
           Ask the documentation assistant anything about setup, security or what it can do. Or send the summary on the
-          right to your IBM i team. It is free and open source, with nothing to buy.
+          right to your IT team. It is free and open source, with nothing to buy.
         </p>
         <div class="btn-row">
           <a class="btn btn--primary" href={links.docs} data-ask-docs="business-next">Ask the docs</a>
@@ -148,7 +148,7 @@ Security: ${links.security}`;
       </div>
       <div class="panel share">
         <div class="share-head">
-          <span class="label">For your IBM i team</span>
+          <span class="label">For your IT team</span>
           <button type="button" class="copy" data-copy-summary>Copy</button>
         </div>
         <pre id="summary">{summary}</pre>
