@@ -18,13 +18,15 @@ import { createMcpHandler, isInitializeRequest, isLegacyRequest, type McpHttpHan
 import { toNodeHandler, toWebRequest } from '@modelcontextprotocol/node';
 
 import { DISPLAY_NAME, FAVICON_ICO, FAVICON_SVG, ICON_PNG, ICON_TILE_SVG } from '../branding.js';
-import { getHttpConfig, hostnameOf, isLoopbackHost } from '../config.js';
+import { getExportConfig, getHttpConfig, hostnameOf, isLoopbackHost } from '../config.js';
+import { exportDownloadHandler } from '../export/download.js';
 import { createChildLogger } from '../utils/logger.js';
 import {
   getTokenManager,
   authMiddleware,
   createAuthRateLimitMiddleware,
   createOAuthRateLimitMiddleware,
+  createExportDownloadRateLimitMiddleware,
   createOAuthRouter,
   extractBearerToken,
   resetOAuthState,
@@ -485,6 +487,12 @@ export function createHttpApp(): Express {
       },
     });
   });
+
+  // Export download links (export_query over HTTP). No bearer check: the
+  // 256-bit id in the link is the credential, and a browser cannot send the token.
+  if (getExportConfig()) {
+    app.get('/exports/:id', createExportDownloadRateLimitMiddleware(), exportDownloadHandler);
+  }
 
   // Authentication endpoint (only active in 'required' auth mode)
   app.post('/auth', authRateLimitMiddleware, async (req: Request, res: Response) => {
