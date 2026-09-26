@@ -6,7 +6,7 @@ interface Group { label: string; heading: string; items: Item[] }
 
 const groups: Group[] = [
   {
-    label: '01 / Safety',
+    label: 'Safety',
     heading: 'Reads only, and only what you allow.',
     items: [
       { title: 'Read-only by design', href: links.security, body: 'A read-only database connection, a SQL validator that only accepts queries, and a timeout that cancels runaway statements on the IBM i itself.' },
@@ -15,7 +15,7 @@ const groups: Group[] = [
     ],
   },
   {
-    label: '02 / Connection',
+    label: 'Connection',
     heading: 'Fits the network you have.',
     items: [
       { title: 'Three ways to connect', href: links.drivers, body: 'The IBM i Access ODBC driver by default, JT400 if you prefer JDBC, or Mapepire over SSH when only port 22 is open.' },
@@ -23,14 +23,14 @@ const groups: Group[] = [
     ],
   },
   {
-    label: '03 / Auth',
+    label: 'Auth',
     heading: 'Everyone signs in as themselves.',
     items: [
       { title: 'Sign in as yourself', href: links.oauth, body: 'Built-in OAuth 2.1. People add one URL in claude.ai, Cursor or Claude Code, sign in with their own IBM i profile and keep the authority they already have.' },
     ],
   },
   {
-    label: '04 / Context',
+    label: 'Context',
     heading: 'Answers in your own terms.',
     items: [
       { title: 'Your business definitions', href: links.customTools, body: 'Describe tables and status codes in YAML, and turn your vetted queries into named tools with bound parameters.' },
@@ -38,7 +38,7 @@ const groups: Group[] = [
     ],
   },
   {
-    label: '05 / Operations',
+    label: 'Operations',
     heading: 'Every call on the record.',
     items: [
       { title: 'Audit log', href: links.auditLog, body: 'Every tool call written as one JSON line, with the SQL hashed by default, ready for your log pipeline.' },
@@ -58,8 +58,10 @@ const groups: Group[] = [
     <div class="groups">
       {groups.map((g) => (
         <div class="group">
-          <p class="label">{g.label}</p>
-          <h3>{g.heading}</h3>
+          <div class="lead-col">
+            <p class="label">{g.label}</p>
+            <h3>{g.heading}</h3>
+          </div>
           <ul class="rows">
             {g.items.map((item) => (
               <li>
@@ -80,8 +82,9 @@ const groups: Group[] = [
 <style>
   .groups { border-top: 1px solid var(--line-strong); }
   .group { display: grid; gap: 16px 64px; padding-block: 28px 36px; border-bottom: 1px solid var(--line); }
-  @media (min-width: 1000px) { .group { grid-template-columns: 200px 300px minmax(0, 1fr); } }
-  .group h3 { margin: 0; font-size: 1.75rem; font-weight: 400; line-height: 1.1; letter-spacing: -0.025em; }
+  @media (min-width: 900px) { .group { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
+  .lead-col { display: grid; gap: 12px; align-content: start; }
+  .group h3 { margin: 0; max-width: 16ch; font-size: 1.75rem; font-weight: 400; line-height: 1.1; letter-spacing: -0.025em; }
   .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; padding: 14px 0; text-decoration: none; color: var(--fg); }
   .rows > li:first-child .item { padding-top: 2px; }
   .item b { font-weight: 500; }
