@@ -4,7 +4,11 @@
  * calls the server makes, and the answer. Generic data only: never a real system.
  */
 ---
-<figure class="query" aria-label="Example: an assistant answers a question using the MCP server">
+<figure class="query" aria-labelledby="query-title">
+  <figcaption class="query-head">
+    <p class="label">Example</p>
+    <h2 id="query-title">One question, from plain language to rows.</h2>
+  </figcaption>
   <div class="cols">
     <div class="col">
       <div class="head"><span class="label">01 / Question</span><span class="who">Claude</span></div>
@@ -44,6 +48,8 @@
 
 <style>
   .query { margin: 0; min-width: 0; }
+  .query-head { display: grid; gap: var(--space-3); margin-bottom: var(--space-6); }
+  .query-head h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.25rem); letter-spacing: -0.03em; max-width: 24ch; }
   .cols { display: grid; border-bottom: 1px solid var(--line); position: relative; }
   .col { position: relative; }
   /* The data path: a line along the top with one square at the start of each column, as in Architecture.astro */
