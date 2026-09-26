@@ -94,10 +94,12 @@ The result tells the model where the file is and what is in it:
 | `rowCount`, `bytes`, `columns` | What was written |
 | `truncated` | `rows` or `bytes` when the file stops at the row or size cap, otherwise `false` |
 | `sample` | The first five rows, masked, so the model can check the export looks right |
+| `warnings` | Things to pass on to the user, such as columns the driver rounded |
 
 - **XLSX** has one sheet with a bold, frozen header row and a filter. Numbers, dates, times and timestamps are typed cells. A decimal or `BIGINT` wider than 15 digits is written as text so it keeps every digit. Text is always text, so a value that starts with `=` never becomes a formula. One sheet holds at most 1,048,575 rows.
 - **CSV** is UTF-8 with a byte order mark, so Excel opens accented characters correctly, and fields are quoted as in RFC 4180. A text value that starts with `=`, `+`, `-` or `@` gets a leading `'`, so a spreadsheet does not run it as a formula. Numbers are never changed.
-- CHAR padding is removed. Binary columns are written as hex.
+- With the `odbc` driver, node-odbc reads `DECIMAL` and `NUMERIC` values as JavaScript numbers, so a column wider than 15 digits is rounded. The result then has a `warnings` entry naming the column. Select it as `CAST(<column> AS VARCHAR(40))` to keep every digit, or use the `jt400` or `mapepire` driver, which keep it exact.
+- CHAR padding is removed. Binary columns are written as hex with `odbc`. With `jt400` and `mapepire`, `FOR BIT DATA` columns arrive as text translated by the driver, the same as in `execute_query`.
 - Give every column a unique name. A result with two columns of the same name, such as `a.ORDERNO` and `b.ORDERNO`, is rejected; use `AS`.
 
 ### Failed statements
