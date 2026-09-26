@@ -217,6 +217,7 @@ The tool is then never registered, so validation bypasses cannot reach it. Busin
 - With [`DB2I_PROFILES`](configuration.md#multiple-systems), each profile can set its own `allowedSchemas`. A profile without one uses `QUERY_ALLOWED_SCHEMAS`. Every call is checked against the list of the system it runs on.
 - Queries that cannot be parsed are rejected while the list is set. System naming (`LIB/FILE`), `TABLE(...)` table functions and named arguments fall into that group. The error says where parsing stopped.
 - Db2 for i casts are accepted: `CCSID n`, `FOR BIT DATA`, and the types `NCHAR`, `NVARCHAR`, `NCLOB`, `CLOB`, `DBCLOB`, `GRAPHIC`, `VARGRAPHIC` and `DECFLOAT`, as in `CAST(NOTE AS VARCHAR(60) CCSID 1208)`. The check reads a rewritten copy of the statement. The statement sent to the IBM i is unchanged.
+- Special registers and labeled durations are accepted: `CURRENT DATE`, `CURRENT TIMESTAMP(n)`, `CURRENT USER`, `CURRENT SCHEMA` and the other `CURRENT` registers, with or without an alias, and a duration after a number or a parenthesis, as in `CURRENT DATE - 30 DAYS`. A duration after a column name, such as `ORDERDATE + LEADDAYS DAYS`, is not read yet.
 - `QSYS2` and `SYSIBM` are allowed only when you add them.
 
 This does not replace IBM i object authority. A view or alias in an allowed library can still point at another library. Use a user profile that has access only to the libraries in the list.

@@ -135,13 +135,74 @@ function normalizeDb2Types(code: string): string {
 }
 
 /**
+ * Db2 for i special registers, after CURRENT and a space or an underscore.
+ * Multi-word names come before their first word, so TIME ZONE wins over TIME.
+ */
+const SPECIAL_REGISTERS = [
+  'DATE',
+  'TIME\\s+ZONE',
+  'TIMEZONE',
+  'TIMESTAMP',
+  'TIME',
+  'USER',
+  'SERVER',
+  'SCHEMA',
+  'SQLID',
+  'FUNCTION\\s+PATH',
+  'PATH',
+  'DEGREE',
+  'DEBUG\\s+MODE',
+  'DECFLOAT\\s+ROUNDING\\s+MODE',
+  'IMPLICIT\\s+XMLPARSE\\s+OPTION',
+  'LOCK\\s+TIMEOUT',
+  'TEMPORAL\\s+SYSTEM_TIME',
+  'CLIENT_ACCTNG',
+  'CLIENT_APPLNAME',
+  'CLIENT_PROGRAMID',
+  'CLIENT_USERID',
+  'CLIENT_WRKSTNNAME',
+];
+
+/** Characters that continue a Db2 for i name, besides letters, digits and _ */
+const NAME_CHAR = '\\w$#@';
+
+/**
+ * A special register that is not part of a qualified name: nothing joins it
+ * to a name before it, and no dot follows it. TIMESTAMP may carry a precision.
+ */
+const SPECIAL_REGISTER_RE = new RegExp(
+  `(?<![${NAME_CHAR}.])CURRENT(?:\\s+|_)(?:TIMESTAMP\\s*\\(\\s*\\d*\\s*\\)|${SPECIAL_REGISTERS.join('|')})(?![${NAME_CHAR}]|\\s*\\.)`,
+  'gi'
+);
+
+/**
+ * The unit of a labeled duration after a number or a closing parenthesis,
+ * as in CURRENT DATE - 30 DAYS. The unit after a column name is left alone:
+ * there it cannot be told apart from an alias.
+ */
+const DURATION_RE = new RegExp(
+  `((?<![${NAME_CHAR}.])\\d+(?:\\.\\d*)?|\\))\\s+(?:YEARS?|MONTHS?|DAYS?|HOURS?|MINUTES?|SECONDS?|MICROSECONDS?)(?![${NAME_CHAR}]|\\s*\\.)`,
+  'gi'
+);
+
+/**
+ * Rewrite Db2 for i special registers and labeled durations, which the parser
+ * does not read. A register becomes NULL and a duration loses its unit. Only
+ * keywords change: a qualified name such as MYLIB.CURRENT is never touched,
+ * and a table named CURRENT turns unparseable and is refused, as before.
+ */
+function normalizeDb2Registers(code: string): string {
+  return code.replace(SPECIAL_REGISTER_RE, 'NULL').replace(DURATION_RE, '$1');
+}
+
+/**
  * Build the copy of the SQL that is parsed for the check. It is never run.
  * `?` markers become NULL because the Db2 dialect rejects them.
  * Exported for tests.
  */
 export function normalizeForParsing(sql: string): string {
   return rewriteCode(stripTrailingRowLimit(sql), (code) =>
-    normalizeDb2Types(code.replace(/\?/g, 'NULL'))
+    normalizeDb2Registers(normalizeDb2Types(code.replace(/\?/g, 'NULL')))
   );
 }
 
