@@ -41,6 +41,7 @@ import { startCustomToolsWatch } from './customTools/watch.js';
 import { parseCliArgs, runValidateTools } from './cli.js';
 import { loadCustomToolsFromEnv } from './customTools/loader.js';
 import { initAuditLog } from './utils/auditLog.js';
+import { initExportStore } from './export/store.js';
 import { setCustomTools } from './customTools/registry.js';
 import { startHttpServer, shutdownHttpServer } from './transports/http.js';
 import { ClientAwareStdioTransport } from './transports/stdio.js';
@@ -85,6 +86,8 @@ async function main(): Promise<void> {
       );
     }
     initAuditLog();
+    // Checks the EXPORT_* settings and prepares EXPORT_DIR, so a bad setting stops startup
+    await initExportStore();
     setCustomTools(customTools);
     const enabledTools = getEnabledTools(customTools.tools);
     if (enabledTools.length === 0) {

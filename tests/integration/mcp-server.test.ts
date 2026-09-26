@@ -100,9 +100,11 @@ describe('MCP Server Integration', () => {
     it('should list every built-in tool', async () => {
       const { tools } = await client.listTools();
 
-      expect(tools).toHaveLength(TOOL_NAMES.length);
+      // export_query stays off until EXPORT_ENABLED is set
+      expect(tools).toHaveLength(TOOL_NAMES.length - 1);
 
       const toolNames = tools.map((t) => t.name);
+      expect(toolNames).not.toContain('export_query');
       expect(toolNames).toContain('execute_query');
       expect(toolNames).toContain('get_business_context');
       expect(toolNames).toContain('list_schemas');
@@ -164,7 +166,7 @@ describe('MCP Server Integration', () => {
 
       const { tools } = await filteredClient.listTools();
       const toolNames = tools.map((t) => t.name);
-      expect(toolNames).toHaveLength(TOOL_NAMES.length - 1);
+      expect(toolNames).toHaveLength(TOOL_NAMES.length - 2);
       expect(toolNames).not.toContain('execute_query');
       expect(toolNames).toContain('list_schemas');
 
