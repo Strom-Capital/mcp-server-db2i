@@ -142,9 +142,12 @@ describe('export download link', () => {
 
     await vi.waitFor(async () => expect(await readdir(join(dir, 'exports'))).toEqual([]));
     const events = (await auditLines()).filter((line) => line.event === 'export_download');
-    expect(events.map((line) => line.outcome)).toEqual(['success', 'success', 'success', 'not_found']);
-    expect(events[0]).toMatchObject({ identity: 'TESTUSER', bytes: expected.length, rowCount: 1 });
-    expect(String(events[0].exportId)).toHaveLength(8);
+    // A download is audited when its response closes, which can come after the
+    // next request's line, so compare outcomes without their order
+    expect(events.map((line) => line.outcome).sort()).toEqual(['not_found', 'success', 'success', 'success']);
+    const success = events.find((line) => line.outcome === 'success');
+    expect(success).toMatchObject({ identity: 'TESTUSER', bytes: expected.length, rowCount: 1 });
+    expect(String(success?.exportId)).toHaveLength(8);
     expect(JSON.stringify(events)).not.toContain(url.split('/').pop());
   });
 
