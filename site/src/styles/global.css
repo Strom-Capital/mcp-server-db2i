@@ -44,9 +44,8 @@ pre { background: var(--surface); border: 1px solid var(--line); border-radius: 
 .section { padding-block: var(--space-8) 88px; }
 .section--tight { padding-top: 0; }
 
-/* Section heading: a mono label on the left, a large heading and lead on the right */
-.sec-head { display: grid; gap: var(--space-5); margin-bottom: var(--space-7); }
-@media (min-width: 1000px) { .sec-head { grid-template-columns: 200px minmax(0, 1fr); column-gap: 64px; } }
+/* Section heading: a mono label directly above a large heading and lead */
+.sec-head { display: grid; gap: var(--space-4); margin-bottom: var(--space-7); }
 .sec-head h2, .sec-head h1 { margin: 0; max-width: 16ch; }
 .sec-head .lead { margin: var(--space-5) 0 0; }
 
