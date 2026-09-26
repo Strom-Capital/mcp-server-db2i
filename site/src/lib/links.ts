@@ -29,6 +29,7 @@ export const links = {
   npm: 'https://www.npmjs.com/package/mcp-server-db2i',
   registry: 'https://registry.modelcontextprotocol.io/',
   mcp: 'https://modelcontextprotocol.io/',
+  ibmMcp: 'https://github.com/IBM/ibmi-mcp-server',
 } as const;
 
 /** A path inside this site, with the configured base. */

@@ -4,6 +4,7 @@ import Hero from '../components/Hero.astro';
 import FeatureGrid from '../components/FeatureGrid.astro';
 import Architecture from '../components/Architecture.astro';
 import Install from '../components/Install.astro';
+import Compare from '../components/Compare.astro';
 import PostList from '../components/PostList.astro';
 import { getPosts } from '../lib/posts';
 import { links, url } from '../lib/links';
@@ -18,8 +19,9 @@ const latest = (await getPosts()).slice(0, 3);
   <FeatureGrid />
   <Architecture />
   <Install />
+  <Compare />
 
-  <section class="section section--subtle">
+  <section class="section">
     <div class="container">
       <div class="head">
         <div>
@@ -32,7 +34,7 @@ const latest = (await getPosts()).slice(0, 3);
     </div>
   </section>
 
-  <section class="section">
+  <section class="section section--subtle">
     <div class="container cta">
       <h2>Free, open source, and yours to run</h2>
       <p class="lead">MIT licensed. It runs on your own machines and talks only to your IBM i. Questions, ideas and bug reports are welcome on GitHub.</p>
