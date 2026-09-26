@@ -3,6 +3,7 @@
  */
 
 import { executeQuery } from '../db/connection.js';
+import { roundedColumnsWarnings } from '../db/driver.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
@@ -147,6 +148,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   error?: string;
   violations?: string[];
   limitApplied?: number;
+  warnings?: string[];
 } & SqlErrorDetails> {
   const { sql, params = [], target, defaultSchema } = input;
   const queryConfig = getQueryLimitConfig();
@@ -172,6 +174,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
       return { success: false, error: masked.error };
     }
     const rows = masked.rows;
+    const warnings = roundedColumnsWarnings(result.roundedColumns, new Set(prepared.maskRules.keys()));
 
     log.info({ rowCount: rows.length, effectiveLimit }, 'Query executed successfully');
     return {
@@ -179,6 +182,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
       data: rows,
       rowCount: rows.length,
       limitApplied: effectiveLimit,
+      ...(warnings ? { warnings } : {}),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';

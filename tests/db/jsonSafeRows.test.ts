@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toJsonSafeRows } from '../../src/db/driver.js';
+import { roundedColumnsWarnings, toJsonSafeRows } from '../../src/db/driver.js';
 
 describe('toJsonSafeRows', () => {
   it('turns a bigint within the safe range into a number', () => {
@@ -32,6 +32,19 @@ describe('toJsonSafeRows', () => {
     expect(() => JSON.stringify(rows)).not.toThrow();
   });
 
+  it('turns binary values into upper-case hex', () => {
+    const bytes = new Uint8Array([0x00, 0x0a, 0xff, 0x10]);
+    const rows = toJsonSafeRows([
+      {
+        BUFFER: bytes.buffer,
+        VIEW: bytes.subarray(1, 3),
+        NODE: Buffer.from([0xab, 0xcd]),
+        EMPTY: new ArrayBuffer(0),
+      },
+    ]);
+    expect(rows).toEqual([{ BUFFER: '000AFF10', VIEW: '0AFF', NODE: 'ABCD', EMPTY: '' }]);
+  });
+
   it('leaves other values alone', () => {
     const date = new Date('2024-01-15T00:00:00Z');
     const row = { ORDERNO: 1001, ITEMNO: 'A-1', PRICE: '12.50', SHIPPED: null, CREATED: date };
@@ -40,5 +53,24 @@ describe('toJsonSafeRows', () => {
 
   it('handles an empty result', () => {
     expect(toJsonSafeRows([])).toEqual([]);
+  });
+});
+
+describe('roundedColumnsWarnings', () => {
+  it('names the rounded columns and how to keep every digit', () => {
+    const [warning] = roundedColumnsWarnings(['W', 'TOTAL']) ?? [];
+    expect(warning).toMatch(/^The ODBC driver rounds DECIMAL and NUMERIC values past 15 digits, so the values in W, TOTAL are not exact\./);
+    expect(warning).toContain('CAST(<column> AS VARCHAR(40))');
+    expect(warning).toContain('jt400 or mapepire');
+  });
+
+  it('leaves out masked columns', () => {
+    expect(roundedColumnsWarnings(['W', 'total'], new Set(['TOTAL']))?.[0]).toContain('values in W are');
+    expect(roundedColumnsWarnings(['TOTAL'], new Set(['TOTAL']))).toBeUndefined();
+  });
+
+  it('returns nothing when no column was rounded', () => {
+    expect(roundedColumnsWarnings(undefined)).toBeUndefined();
+    expect(roundedColumnsWarnings([])).toBeUndefined();
   });
 });

@@ -26,6 +26,12 @@ export interface DbQueryOptions {
   noResultSet?: boolean;
 }
 
+/**
+ * Rows from DbPool.query. `roundedColumns` names the columns whose values the
+ * driver rounded, so the tool can say so.
+ */
+export type DbRows = Record<string, unknown>[] & { roundedColumns?: string[] };
+
 /** How a column's values are written to a file. */
 export type ColumnKind =
   | 'int'
@@ -89,7 +95,7 @@ export interface DbPool {
     sql: string,
     params: readonly QueryParam[],
     options?: DbQueryOptions
-  ): Promise<Record<string, unknown>[]>;
+  ): Promise<DbRows>;
   /**
    * Run a query and read its rows in batches. The cursor holds one connection
    * or job until it is closed. Optional, so test pools need not implement it.
@@ -294,11 +300,20 @@ export function toDb2Timestamp(date: Date): string {
 const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER);
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 
+/** Bytes as upper-case hex, the way every driver returns binary columns. */
+export function hex(bytes: Uint8Array): string {
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('hex').toUpperCase();
+}
+
 /**
- * Make row values safe for JSON. node-odbc returns BIGINT as a `bigint`, which
- * `JSON.stringify` rejects. A value within the safe integer range becomes a
- * number, and a larger one an exact string, the same as Mapepire returns.
- * Rows are changed in place; drivers hand over fresh row objects.
+ * Make row values safe for JSON. Rows are changed in place; drivers hand over
+ * fresh row objects.
+ * - node-odbc returns BIGINT as a `bigint`, which `JSON.stringify` rejects. A
+ *   value within the safe integer range becomes a number, and a larger one an
+ *   exact string, the same as Mapepire returns.
+ * - node-odbc returns BINARY, VARBINARY and BLOB as an ArrayBuffer, which
+ *   `JSON.stringify` turns into `{}`. Binary values become upper-case hex, the
+ *   same as JT400 and Mapepire return.
  */
 export function toJsonSafeRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   for (const row of rows) {
@@ -306,8 +321,33 @@ export function toJsonSafeRows(rows: Record<string, unknown>[]): Record<string, 
       const value = row[key];
       if (typeof value === 'bigint') {
         row[key] = value >= MIN_SAFE && value <= MAX_SAFE ? Number(value) : value.toString();
+      } else if (value instanceof ArrayBuffer) {
+        row[key] = hex(new Uint8Array(value));
+      } else if (value instanceof Uint8Array) {
+        row[key] = hex(value);
       }
     }
   }
   return rows;
+}
+
+/**
+ * The warning a tool returns for columns the driver rounded. Masked columns
+ * are left out, since their values are replaced anyway.
+ *
+ * @param roundedColumns - QueryResult.roundedColumns
+ * @param maskedColumns - Upper-case names of the masked columns
+ */
+export function roundedColumnsWarnings(
+  roundedColumns: readonly string[] | undefined,
+  maskedColumns: ReadonlySet<string> = new Set()
+): string[] | undefined {
+  const names = (roundedColumns ?? []).filter((name) => !maskedColumns.has(name.toUpperCase()));
+  if (names.length === 0) {
+    return undefined;
+  }
+  return [
+    `The ODBC driver rounds DECIMAL and NUMERIC values past 15 digits, so the values in ${names.join(', ')} are not exact. ` +
+      'Select the column as CAST(<column> AS VARCHAR(40)) to keep every digit, or use the jt400 or mapepire driver.',
+  ];
 }

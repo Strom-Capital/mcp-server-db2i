@@ -204,6 +204,22 @@ describe('execute_query masking', () => {
     expect(result.success).toBe(true);
     expect(result.data).toEqual([{ ORDERNO: 1001 }]);
   });
+
+  it('warns about rounded columns, except masked ones', async () => {
+    loadMasking();
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes('PARSE_STATEMENT')) {
+        return { rows: [parsedRow({ NAME_TYPE: 'TABLE', SCHEMA: 'MYLIB', NAME: 'CUSTOMERS' })] };
+      }
+      return { rows: [{ EMAIL: 12345678901234567000, TOTAL: 12345678901234567000 }], roundedColumns: ['EMAIL', 'TOTAL'] };
+    });
+
+    const result = await executeQueryTool({ sql: 'SELECT EMAIL, TOTAL FROM MYLIB.CUSTOMERS' });
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings?.[0]).toContain('values in TOTAL are not exact');
+  });
 });
 
 describe('prepareReadQuery', () => {

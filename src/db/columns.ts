@@ -9,6 +9,7 @@
  */
 
 import type { ColumnKind, DbColumn } from './driver.js';
+import { hex } from './driver.js';
 
 /** Digits a JavaScript number holds exactly. Wider decimals stay text. */
 const MAX_EXACT_DIGITS = 15;
@@ -123,10 +124,6 @@ export function kindFromOdbcType(dataType: number, dataTypeName?: string): Colum
 function isFixedLength(column: DbColumn): boolean {
   const name = column.dbType.trim().toUpperCase();
   return /^(CHAR|CHARACTER|GRAPHIC|NCHAR)\b/.test(name) && !name.includes('FOR BIT DATA');
-}
-
-function hex(value: Uint8Array): string {
-  return Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString('hex').toUpperCase();
 }
 
 function integerValue(value: unknown): unknown {

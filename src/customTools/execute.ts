@@ -3,6 +3,7 @@
  */
 
 import { executeQuery } from '../db/connection.js';
+import { roundedColumnsWarnings } from '../db/driver.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import {
   isParseStatementMissing,
@@ -54,6 +55,7 @@ export interface CustomToolQueryResult extends SqlErrorDetails {
   error?: string;
   violations?: string[];
   limitApplied?: number;
+  warnings?: string[];
   [key: string]: unknown;
 }
 
@@ -101,16 +103,19 @@ export async function executeCustomTool(
   try {
     const result = await executeQuery(limitedSql, values, options.target);
     const limited = result.rows.slice(0, effectiveLimit);
-    const masked = maskRows(limited, new Map(Object.entries(tool.maskedColumns)));
+    const maskRules = new Map(Object.entries(tool.maskedColumns));
+    const masked = maskRows(limited, maskRules);
     if (!masked.ok) {
       return { success: false, error: masked.error };
     }
+    const warnings = roundedColumnsWarnings(result.roundedColumns, new Set(maskRules.keys()));
     log.info({ tool: tool.name, rowCount: masked.rows.length, effectiveLimit }, 'Custom tool executed');
     return {
       success: true,
       data: masked.rows,
       rowCount: masked.rows.length,
       limitApplied: effectiveLimit,
+      ...(warnings ? { warnings } : {}),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';

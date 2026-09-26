@@ -12,7 +12,7 @@
 import type { DB2iConfig } from '../config.js';
 import { queryTimeoutMs } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
-import type { DbPool, RowCursor } from './driver.js';
+import type { DbPool, DbRows, RowCursor } from './driver.js';
 import { loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
 import { DatabaseQueryError, explainSqlError } from './sqlErrorInfo.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -21,6 +21,8 @@ const log = createChildLogger({ component: 'database' });
 
 export interface QueryResult {
   rows: Record<string, unknown>[];
+  /** Columns whose values the driver rounded (DECIMAL past 15 digits on ODBC). */
+  roundedColumns?: string[];
 }
 
 /** One pool. `pool` is set by the first query and cleared on failure. */
@@ -319,7 +321,7 @@ async function run(
     db = await acquire(slot, resolved);
     const timeoutMs = queryTimeoutMs(slot.config);
     const warmUp = scheduleCancelWarmUp(slot, resolved, procedure, timeoutMs);
-    let rawRows: Record<string, unknown>[];
+    let rawRows: DbRows;
     try {
       rawRows = await db.query(sql, toParams(params), {
         timeoutMs,
@@ -328,10 +330,11 @@ async function run(
     } finally {
       clearTimeout(warmUp);
     }
-    // BIGINT arrives as bigint from ODBC; convert it once, for every output path
-    const rows = toJsonSafeRows(rawRows);
+    // BIGINT and binary values from ODBC are not JSON; convert them once, for every output path
+    const rows = toJsonSafeRows(Array.from(rawRows));
     log.debug({ rowCount: rows.length }, `${kind} completed`);
-    return { rows };
+    const { roundedColumns } = rawRows;
+    return roundedColumns ? { rows, roundedColumns } : { rows };
   } catch (error) {
     if (error instanceof QueryTimeoutError) {
       logTimeout(error, resolved, slot.config.driver, sql);

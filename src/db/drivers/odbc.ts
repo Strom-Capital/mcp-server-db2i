@@ -10,7 +10,16 @@ import type { ColumnDefinition, Connection, Cursor } from 'odbc';
 import type { DB2iConfig } from '../../config.js';
 import { buildOdbcConnectionConfig, serializeOdbcConnectionString } from '../../config.js';
 import { kindFromOdbcType, rowFromObject } from '../columns.js';
-import type { CreatePoolOptions, DbColumn, DbCursorOptions, DbDriver, DbPool, QueryParam, RowCursor } from '../driver.js';
+import type {
+  CreatePoolOptions,
+  DbColumn,
+  DbCursorOptions,
+  DbDriver,
+  DbPool,
+  DbRows,
+  QueryParam,
+  RowCursor,
+} from '../driver.js';
 import { DbError, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
 
 /** One diagnostic record from the ODBC driver manager. */
@@ -23,6 +32,7 @@ interface OdbcDiagnostic {
 type OdbcModule = typeof import('odbc');
 type OdbcPool = Awaited<ReturnType<OdbcModule['pool']>>;
 type Row = Record<string, unknown>;
+type OdbcResult = Awaited<ReturnType<OdbcPool['query']>>;
 
 // Imported once and shared by every pool. Concurrent first queries from several
 // sessions must not each start their own import. A failed import is forgotten.
@@ -73,6 +83,39 @@ function toOdbcError(error: unknown): Error {
   return new Error(error instanceof Error ? error.message : String(error), { cause: error });
 }
 
+/** Digits a JavaScript number holds exactly. */
+const MAX_EXACT_DIGITS = 15;
+
+/** ODBC SQL_NUMERIC and SQL_DECIMAL. */
+const DECIMAL_TYPES = new Set([2, 3]);
+
+/**
+ * Copy the rows out of a node-odbc Result, an Array with extra properties
+ * (columns, count, ...), so only plain row objects leave the driver.
+ *
+ * node-odbc reads every DECIMAL and NUMERIC value with atof, so a value with
+ * more than 15 digits comes back rounded. Such columns are named in
+ * `roundedColumns`. A value of DECIMAL(p,s) uses more than 15 digits exactly
+ * when its magnitude reaches 10^(15-s); below that the number is exact.
+ */
+function toDbRows(result: OdbcResult): DbRows {
+  const rows: DbRows = Array.from(result as unknown as Row[]);
+  const rounded = (result.columns ?? [])
+    .filter((column) => DECIMAL_TYPES.has(column.dataType) && column.columnSize > MAX_EXACT_DIGITS)
+    .filter((column) => {
+      const limit = 10 ** (MAX_EXACT_DIGITS - column.decimalDigits);
+      return rows.some((row) => {
+        const value = row[column.name];
+        return typeof value === 'number' && Math.abs(value) >= limit;
+      });
+    })
+    .map((column) => column.name);
+  if (rounded.length > 0) {
+    rows.roundedColumns = rounded;
+  }
+  return rows;
+}
+
 export const odbcDriver: DbDriver = {
   name: 'odbc',
 
@@ -97,12 +140,10 @@ export const odbcDriver: DbDriver = {
       async query(sql, params, options) {
         const timeoutMs = options?.timeoutMs ?? 0;
         try {
-          // Result is an Array with extra properties (columns, count, ...).
-          // Copy the rows so only plain row objects leave the driver.
           if (timeoutMs <= 0) {
-            return Array.from(await pool.query<Row>(sql, bindParams(params)));
+            return toDbRows(await pool.query<Row>(sql, bindParams(params)));
           }
-          return Array.from(await queryWithCancel(pool, sql, params, timeoutMs));
+          return toDbRows(await queryWithCancel(pool, sql, params, timeoutMs));
         } catch (error) {
           if (error instanceof QueryTimeoutError) {
             throw error;
@@ -125,9 +166,6 @@ export const odbcDriver: DbDriver = {
     };
   },
 };
-
-/** Digits a JavaScript number holds exactly. */
-const MAX_EXACT_DIGITS = 15;
 
 function odbcColumns(columns: readonly ColumnDefinition[]): DbColumn[] {
   return columns.map((column) => {
@@ -239,7 +277,7 @@ async function queryWithCancel(
   sql: string,
   params: readonly QueryParam[],
   timeoutMs: number
-): Promise<Row[]> {
+): Promise<OdbcResult> {
   const connection = await pool.connect();
   let statement: Awaited<ReturnType<typeof connection.createStatement>> | undefined;
   const execution = (async () => {

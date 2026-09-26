@@ -62,6 +62,31 @@ describe('executeCustomTool', () => {
     expect(parseStatement).not.toHaveBeenCalled();
   });
 
+  it('warns about columns the driver rounded, except masked ones', async () => {
+    vi.mocked(executeQuery).mockResolvedValueOnce({
+      rows: [{ TOTAL: 12345678901234567000, BALANCE: 12345678901234567000 }],
+      roundedColumns: ['TOTAL', 'BALANCE'],
+    });
+    const wide = {
+      ...tool,
+      sql: 'SELECT TOTAL, BALANCE FROM MYLIB.CUSTOMERS',
+      parameters: {},
+      placeholderNames: [],
+      maskedColumns: { BALANCE: 'redact' as const },
+    };
+
+    const result = await executeCustomTool(wide, {});
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings?.[0]).toContain('values in TOTAL are not exact');
+  });
+
+  it('adds no warnings when nothing was rounded', async () => {
+    const result = await executeCustomTool(tool, { customer: '1001' });
+    expect(result.warnings).toBeUndefined();
+  });
+
   it('masks a plainly selected column on a YAML tool', async () => {
     vi.mocked(executeQuery).mockResolvedValueOnce({
       rows: [{ EMAIL: 'ada@example.com', PHONE: '555-0100' }],

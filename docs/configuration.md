@@ -279,6 +279,18 @@ Pick by what the network allows: `odbc` and `jt400` need the database host serve
 
 All driver packages are optional dependencies, so `npm install` succeeds when one of them cannot build. If the `odbc` prebuilt binary is missing for your platform, `npm install` builds it from source and needs the unixODBC headers (`unixodbc-dev` on Debian and Ubuntu, `unixODBC-devel` on RHEL and SUSE).
 
+### Values that differ by driver
+
+Every driver returns `BIGINT` beyond the JavaScript safe integer range as an exact string. Binary values come back as text, but not the same text on every driver:
+
+| Column | `odbc` | `jt400` | `mapepire` |
+|--------|--------|---------|------------|
+| `BINARY`, `VARBINARY` | hex, `"0AFF"` | hex | hex |
+| `BLOB` | hex | base64 | hex |
+| `CHAR FOR BIT DATA` | hex | EBCDIC bytes read as text | EBCDIC bytes read as text |
+
+The `odbc` driver reads every `DECIMAL` and `NUMERIC` value as a JavaScript number, so a value with more than 15 digits comes back rounded: `DECIMAL(31,2)` `12345678901234567890.12` arrives as `12345678901234567000`. The `odbc` package has no setting to read these columns as text. When a result has such a value, `execute_query` and business SQL tools add a `warnings` entry that names the column. To keep every digit, select the column as `CAST(<column> AS VARCHAR(40))`, or use the `jt400` or `mapepire` driver, which return wide decimals as exact text.
+
 ### Using the JT400 driver
 
 `node-jt400` builds a native Java bridge during `npm install`. Without a JDK the build fails, npm skips the package, and the install still succeeds with ODBC only. To use JT400:
