@@ -231,7 +231,7 @@ export class RefreshGrantStore {
       raw = readFileSync(this.file, 'utf8');
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        log.warn({ err, file: this.file }, 'Could not read the OAuth state file; starting with no refresh grants');
+        log.warn({ err }, 'Could not read the OAuth state file (MCP_OAUTH_STATE_FILE); starting with no refresh grants');
       }
       return;
     }
@@ -240,15 +240,15 @@ export class RefreshGrantStore {
     try {
       state = JSON.parse(raw) as Partial<StateFile>;
     } catch {
-      log.warn({ file: this.file }, 'The OAuth state file is not valid JSON; starting with no refresh grants');
+      log.warn('The OAuth state file is not valid JSON; starting with no refresh grants');
       return;
     }
     if (state.version !== FILE_VERSION || !Array.isArray(state.grants)) {
-      log.warn({ file: this.file, version: state.version }, 'Unknown OAuth state file format; starting with no refresh grants');
+      log.warn({ version: state.version }, 'Unknown OAuth state file format; starting with no refresh grants');
       return;
     }
     if (state.keyCheck !== keyCheckFor(this.key)) {
-      log.warn({ file: this.file }, 'The OAuth state file was written with another MCP_OAUTH_SECRET; users must sign in again');
+      log.warn('The OAuth state file was written with another MCP_OAUTH_SECRET; users must sign in again');
       return;
     }
 
@@ -271,9 +271,9 @@ export class RefreshGrantStore {
       this.encrypted.set(entry.id, entry);
     }
     if (skipped > 0) {
-      log.warn({ file: this.file, skipped }, 'Skipped OAuth refresh grants that could not be restored');
+      log.warn({ skipped }, 'Skipped OAuth refresh grants that could not be restored');
     }
-    log.info({ file: this.file, grants: this.grants.size }, 'Loaded OAuth refresh grants');
+    log.info({ grants: this.grants.size }, 'Loaded OAuth refresh grants');
     // Leave the file with only what was kept
     this.save();
   }
@@ -296,7 +296,7 @@ export class RefreshGrantStore {
       chmodSync(temp, 0o600);
       renameSync(temp, this.file);
     } catch (err) {
-      log.error({ err, file: this.file }, 'Could not write the OAuth state file; refresh grants will not survive a restart');
+      log.error({ err }, 'Could not write the OAuth state file (MCP_OAUTH_STATE_FILE); refresh grants will not survive a restart');
       try {
         rmSync(temp, { force: true });
       } catch {
