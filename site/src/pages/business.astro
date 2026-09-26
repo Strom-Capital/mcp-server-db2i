@@ -33,7 +33,9 @@ Who sees what
 - Query results go to the AI assistant the user connects, so it should be one the company has approved.
 
 How it connects
-- Self-hosted: the server runs on a machine you choose, such as a workstation, a server or Docker.
+- Self-hosted: the server runs on a machine you choose, such as a workstation, an on-premises server or a container in the cloud.
+- In the cloud, it needs a private network connection to the IBM i, such as a VPN. The IBM i ports should not be open to the internet.
+- To use it from claude.ai, the server must be reachable over HTTPS. Access can be limited to Anthropic's IP range.
 - The ODBC driver (default) and JT400 use the IBM i host servers. Nothing is installed on the IBM i. The ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the server machine.
 - Mapepire over SSH works when only port 22 is open. It copies its server JAR to the user's home directory on first use.
 
