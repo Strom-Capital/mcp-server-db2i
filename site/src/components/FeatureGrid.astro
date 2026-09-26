@@ -8,6 +8,7 @@ import ListChecks from '@lucide/astro/icons/list-checks';
 import ScrollText from '@lucide/astro/icons/scroll-text';
 import Search from '@lucide/astro/icons/search';
 import ShieldCheck from '@lucide/astro/icons/shield-check';
+import IconTile from './IconTile.astro';
 import { links } from '../lib/links';
 
 const features = [
@@ -75,7 +76,7 @@ const features = [
     <div class="grid grid--3 features">
       {features.map((f) => (
         <a class="card feature" href={f.href}>
-          <span class="icon" aria-hidden="true"><f.icon size={20} stroke-width={1.75} /></span>
+          <IconTile icon={f.icon} />
           <h3>{f.title}</h3>
           <p class="muted">{f.body}</p>
         </a>
@@ -88,6 +89,5 @@ const features = [
   .features { margin-top: var(--space-6); }
   .feature { text-decoration: none; color: var(--fg); transition: border-color 0.15s; }
   .feature:hover { border-color: var(--accent); color: var(--fg); }
-  .icon { display: inline-grid; place-items: center; width: 40px; height: 40px; margin-bottom: var(--space-3); border-radius: 10px; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
   .feature p { margin: 0; font-size: 0.95rem; }
 </style>

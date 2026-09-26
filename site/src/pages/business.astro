@@ -1,13 +1,25 @@
 ---
+import AppWindow from '@lucide/astro/icons/app-window';
+import ChartColumn from '@lucide/astro/icons/chart-column';
+import Factory from '@lucide/astro/icons/factory';
+import Handshake from '@lucide/astro/icons/handshake';
+import Landmark from '@lucide/astro/icons/landmark';
+import NotebookPen from '@lucide/astro/icons/notebook-pen';
+import Scale from '@lucide/astro/icons/scale';
+import Sheet from '@lucide/astro/icons/sheet';
+import Truck from '@lucide/astro/icons/truck';
+import UserCog from '@lucide/astro/icons/user-cog';
+import Wrench from '@lucide/astro/icons/wrench';
+import IconTile from '../components/IconTile.astro';
 import Base from '../layouts/Base.astro';
 import { links, url } from '../lib/links';
 
 const questions = [
-  { area: 'Sales', items: ['Which customers ordered less this quarter than last?', 'What is still open on our ten largest orders, and when is it due?'] },
-  { area: 'Purchasing', items: ['Which purchase orders are late, and from which suppliers?', 'Which items have we bought from more than one supplier this year, and at what prices?'] },
-  { area: 'Service', items: ['Which service orders have been open longest, and for which customers?', 'Which items come back for repair most often?'] },
-  { area: 'Manufacturing', items: ['Which work orders are behind schedule this week?', 'Which components are short for the orders due next month?'] },
-  { area: 'Finance', items: ['Which customers have invoices more than 60 days overdue?', 'How do this month’s sales compare with the same month last year, by product group?'] },
+  { area: 'Sales', icon: Handshake, items: ['Which customers ordered less this quarter than last?', 'What is still open on our ten largest orders, and when is it due?'] },
+  { area: 'Purchasing', icon: Truck, items: ['Which purchase orders are late, and from which suppliers?', 'Which items have we bought from more than one supplier this year, and at what prices?'] },
+  { area: 'Service', icon: Wrench, items: ['Which service orders have been open longest, and for which customers?', 'Which items come back for repair most often?'] },
+  { area: 'Manufacturing', icon: Factory, items: ['Which work orders are behind schedule this week?', 'Which components are short for the orders due next month?'] },
+  { area: 'Finance', icon: Landmark, items: ['Which customers have invoices more than 60 days overdue?', 'How do this month’s sales compare with the same month last year, by product group?'] },
 ];
 
 const summary = `mcp-server-db2i is an open-source MCP server (MIT) that lets AI assistants such as Claude and Cursor read Db2 for i.
@@ -49,14 +61,17 @@ Security: ${links.security}`;
       <p class="lead">Most companies with an ERP on IBM i get their answers in one of three ways. Each does its job well, and each was built with care by people who know the business.</p>
       <div class="grid grid--3 setups">
         <div class="card">
+          <IconTile icon={AppWindow} />
           <h3>ERP screens and reports</h3>
           <p class="muted">The system your team works in every day, with the reports that were built for it.</p>
         </div>
         <div class="card">
+          <IconTile icon={Sheet} />
           <h3>Excel over ODBC</h3>
           <p class="muted">Workbooks that pull straight from the ERP, shaped by someone who knows exactly which fields matter.</p>
         </div>
         <div class="card">
+          <IconTile icon={ChartColumn} />
           <h3>A warehouse or BI tool</h3>
           <p class="muted">Dashboards and reports on data that has been modeled for the questions the business asks most.</p>
         </div>
@@ -76,6 +91,7 @@ Security: ${links.security}`;
       <div class="grid grid--3 questions">
         {questions.map((q) => (
           <div class="card">
+            <IconTile icon={q.icon} />
             <h3>{q.area}</h3>
             <ul>{q.items.map((item) => <li>“{item}”</li>)}</ul>
           </div>
@@ -117,9 +133,9 @@ Security: ${links.security}`;
     <div class="container">
       <h2>Good to know</h2>
       <div class="grid grid--3">
-        <div class="card"><h3>Someone sets it up once</h3><p class="muted">Your IBM i team installs and configures the server. After that, people only add a link in their assistant and sign in.</p></div>
-        <div class="card"><h3>It is not your financial reporting</h3><p class="muted">Official figures still come from the reports your finance team relies on. This is for exploring and for the questions in between.</p></div>
-        <div class="card"><h3>Better notes, better answers</h3><p class="muted">The assistant is only as good as what it knows about your tables. A few definitions make a big difference.</p></div>
+        <div class="card"><IconTile icon={UserCog} /><h3>Someone sets it up once</h3><p class="muted">Your IBM i team installs and configures the server. After that, people only add a link in their assistant and sign in.</p></div>
+        <div class="card"><IconTile icon={Scale} /><h3>It is not your financial reporting</h3><p class="muted">Official figures still come from the reports your finance team relies on. This is for exploring and for the questions in between.</p></div>
+        <div class="card"><IconTile icon={NotebookPen} /><h3>Better notes, better answers</h3><p class="muted">The assistant is only as good as what it knows about your tables. A few definitions make a big difference.</p></div>
       </div>
     </div>
   </section>
@@ -170,12 +186,12 @@ Security: ${links.security}`;
   .setups p, .questions ul { margin: 0; }
   .bridge { max-width: 46rem; margin-top: var(--space-6); font-size: 1.1rem; }
   .questions ul { padding-left: 1.1em; display: grid; gap: 6px; color: var(--muted); }
-  .two { display: grid; gap: var(--space-6); }
-  @media (min-width: 900px) { .two { grid-template-columns: 1fr 1fr; gap: var(--space-7); } }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
+  @media (min-width: 900px) { .two { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-7); } }
   .ticks { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: grid; gap: var(--space-3); }
   .ticks li { padding-left: 1.6em; position: relative; }
   .ticks li::before { content: '✓'; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
   .share-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
   .share-head .btn { padding: 6px 12px; font-size: 0.85rem; }
-  .share pre { margin: 0; white-space: pre-wrap; font-size: 0.82rem; }
+  .share pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.82rem; }
 </style>
