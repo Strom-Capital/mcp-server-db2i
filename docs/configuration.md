@@ -471,6 +471,7 @@ The `DB2I_ODBC_OPTIONS` variable accepts semicolon-separated connection keywords
 | `DBQ` (`DefaultLibraries`) | `LIB1,LIB2,...` | Default library and library list. Start with a comma (`,LIB1,LIB2`) to set a list without a default library. Defaults to `DB2I_SCHEMA` |
 | `DFT` (`DateFormat`) | `5` ISO, `4` USA, `6` EUR, `7` JIS, `1` MDY, `2` DMY, `3` YMD | Date format. The server sets `5` unless you set it |
 | `TRIMCHAR` (`TrimCharFields`) | `1`, `0` | Trim trailing blanks from CHAR columns. The server sets `1` to match JT400 |
+| `CCSID` | client code page | Code page the driver converts character data to. The server sets `1208` (UTF-8), which node-odbc expects; without it, characters outside ASCII such as `Ä`, `Ö` and `€` arrive as `�`. Only override it if you know the client needs another code page |
 | `SSL` | `1`, `0` | `1` encrypts the whole connection. The driver default only encrypts the password. Startup logs a warning when it is not `1` |
 | `CONNTYPE` (`ConnectionType`) | `2` read only, `1` read/call, `0` read/write | Statement access. Defaults to `2` when omitted. An explicit value overrides that default and is logged at startup |
 | `DRIVER` / `DSN` | driver name or DSN | Defaults to `DRIVER=IBM i Access ODBC Driver`. Set `DSN=...` to use a data source from `odbc.ini` instead |
