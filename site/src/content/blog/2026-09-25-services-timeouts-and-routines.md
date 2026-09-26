@@ -3,6 +3,7 @@ title: Services, timeouts and routines (2.10 and 2.11)
 description: A query timeout that cancels on the IBM i, IBM i services search, SQL errors with cause and recovery text, index advice, and procedures and functions.
 date: 2026-09-25T15:00:00Z
 audience: ibmi
+icon: timer
 tags: [release, tools, security]
 ---
 

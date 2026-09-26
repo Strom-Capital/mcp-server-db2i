@@ -1,5 +1,6 @@
 ---
-import { audienceLabel, type Post } from '../lib/posts';
+import IconTile from './IconTile.astro';
+import { audienceLabel, postIcons, type Post } from '../lib/posts';
 import { formatDate, url } from '../lib/links';
 
 interface Props { posts: Post[]; headingLevel?: 'h2' | 'h3' }
@@ -9,9 +10,12 @@ const { posts, headingLevel: H = 'h3' } = Astro.props;
   {posts.map((post) => (
     <li>
       <a class="card post" href={url(`/blog/${post.id}`)}>
-        <span class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time> · {audienceLabel[post.data.audience]}</span>
-        <H class="title">{post.data.title}</H>
-        <p class="muted">{post.data.description}</p>
+        <IconTile icon={postIcons[post.data.icon]} />
+        <span class="body">
+          <span class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time> · {audienceLabel[post.data.audience]}</span>
+          <H class="title">{post.data.title}</H>
+          <p class="muted">{post.data.description}</p>
+        </span>
       </a>
     </li>
   ))}
@@ -19,8 +23,13 @@ const { posts, headingLevel: H = 'h3' } = Astro.props;
 
 <style>
   .posts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
-  .post { display: grid; gap: 6px; text-decoration: none; color: var(--fg); height: 100%; transition: border-color 0.15s; }
+  /* The icon sits above the text in narrow cards (home page columns, phones) and beside it in wide ones. */
+  .posts li { container-type: inline-size; }
+  .post { display: grid; align-items: start; gap: var(--space-3); text-decoration: none; color: var(--fg); height: 100%; transition: border-color 0.15s; }
   .post:hover { border-color: var(--accent); color: var(--fg); }
+  .post :global(.icon-tile) { margin-bottom: 0; }
+  @container (min-width: 560px) { .post { grid-template-columns: auto 1fr; gap: var(--space-4); } }
+  .body { display: grid; gap: 6px; min-width: 0; }
   .meta { font-size: 0.82rem; color: var(--muted); }
   .title { font-size: 1.1rem; margin: 0; }
   .post p { margin: 0; font-size: 0.95rem; }
