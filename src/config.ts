@@ -694,6 +694,12 @@ export function buildOdbcConnectionConfig(
   if (odbcOption(extra, 'trimchar') === undefined) {
     keywords['TRIMCHAR'] = '1';
   }
+  // node-odbc reads character data as UTF-8. Without CCSID=1208 the driver
+  // sends it in another code page, and every non-ASCII character (Ä, Ö, €)
+  // arrives as U+FFFD. JT400 and Mapepire convert to Unicode themselves.
+  if (odbcOption(extra, 'ccsid') === undefined) {
+    keywords['CCSID'] = '1208';
+  }
 
   const readOnly = options?.readOnly !== false;
 

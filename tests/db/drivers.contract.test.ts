@@ -660,7 +660,7 @@ describe('driver contract: odbc specifics', () => {
     await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
     const { connectionString, options } = created.odbc[0];
     expect(connectionString).toBe(
-      'DRIVER=IBM i Access ODBC Driver;SYSTEM=ibmi.example.com;UID=TESTUSER;PWD=secret;DFT=5;TRIMCHAR=1;CONNTYPE=2;DBQ=MYLIB;SSL=1;NAM=0'
+      'DRIVER=IBM i Access ODBC Driver;SYSTEM=ibmi.example.com;UID=TESTUSER;PWD=secret;DFT=5;TRIMCHAR=1;CCSID=1208;CONNTYPE=2;DBQ=MYLIB;SSL=1;NAM=0'
     );
     expect(options.initialSize).toBe(1);
     expect(options.maxSize).toBeGreaterThan(1);
