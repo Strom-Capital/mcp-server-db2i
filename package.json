@@ -2,7 +2,7 @@
   "name": "mcp-server-db2i",
   "mcpName": "io.github.Strom-Capital/mcp-server-db2i",
   "version": "2.12.0",
-  "description": "MCP server for IBM Db2 for i (Db2i) database queries and metadata inspection",
+  "description": "Read-only MCP server that lets AI assistants query IBM Db2 for i, with per-user sign-in, a library allowlist and an audit log",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -31,7 +31,10 @@
     "odbc",
     "jdbc",
     "http",
-    "rest"
+    "claude",
+    "oauth",
+    "mapepire",
+    "read-only"
   ],
   "author": "",
   "license": "MIT",

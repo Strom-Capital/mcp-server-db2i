@@ -349,7 +349,7 @@ Dark mode is secondary and works especially well for:
 
 ### PNG
 
-Generated raster versions are in `png/`: the mark at 16 and 32 px (from the pixel drawings) and 24 to 512 px, the lockup at 256, 512 and 1024 px wide, and the icon tile at 256 px.
+Generated raster versions are in `png/`: the mark at 16 and 32 px (from the pixel drawings) and 24 to 512 px, the lockup at 256, 512 and 1024 px wide, the icon tile at 256 px, and `social-preview.png` (1280 x 640), the share image for the website and the GitHub repository.
 
 The SVG files are the source of truth.
 
