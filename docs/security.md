@@ -215,7 +215,8 @@ The tool is then never registered, so validation bypasses cannot reach it. Busin
 - Unqualified function calls are not checked. They resolve through the SQL path, which is the job's library list under the default system naming, and that is how built-ins such as `UPPER` and `COALESCE` are found. `SET` statements are rejected, so a client cannot change the path. Keep libraries outside the list off the user profile's library list, and rely on object authority for the rest. The dangerous-function checks (for example `QCMDEXC`) still apply to qualified and unqualified calls.
 - The list comes from the server environment. A schema chosen at `/auth` changes where unqualified names resolve. It does not add libraries to the list.
 - With [`DB2I_PROFILES`](configuration.md#multiple-systems), each profile can set its own `allowedSchemas`. A profile without one uses `QUERY_ALLOWED_SCHEMAS`. Every call is checked against the list of the system it runs on.
-- Queries that cannot be parsed are rejected while the list is set. System naming (`LIB/FILE`) and `TABLE(...)` table functions fall into that group.
+- Queries that cannot be parsed are rejected while the list is set. System naming (`LIB/FILE`), `TABLE(...)` table functions and named arguments fall into that group. The error says where parsing stopped.
+- Db2 for i casts are accepted: `CCSID n`, `FOR BIT DATA`, and the types `NCHAR`, `NVARCHAR`, `NCLOB`, `CLOB`, `DBCLOB`, `GRAPHIC`, `VARGRAPHIC` and `DECFLOAT`, as in `CAST(NOTE AS VARCHAR(60) CCSID 1208)`. The check reads a rewritten copy of the statement. The statement sent to the IBM i is unchanged.
 - `QSYS2` and `SYSIBM` are allowed only when you add them.
 
 This does not replace IBM i object authority. A view or alias in an allowed library can still point at another library. Use a user profile that has access only to the libraries in the list.

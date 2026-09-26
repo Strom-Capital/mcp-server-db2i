@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { checkQuerySchemas, isSchemaAllowed } from '../src/utils/security/schemaAllowlist.js';
+import {
+  checkQuerySchemas,
+  isSchemaAllowed,
+  normalizeForParsing,
+} from '../src/utils/security/schemaAllowlist.js';
 
 const allowed = ['MYLIB'];
 
@@ -84,6 +88,95 @@ describe('checkQuerySchemas', () => {
     });
     expect(result.ok).toBe(true);
     expect(check('SELECT * FROM QSYS2.SYSTABLES').ok).toBe(false);
+  });
+
+  it('should say what failed and where, then list the possible causes', () => {
+    const [message] = check('SELECT * FROM MYLIB/ORDERS').violations;
+    expect(message).toMatch(/^The query could not be parsed, so its libraries could not be checked/);
+    expect(message).toContain('near line 1: "/ORDERS"');
+    expect(message).toContain('system naming (LIB/FILE)');
+    expect(message).toContain('Db2 syntax the checker does not support yet');
+  });
+
+  describe('Db2 for i cast syntax', () => {
+    it.each([
+      'SELECT CAST(NOTE AS VARCHAR(60) CCSID 1208) FROM MYLIB.ORDERHDR',
+      'SELECT CAST(NOTE AS NVARCHAR(30)) FROM MYLIB.ORDERHDR',
+      'SELECT CAST(ITEMNO AS NCHAR(10)) FROM MYLIB.ORDERS',
+    ])('should accept %s and still check its library', (sql) => {
+      expect(check(sql).ok).toBe(true);
+      const outside = check(sql.replace('MYLIB.', 'OTHERLIB.'));
+      expect(outside.ok).toBe(false);
+      expect(outside.violations[0]).toMatch(/^Table OTHERLIB\./);
+    });
+
+    it.each([
+      'CHAR(10) CCSID 37',
+      'VARCHAR(10) FOR BIT DATA',
+      'CHAR(10) FOR SBCS DATA',
+      'NCLOB(1000)',
+      'CLOB(1M)',
+      'CLOB(64 K)',
+      'DBCLOB(100)',
+      'GRAPHIC(10) CCSID 1200',
+      'VARGRAPHIC(10)',
+      'DECFLOAT(34)',
+      'DECFLOAT',
+      'TIMESTAMP(12)',
+      'nvarchar(30) ccsid 1208',
+    ])('should accept a cast to %s', (type) => {
+      expect(check(`SELECT CAST(NOTE AS ${type}) FROM MYLIB.ORDERS`).ok).toBe(true);
+    });
+
+    it('should accept a Db2 cast together with parameters and FETCH FIRST', () => {
+      const sql =
+        'SELECT CAST(NOTE AS VARCHAR(60) CCSID 1208) AS NOTE FROM MYLIB.ORDERHDR ' +
+        'WHERE ORDERNO = ? FETCH FIRST 5 ROWS ONLY';
+      expect(check(sql).ok).toBe(true);
+    });
+
+    it('should still catch a qualified function inside a Db2 cast', () => {
+      const result = check(
+        'SELECT CAST(OUTSIDELIB.F(NOTE) AS NVARCHAR(10) CCSID 1208) FROM MYLIB.ORDERS'
+      );
+      expect(result.ok).toBe(false);
+      expect(result.violations).toEqual([
+        'Function OUTSIDELIB.F is not in the allowed schemas (MYLIB).',
+      ]);
+    });
+
+    it('should not rename a qualified function that shares a type name', () => {
+      expect(normalizeForParsing('SELECT X AS OUTSIDELIB.CLOB(1)')).toContain('OUTSIDELIB.CLOB');
+      expect(normalizeForParsing('SELECT CAST(X AS NCHAR.F)')).toContain('NCHAR.F');
+    });
+
+    it('should leave string literals, quoted names and comments alone', () => {
+      const sql =
+        "SELECT CAST(NOTE AS NVARCHAR(30) CCSID 1208) -- AS NCHAR(1) CCSID 37 ?\n" +
+        "FROM MYLIB.ORDERS /* AS CLOB(1M) FOR BIT DATA ? */ " +
+        `WHERE DESCR = 'AS NVARCHAR CCSID 1208 ?' AND "AS NCHAR" = 1`;
+      expect(normalizeForParsing(sql)).toBe(
+        "SELECT CAST(NOTE AS VARCHAR(30) ) -- AS NCHAR(1) CCSID 37 ?\n" +
+          "FROM MYLIB.ORDERS /* AS CLOB(1M) FOR BIT DATA ? */ " +
+          `WHERE DESCR = 'AS NVARCHAR CCSID 1208 ?' AND "AS NCHAR" = 1`
+      );
+    });
+
+    it('should keep quotes with doubled quote escapes intact', () => {
+      const sql = "SELECT * FROM MYLIB.ORDERS WHERE DESCR = 'IT''S ? CCSID 1' AND ORDERNO = ?";
+      expect(normalizeForParsing(sql)).toBe(
+        "SELECT * FROM MYLIB.ORDERS WHERE DESCR = 'IT''S ? CCSID 1' AND ORDERNO = NULL"
+      );
+    });
+
+    it('should not touch FOR READ ONLY or FOR FETCH ONLY', () => {
+      expect(normalizeForParsing('SELECT * FROM MYLIB.ORDERS FOR READ ONLY')).toBe(
+        'SELECT * FROM MYLIB.ORDERS FOR READ ONLY'
+      );
+      expect(normalizeForParsing('SELECT * FROM MYLIB.ORDERS FOR FETCH ONLY')).toBe(
+        'SELECT * FROM MYLIB.ORDERS FOR FETCH ONLY'
+      );
+    });
   });
 
   describe('function calls', () => {
