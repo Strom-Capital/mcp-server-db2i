@@ -1,5 +1,4 @@
 ---
-import DataPath from './DataPath.astro';
 import { links } from '../lib/links';
 ---
 <section class="section" id="how-it-works">
@@ -11,7 +10,6 @@ import { links } from '../lib/links';
         <p class="lead">The server sits between your AI assistant and the IBM i. Every request passes the same checks, whichever client or driver you use.</p>
       </div>
     </div>
-    <DataPath class="wide-only" nodes={[{ at: '0%' }, { at: '19.5%' }, { at: '39%', on: true }, { at: '66.5%' }, { at: '85%' }]} />
     <ol class="nodes">
       <li>
         <span class="label">Client</span>
@@ -48,12 +46,28 @@ import { links } from '../lib/links';
 </section>
 
 <style>
-  .wide-only { display: none; }
-  @media (min-width: 1000px) { .wide-only { display: block; } }
-  .nodes { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 28px; }
-  @media (min-width: 1000px) { .nodes { grid-template-columns: 1fr 1fr 1.3fr 1fr 1fr; gap: 32px; margin-top: 22px; } }
-  @media (max-width: 999px) { .nodes > li { border-top: 1px solid var(--line); padding-top: 16px; } .nodes > li:first-child { border-top: 1px solid var(--line-strong); } }
-  .nodes > li { display: grid; gap: 6px; align-content: start; }
+  .nodes { list-style: none; padding: 0; margin: 0; display: grid; gap: 28px; position: relative; }
+  .nodes > li { display: grid; gap: 6px; align-content: start; position: relative; }
+
+  /* Wide: the data path runs along the top, with one square at the start of each column */
+  @media (min-width: 1000px) {
+    .nodes { grid-template-columns: 1fr 1fr 1.3fr 1fr 1fr; gap: 32px; padding-top: 40px; }
+    .nodes::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 1px; background: var(--line-strong); }
+    .nodes > li::before { content: ''; position: absolute; left: 0; top: -35px; width: 7px; height: 7px; background: var(--bg); border: 1px solid var(--line-strong); }
+    .nodes > li.policy::before { background: var(--accent); border-color: var(--accent); }
+    .nodes::after { content: ''; position: absolute; top: 7px; left: 0; width: 44px; height: 3px; background: var(--accent); animation: run 5.5s cubic-bezier(0.6, 0, 0.4, 1) infinite; }
+  }
+  @keyframes run {
+    0% { left: 0; opacity: 0; }
+    8% { opacity: 1; }
+    92% { opacity: 1; }
+    100% { left: calc(100% - 44px); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .nodes::after { animation: none; left: 34%; } }
+
+  /* Narrow: stacked, separated by rules */
+  @media (max-width: 999px) { .nodes > li { border-top: 1px solid var(--line); padding-top: 16px; } .nodes > li:first-of-type { border-top: 1px solid var(--line-strong); } }
+
   .nodes h3 { margin: 0; font-size: 1.15rem; }
   .nodes p { margin: 0; font-size: 0.9rem; color: var(--muted); }
   .policy h3 { color: var(--accent); }
