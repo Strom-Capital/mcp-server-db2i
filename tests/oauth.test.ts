@@ -4,7 +4,7 @@
  */
 
 import crypto from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
@@ -106,6 +106,7 @@ describe('OAuth authorization server', () => {
     delete process.env.MCP_AUTH_ALLOWED_DB_HOSTS;
     delete process.env.MCP_OAUTH_REDIRECT_URIS;
     delete process.env.MCP_OAUTH_REFRESH_EXPIRY;
+    delete process.env.MCP_OAUTH_STATE_FILE;
     resetSystems();
     resetOAuthState();
     ({ server, baseUrl } = await listen(createHttpApp()));
@@ -685,6 +686,69 @@ describe('OAuth authorization server', () => {
     expect(refresh.status).toBe(400);
   });
 
+  describe('with MCP_OAUTH_STATE_FILE', () => {
+    let stateFile: string;
+
+    beforeEach(async () => {
+      stateFile = path.join(dir, 'oauth', 'grants.json');
+      process.env.MCP_OAUTH_STATE_FILE = stateFile;
+      await restart();
+    });
+
+    /** Stop everything a process restart loses: access tokens and in-memory grants. */
+    async function simulateRestart(): Promise<void> {
+      resetOAuthState();
+      await getTokenManager().shutdown();
+      await restart();
+    }
+
+    function refresh(clientId: string, refreshToken: string): Promise<Response> {
+      return postToken({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId });
+    }
+
+    it('keeps users signed in across a restart', async () => {
+      const { clientId, code, verifier } = await signIn();
+      const first = await exchange(clientId, code, verifier);
+
+      const raw = readFileSync(stateFile, 'utf8');
+      expect(raw).not.toContain(first.refresh_token);
+      expect(raw).not.toContain('callerpass');
+
+      await simulateRestart();
+      expect(getTokenManager().validateToken(first.access_token).valid).toBe(false);
+      const refreshed = await refresh(clientId, first.refresh_token);
+      expect(refreshed.status).toBe(200);
+      const second = (await refreshed.json()) as { access_token: string; refresh_token: string };
+      expect(getTokenManager().validateToken(second.access_token).session?.system).toBe('test');
+
+      // Rotation is written too: after another restart only the new token works
+      await simulateRestart();
+      expect((await refresh(clientId, first.refresh_token)).status).toBe(400);
+      expect((await refresh(clientId, second.refresh_token)).status).toBe(200);
+    });
+
+    it('does not bring back a revoked grant', async () => {
+      const { clientId, code, verifier } = await signIn();
+      const tokens = await exchange(clientId, code, verifier);
+      expect((await revoke(clientId, tokens.access_token)).status).toBe(200);
+
+      await simulateRestart();
+      expect((await refresh(clientId, tokens.refresh_token)).status).toBe(400);
+    });
+
+    it('drops a grant whose profile was removed', async () => {
+      const { clientId, code, verifier } = await signIn();
+      const tokens = await exchange(clientId, code, verifier);
+
+      writeFileSync(process.env.DB2I_PROFILES as string, PROFILES.split('  - name: test')[0]);
+      resetSystems();
+      await simulateRestart();
+      const res = await refresh(clientId, tokens.refresh_token);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('invalid_grant');
+    });
+  });
+
   it('limits requests per IP across the OAuth endpoints', async () => {
     let last = 0;
     for (let i = 0; i < 121; i++) {
@@ -767,6 +831,7 @@ describe('getOAuthConfig', () => {
     delete process.env.MCP_OAUTH_SECRET;
     delete process.env.MCP_OAUTH_REDIRECT_URIS;
     delete process.env.MCP_OAUTH_REFRESH_EXPIRY;
+    delete process.env.MCP_OAUTH_STATE_FILE;
   });
 
   afterEach(() => {
@@ -810,6 +875,14 @@ describe('getOAuthConfig', () => {
     expect(() => getOAuthConfig('required')).toThrow(/must end with/);
     process.env.MCP_OAUTH_REDIRECT_URIS = 'https://app.example.com/oauth/*';
     expect(getOAuthConfig('required')?.redirectUris).toEqual(['https://app.example.com/oauth/*']);
+  });
+
+  it('needs an explicit secret for a state file', () => {
+    process.env.MCP_OAUTH_STATE_FILE = 'oauth/grants.json';
+    delete process.env.MCP_OAUTH_SECRET;
+    expect(() => getOAuthConfig('required')).toThrow(/MCP_OAUTH_STATE_FILE requires MCP_OAUTH_SECRET/);
+    process.env.MCP_OAUTH_SECRET = 'x'.repeat(40);
+    expect(getOAuthConfig('required')?.stateFile).toBe(path.resolve('oauth/grants.json'));
   });
 
   it('refuses a short secret', () => {

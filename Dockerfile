@@ -67,13 +67,14 @@ COPY --from=builder /app/node_modules ./node_modules
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create non-root user for security, and the directory export_query writes to
-# (EXPORT_DIR=/data/exports). A named volume mounted there takes its owner and
-# mode from this directory.
+# Create non-root user for security, the directory export_query writes to
+# (EXPORT_DIR=/data/exports), and the one for the OAuth state file
+# (MCP_OAUTH_STATE_FILE=/data/oauth/grants.json). A named volume mounted there
+# takes its owner and mode from the directory.
 RUN useradd -m -s /bin/bash mcpuser \
-    && mkdir -p /data/exports \
-    && chown mcpuser:mcpuser /data/exports \
-    && chmod 700 /data/exports
+    && mkdir -p /data/exports /data/oauth \
+    && chown mcpuser:mcpuser /data/exports /data/oauth \
+    && chmod 700 /data/exports /data/oauth
 
 # Environment variables (to be provided at runtime)
 # Database connection

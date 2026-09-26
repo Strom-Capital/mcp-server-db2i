@@ -40,6 +40,7 @@ MCP_TRANSPORT=stdio
 | `MCP_OAUTH_REDIRECT_URIS` | Claude and Cursor callbacks | Redirect URIs clients may register, comma-separated. Exact URLs, or prefixes ending in `/*` |
 | `MCP_OAUTH_SECRET` | random | Key that signs client IDs and login requests, at least 32 characters. Set it so registrations survive a restart |
 | `MCP_OAUTH_REFRESH_EXPIRY` | `604800` | Refresh token lifetime in seconds. `0` turns refresh tokens off |
+| `MCP_OAUTH_STATE_FILE` | none | Encrypted file that keeps refresh grants across restarts. Requires `MCP_OAUTH_SECRET`. See [Staying signed in across restarts](#staying-signed-in-across-restarts) |
 | `MCP_TLS_ENABLED` | `false` | Enable built-in TLS |
 | `MCP_TLS_CERT_PATH` | - | Path to TLS certificate (required if TLS enabled) |
 | `MCP_TLS_KEY_PATH` | - | Path to TLS private key (required if TLS enabled) |
@@ -248,7 +249,33 @@ Other clients sign in the same way. Each connection is bound to the system picke
   Cursor opens the sign-in page in the browser and returns through `cursor://anysphere.cursor-mcp/oauth/callback`, which is allowed by default.
 - **Claude Code.** `claude mcp add --transport http --scope user db2i https://mcp.example.com/mcp`, then sign in from `/mcp`. Claude Code uses a loopback callback, which is always accepted.
 
-Pointing every client at one server, instead of starting a stdio server per client, keeps one set of connection pools to the IBM i. Access tokens and refresh tokens live in memory, so clients sign in again after the server restarts.
+Pointing every client at one server, instead of starting a stdio server per client, keeps one set of connection pools to the IBM i. By default, tokens live in memory, so clients sign in again after the server restarts. To avoid that, set `MCP_OAUTH_STATE_FILE`.
+
+### Staying signed in across restarts
+
+Set `MCP_OAUTH_STATE_FILE` to a file path, and set `MCP_OAUTH_SECRET`. The server then writes refresh grants to that file and reads them back when it starts, so a restart or a new Docker image does not sign anyone out:
+
+- Access tokens still end with the process. The client gets a 401, uses its refresh token, and carries on without showing the sign-in page.
+- Each grant holds the user's IBM i password, because a refresh opens a new connection. Entries are encrypted with AES-256-GCM under a key derived from `MCP_OAUTH_SECRET`. The file never holds a refresh token, only its hash.
+- On start, each grant is rebuilt from the current profiles. A grant for a removed system, or a host that is no longer allowed, is dropped.
+- A new `MCP_OAUTH_SECRET` makes the file unreadable: the server logs a warning, and users sign in again.
+- The file is written with mode `0600`, in a directory with mode `0700`. If a write fails, the server logs an error and keeps working, but that grant does not survive a restart.
+
+In Docker, keep the file on a volume. The image creates `/data/oauth` for it:
+
+```yaml
+services:
+  db2i-mcp:
+    environment:
+      - MCP_OAUTH_STATE_FILE=/data/oauth/grants.json
+    volumes:
+      - oauth-state:/data/oauth
+
+volumes:
+  oauth-state:
+```
+
+Anyone who can read both the file and `MCP_OAUTH_SECRET` can read the stored passwords. Keep them apart where you can, for example the secret in a Docker secret and the file on a volume only the container mounts, and leave them out of backups that other people can read.
 
 ### Limiting who can reach the server
 
@@ -280,7 +307,7 @@ Notes:
 
 - **Redirect URIs.** Registration is refused for a redirect URI outside `MCP_OAUTH_REDIRECT_URIS`, which defaults to the claude.ai and claude.com connector callbacks and Cursor's `cursor://anysphere.cursor-mcp/oauth/callback`. Setting it replaces the defaults, so list those you still need. Loopback redirects (`http://localhost:<port>/...`) are always accepted, for desktop clients. Without this list, anyone could register a client that sends codes to their own site and ask a user to sign in.
 - **Registrations are stateless.** A client ID is the client's metadata signed with `MCP_OAUTH_SECRET`. Nothing is stored, and a registration keeps working after a restart as long as the secret stays the same. Without the secret, a random one is used and clients must register again after a restart.
-- **Codes and refresh tokens live in memory.** A restart signs every user out. Refresh tokens rotate on every use, and each refresh repeats the test connection, so a disabled user profile or a changed password ends the grant. If the IBM i cannot be reached, the refresh answers 503 and the grant stays. Revoking an access or refresh token ends both.
+- **Codes live in memory, refresh tokens too unless `MCP_OAUTH_STATE_FILE` is set.** Without the file, a restart signs every user out. Refresh tokens rotate on every use, and each refresh repeats the test connection, so a disabled user profile or a changed password ends the grant. If the IBM i cannot be reached, the refresh answers 503 and the grant stays. Revoking an access or refresh token ends both.
 - **Rate limit.** Sign-in attempts share the `/auth` limit: 5 per minute per client IP by default (`AUTH_RATE_LIMIT_MAX_ATTEMPTS`, `AUTH_RATE_LIMIT_WINDOW_MS`). All `/oauth/*` endpoints together allow 120 requests per minute per IP by default (`OAUTH_RATE_LIMIT_MAX_REQUESTS`, `OAUTH_RATE_LIMIT_WINDOW_MS`). Behind a proxy, set `MCP_TRUST_PROXY` so the limits use the client address from `X-Forwarded-For`. Without it, all users share the proxy's budget. A successful sign-in does not count toward the limit.
 - **Scopes** are not used. A token can call every tool that `MCP_TOOLS_ENABLED` and `MCP_TOOLS_DISABLED` leave registered.
 

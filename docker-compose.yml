@@ -73,6 +73,9 @@ services:
       - MCP_OAUTH_REDIRECT_URIS=${MCP_OAUTH_REDIRECT_URIS:-}
       - MCP_OAUTH_SECRET=${MCP_OAUTH_SECRET:-}
       - MCP_OAUTH_REFRESH_EXPIRY=${MCP_OAUTH_REFRESH_EXPIRY:-604800}
+      # Keep OAuth sign-ins across restarts: /data/oauth/grants.json on a volume.
+      # Requires MCP_OAUTH_SECRET.
+      - MCP_OAUTH_STATE_FILE=${MCP_OAUTH_STATE_FILE:-}
       
       # CORS allowed origins (comma-separated, * for all, empty for same-origin only)
       - MCP_CORS_ORIGINS=${MCP_CORS_ORIGINS:-}
@@ -110,12 +113,17 @@ services:
       - .env
     # Uncomment to mount files into the container.
     # volumes:
+    #   - oauth-state:/data/oauth   # with MCP_OAUTH_STATE_FILE (needs the volumes section below)
     #   - ./examples/erp-tools:/tools:ro
     #   - ./certs:/certs:ro
     # Uncomment to use Docker secrets (requires secrets section below):
     # secrets:
     #   - db2i_username
     #   - db2i_password
+
+# Named volume for the OAuth state file (MCP_OAUTH_STATE_FILE=/data/oauth/grants.json)
+# volumes:
+#   oauth-state:
 
 # Docker secrets configuration (for production use)
 # Create secret files in ./secrets/ directory or use external secret management
