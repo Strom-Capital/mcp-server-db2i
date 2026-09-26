@@ -9,10 +9,9 @@ The identity uses a restrained route metaphor:
 The logo should feel technical, calm, precise, and contemporary rather than decorative or overtly "AI".
 
 The primary mark is the **route mark**:
-- a small circular origin node
-- one continuous route
-- controlled rounded bends
-- a smaller blue terminal square
+- a round origin node
+- one continuous route with controlled rounded bends, kept clear of both end shapes
+- a blue terminal square
 - charcoal as the primary ink color
 - a single restrained blue accent
 
@@ -26,8 +25,8 @@ Primary horizontal lockup:
 
 - route mark on the left
 - lowercase `db2i/mcp` wordmark on the right
-- monochrome wordmark
-- blue used only in the mark's destination node
+- ink letters with the slash in the accent blue
+- blue used for the mark's destination node and the slash
 
 Asset:
 
@@ -53,16 +52,22 @@ The mark is designed on a **24 × 24** coordinate system.
 
 ### Construction
 
-- origin node: circle
-- route: continuous stroked path
-- destination: slightly smaller square terminal
-- route corners: rounded
-- route weight: visually lighter than the endpoint masses
-- destination node: intentionally smaller than the start node
+- origin node: circle, radius 2.3 units
+- route: one stroked path, 1.9 units wide, round caps, 2.5-unit bends
+- destination: square, 4.2 units, corner radius 0.35
+- gaps: 1.2 units between the route and each end shape. The route never touches them.
+- the circle is a little larger than the square (4.6 against 4.2 units), because a circle of the same size reads smaller
+- the whole mark is centered in the 24-unit box
 
-The purpose of the asymmetry is to create a natural visual hierarchy:
+### Small sizes
 
-**origin → movement → destination**
+At 16 and 32 px the vector mark gets soft, so there are pixel drawings on whole-pixel grids:
+
+- `mark-16.svg` (16 x 16): 2 px route, 4 px square, a 4 px circle with softened corners, 1 px gaps
+- `mark-32.svg` (32 x 32): 3 px route, 7 px square, a 9 px pixel disc, 2 px gaps
+- `favicon.svg` is the 16 px drawing, which is also exact at 32 px (2x)
+
+Use them for favicons and other icons at those sizes. From 24 px up, use the vector mark.
 
 Do not add extra arrows, sparkles, database cylinders, chat bubbles, or additional nodes.
 
@@ -196,7 +201,7 @@ Recommended minimums:
 
 | Use | Minimum |
 |---|---:|
-| Favicon | 16 px |
+| Favicon | 16 px (use `favicon.svg` or `mark-16.svg`) |
 | UI icon | 20 px |
 | Docs navigation | 24 px |
 | Avatar | 32 px |
@@ -279,29 +284,21 @@ Do not:
 - use gradient fills
 - outline the terminal square
 - make both endpoints equally dominant
+- let the route touch the circle or the square
 - add arrows to the route
 - put the logo inside a generic rounded capsule
-- use the accent slash together with the blue terminal by default
 
 ---
 
 ## 12. Slash usage
 
-The slash is a custom wordmark feature.
+The slash is a custom wordmark feature: longer than a normal slash, and set in the accent blue.
 
-Primary:
-- monochrome slash
+- Primary: ink letters, blue slash (`wordmark-primary.svg`, `lockup-primary.svg`)
+- Dark backgrounds: light ink with the dark-mode blue (`wordmark-dark.svg`, `lockup-dark.svg`)
+- One color only: everything in ink or white (`wordmark-monochrome.svg`, `lockup-monochrome.svg`, `wordmark-white.svg`)
 
-Optional:
-- accent slash only when the route mark is not present
-
-Asset:
-
-`svg/wordmark-accent-slash.svg`
-
-Avoid using both a blue terminal node and a blue slash in the same primary lockup. One accent is enough.
-
----
+Do not color the letters.
 
 ## 13. Website usage
 
@@ -326,6 +323,7 @@ Dark mode is secondary and works especially well for:
 ### SVG
 
 - `svg/mark-primary.svg`
+- `svg/mark-16.svg` and `svg/mark-32.svg` (pixel drawings for 16 and 32 px)
 - `svg/mark-monochrome.svg`
 - `svg/mark-white.svg`
 - `svg/mark-dark.svg`
@@ -333,7 +331,8 @@ Dark mode is secondary and works especially well for:
 - `svg/favicon.svg` (switches to the dark colors with the browser theme)
 - `svg/icon-tile.svg` (the mark on a warm tile: MCP server icon, `/icon.svg`)
 - `svg/wordmark-primary.svg`
-- `svg/wordmark-accent-slash.svg`
+- `svg/wordmark-dark.svg`
+- `svg/wordmark-monochrome.svg`
 - `svg/wordmark-white.svg`
 - `svg/lockup-primary.svg`
 - `svg/lockup-monochrome.svg`
@@ -342,7 +341,7 @@ Dark mode is secondary and works especially well for:
 
 ### PNG
 
-Generated raster versions are in `png/`: the mark at 16 to 512 px, the lockup at 256, 512 and 1024 px wide, and the icon tile at 256 px.
+Generated raster versions are in `png/`: the mark at 16 and 32 px (from the pixel drawings) and 24 to 512 px, the lockup at 256, 512 and 1024 px wide, and the icon tile at 256 px.
 
 The SVG files are the source of truth.
 

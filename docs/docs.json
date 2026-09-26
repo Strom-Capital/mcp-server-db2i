@@ -12,10 +12,7 @@
     "light": "/assets/brand/svg/lockup-primary.svg",
     "dark": "/assets/brand/svg/lockup-dark.svg"
   },
-  "favicon": {
-    "light": "/assets/brand/svg/mark-primary.svg",
-    "dark": "/assets/brand/svg/mark-dark.svg"
-  },
+  "favicon": "/assets/brand/svg/favicon.svg",
   "appearance": {
     "default": "system"
   },
