@@ -52,19 +52,20 @@ The mark is designed on a **24 × 24** coordinate system.
 
 ### Construction
 
-- origin node: circle, radius 2.3 units
+- origin node: circle, radius 2.8 units
 - route: one stroked path, 1.9 units wide, round caps, 2.5-unit bends
-- destination: square, 4.2 units, corner radius 0.35
+- destination: square, 5.1 units, corner radius 0.42
 - gaps: 1.2 units between the route and each end shape. The route never touches them.
-- the circle is a little larger than the square (4.6 against 4.2 units), because a circle of the same size reads smaller
+- the circle is a little larger than the square (5.6 against 5.1 units), because a circle of the same size reads smaller
+- both end shapes are about three times the route width, so the ends lead and the route connects them
 - the whole mark is centered in the 24-unit box
 
 ### Small sizes
 
 At 16 and 32 px the vector mark gets soft, so there are pixel drawings on whole-pixel grids:
 
-- `mark-16.svg` (16 x 16): 2 px route, 4 px square, a 4 px circle with softened corners, 1 px gaps
-- `mark-32.svg` (32 x 32): 3 px route, 7 px square, a 9 px pixel disc, 2 px gaps
+- `mark-16.svg` (16 x 16): 2 px route, a 6 px pixel disc with softened corners, a 4 px square (the largest that fits with the gaps), 1 px gaps
+- `mark-32.svg` (32 x 32): 3 px route, an 11 px pixel disc, a 9 px square, 2 px gaps
 - `favicon.svg` is the 16 px drawing, which is also exact at 32 px (2x)
 
 Use them for favicons and other icons at those sizes. From 24 px up, use the vector mark.

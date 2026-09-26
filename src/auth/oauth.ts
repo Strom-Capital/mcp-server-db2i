@@ -300,7 +300,7 @@ function escapeHtml(value: string): string {
 
 /** Page logo: the route mark, cropped to the artwork. Ink follows the text color and the end node uses --accent. */
 const LOGO_SVG =
-  '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0.7 4 22.6 16" width="31" height="22" aria-hidden="true">' +
+  '<svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0.5 3.5 23 17" width="31" height="23" aria-hidden="true">' +
   LOGO_SHAPES +
   '</svg>';
 
