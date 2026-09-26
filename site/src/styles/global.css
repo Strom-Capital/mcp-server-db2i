@@ -82,7 +82,7 @@ pre { background: var(--surface); border: 1px solid var(--line); border-radius: 
 
 /* Spec block: key/value pairs in mono */
 .spec { font: 12.5px/1 var(--font-mono); margin: 0; }
-.spec .spec-title { display: flex; justify-content: space-between; letter-spacing: 0.06em; padding-bottom: 10px; border-bottom: 1px solid var(--line-strong); }
+.spec .spec-title { display: flex; justify-content: space-between; font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg); padding-bottom: 10px; border-bottom: 1px solid var(--line-strong); }
 .spec dl { margin: 0; }
 .spec dl div { display: grid; grid-template-columns: 128px 1fr; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .spec dt { color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
