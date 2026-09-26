@@ -1,0 +1,29 @@
+---
+/**
+ * Mintlify assistant widget. Loaded only when PUBLIC_MINTLIFY_WIDGET_ID is set
+ * at build time (the widget needs a Mintlify Pro plan). Without it, every
+ * element with `data-ask-docs` stays a plain link to the docs.
+ */
+interface Props { starterQuestions: string[] }
+const { starterQuestions } = Astro.props;
+const widgetId = import.meta.env.PUBLIC_MINTLIFY_WIDGET_ID;
+const config = {
+  id: widgetId,
+  starterQuestions: starterQuestions.slice(0, 3),
+  appearance: { variant: 'panel', theme: 'system', accent: '#16a34a', radius: '12px' },
+};
+---
+{widgetId && (
+  <>
+    <script is:inline type="module" src="https://widget.mintlify.com/v1/embed.js"></script>
+    <script is:inline type="module" define:vars={{ config }}>
+      await window.MintlifyAssistant.init(config);
+      for (const el of document.querySelectorAll('[data-ask-docs]')) {
+        el.addEventListener('click', (event) => {
+          event.preventDefault();
+          void window.MintlifyAssistant.open({ source: el.getAttribute('data-ask-docs') || 'site', focus: true });
+        });
+      }
+    </script>
+  </>
+)}

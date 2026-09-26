@@ -1,0 +1,56 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/Hero.astro';
+import FeatureGrid from '../components/FeatureGrid.astro';
+import Architecture from '../components/Architecture.astro';
+import Install from '../components/Install.astro';
+import PostList from '../components/PostList.astro';
+import { getPosts } from '../lib/posts';
+import { links, url } from '../lib/links';
+
+const latest = (await getPosts()).slice(0, 3);
+---
+<Base
+  title="Db2 for i MCP Server"
+  description="An open-source MCP server that lets Claude, Cursor and other AI assistants read IBM Db2 for i. Read-only by design, with a library allowlist, masking, OAuth sign-in and an audit log."
+>
+  <Hero />
+  <FeatureGrid />
+  <Architecture />
+  <Install />
+
+  <section class="section section--subtle">
+    <div class="container">
+      <div class="head">
+        <div>
+          <p class="eyebrow">From the blog</p>
+          <h2>What's new, and why</h2>
+        </div>
+        <a href={url('/blog')}>All posts →</a>
+      </div>
+      <div class="latest"><PostList posts={latest} /></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container cta">
+      <h2>Free, open source, and yours to run</h2>
+      <p class="lead">MIT licensed. It runs on your own machines and talks only to your IBM i. Questions, ideas and bug reports are welcome on GitHub.</p>
+      <div class="btn-row">
+        <a class="btn btn--primary" href={links.quickstart}>Get started</a>
+        <a class="btn" href={links.issues}>Open an issue</a>
+        <a class="btn" href={links.sponsor}>Sponsor</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-5); }
+  .head h2 { margin: 0; }
+  .latest :global(.posts) { grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .latest :global(.posts) { grid-template-columns: repeat(3, 1fr); } }
+  .cta { text-align: center; }
+  .cta .lead { margin: 0 auto var(--space-5); }
+  .cta .btn-row { justify-content: center; }
+</style>

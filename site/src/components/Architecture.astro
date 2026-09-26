@@ -1,0 +1,58 @@
+---
+import { links } from '../lib/links';
+---
+<section class="section section--subtle" id="how-it-works">
+  <div class="container">
+    <p class="eyebrow">How it fits together</p>
+    <h2>From a question to Db2 for i and back</h2>
+    <p class="lead">The server sits between your AI assistant and the IBM i. Every request passes the same checks, whichever client or driver you use.</p>
+
+    <ol class="flow">
+      <li class="node">
+        <span class="label">AI assistant</span>
+        <strong>Claude, Cursor, Claude Code</strong>
+        <span class="muted">Any client that speaks the <a href={links.mcp}>Model Context Protocol</a>.</span>
+      </li>
+      <li class="arrow" aria-hidden="true"></li>
+      <li class="node main">
+        <span class="label">mcp-server-db2i</span>
+        <strong>stdio, or HTTP with OAuth</strong>
+        <ul class="checks">
+          <li>Read-only SQL validation</li>
+          <li>Library allowlist</li>
+          <li>Column masking</li>
+          <li>Rate limits and audit log</li>
+        </ul>
+      </li>
+      <li class="arrow" aria-hidden="true"></li>
+      <li class="node">
+        <span class="label">Driver</span>
+        <strong>ODBC, JT400 or Mapepire</strong>
+        <span class="muted">Host server ports, or SSH only.</span>
+      </li>
+      <li class="arrow" aria-hidden="true"></li>
+      <li class="node">
+        <span class="label">IBM i</span>
+        <strong>Db2 for i</strong>
+        <span class="muted">Runs with the user's own authority. Exit programs still apply.</span>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<style>
+  .flow { list-style: none; padding: 0; margin: var(--space-6) 0 0; display: grid; gap: var(--space-2); }
+  .node { display: grid; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); }
+  .node.main { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--spark) 18%, transparent); }
+  .label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
+  .node .muted { font-size: 0.9rem; }
+  .checks { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 0.9rem; color: var(--muted); }
+  .checks li::before { content: '✓ '; color: var(--accent); font-weight: 700; }
+  .arrow { height: 22px; display: grid; place-items: center; }
+  .arrow::before { content: ''; width: 2px; height: 100%; background: var(--line); }
+  @media (min-width: 900px) {
+    .flow { grid-template-columns: 1fr 28px 1.15fr 28px 1fr 28px 1fr; align-items: stretch; gap: var(--space-2); }
+    .arrow { height: auto; }
+    .arrow::before { width: 100%; height: 2px; }
+  }
+</style>

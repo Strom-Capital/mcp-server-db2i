@@ -1,0 +1,75 @@
+---
+import { links } from '../lib/links';
+
+const features = [
+  {
+    title: 'Read-only by design',
+    body: 'A read-only database connection, a SQL validator that only accepts queries, and a timeout that cancels runaway statements on the IBM i itself.',
+    href: links.security,
+  },
+  {
+    title: 'Library allowlist and masking',
+    body: 'Limit queries and catalog browsing to the libraries you choose. Redact sensitive columns, or show only their last four characters.',
+    href: links.allowlist,
+  },
+  {
+    title: 'Sign in as yourself',
+    body: 'Built-in OAuth 2.1. People add one URL in claude.ai, Cursor or Claude Code, sign in with their own IBM i profile and keep the authority they already have.',
+    href: links.oauth,
+  },
+  {
+    title: 'Three ways to connect',
+    body: 'The IBM i Access ODBC driver by default, JT400 if you prefer JDBC, or Mapepire over SSH when only port 22 is open.',
+    href: links.drivers,
+  },
+  {
+    title: 'Several systems, one server',
+    body: 'Development, test and production side by side, each with its own driver, credentials and library allowlist.',
+    href: links.multipleSystems,
+  },
+  {
+    title: 'Your business definitions',
+    body: 'Describe tables and status codes in YAML, and turn your vetted queries into named tools with bound parameters.',
+    href: links.customTools,
+  },
+  {
+    title: 'IBM i checks the SQL',
+    body: 'validate_query parses a statement on the IBM i and checks every table and column against the catalog before anything runs.',
+    href: links.tools,
+  },
+  {
+    title: 'Find your way around',
+    body: 'Search tables and columns across libraries, profile a table, read DDL, and look up procedures, functions and index advice.',
+    href: links.tools,
+  },
+  {
+    title: 'Audit log',
+    body: 'Every tool call written as one JSON line, with the SQL hashed by default, ready for your log pipeline.',
+    href: links.auditLog,
+  },
+];
+---
+<section class="section" id="features">
+  <div class="container">
+    <p class="eyebrow">What you get</p>
+    <h2>Built for production IBM i systems</h2>
+    <p class="lead">The read-only checks are always on. The allowlist, masking and audit log are one setting each. Every control is documented, so your IBM i team can see exactly what is enforced and where.</p>
+    <div class="grid grid--3 features">
+      {features.map((f) => (
+        <a class="card feature" href={f.href}>
+          <h3>{f.title}</h3>
+          <p class="muted">{f.body}</p>
+        </a>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .features { margin-top: var(--space-6); }
+  .feature { text-decoration: none; color: var(--fg); transition: border-color 0.15s; }
+  .feature:hover { border-color: var(--accent); color: var(--fg); }
+  .feature h3 { display: flex; align-items: center; gap: 8px; }
+  .feature h3::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--spark); flex: none; }
+  .feature p { margin: 0; font-size: 0.95rem; }
+</style>

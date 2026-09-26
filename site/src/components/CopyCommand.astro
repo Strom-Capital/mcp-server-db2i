@@ -1,0 +1,30 @@
+---
+interface Props { command: string }
+const { command } = Astro.props;
+---
+<div class="copycmd">
+  <code><span aria-hidden="true" class="prompt">$</span> {command}</code>
+  <button type="button" data-copy={command} aria-label={`Copy ${command}`}>Copy</button>
+</div>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-copy]')) {
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy ?? '');
+        button.textContent = 'Copied';
+      } catch {
+        button.textContent = 'Press Ctrl+C';
+      }
+      setTimeout(() => (button.textContent = 'Copy'), 1600);
+    });
+  }
+</script>
+
+<style>
+  .copycmd { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); max-width: 26rem; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 6px 6px 14px; }
+  code { background: none; border: 0; padding: 0; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prompt { color: var(--muted); user-select: none; }
+  button { font: 600 0.8rem var(--font-sans); color: var(--fg); background: var(--bg-subtle); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; min-width: 4.5rem; }
+  button:hover { border-color: var(--muted); }
+</style>

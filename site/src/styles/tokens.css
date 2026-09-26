@@ -1,0 +1,55 @@
+/*
+ * Brand tokens. The sign-in page (src/auth/oauth.ts) and docs/docs.json use the
+ * same palette: change them together.
+ */
+:root {
+  color-scheme: light dark;
+
+  --fg: #1f2328;
+  --muted: #59636e;
+  --bg: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --card: #ffffff;
+  --line: #d1d9e0;
+  --accent: #15803d;
+  --accent-strong: #166534;
+  --accent-soft: #dcfce7;
+  --on-accent: #ffffff;
+  --brand: #16a34a;
+  --spark: #22c55e;
+  --code-bg: #f6f8fa;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 72px;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --max: 1080px;
+  --shadow: 0 1px 2px rgb(31 35 40 / 6%), 0 8px 24px rgb(31 35 40 / 6%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #f0f6fc;
+    --muted: #9198a1;
+    --bg: #0d1117;
+    --bg-subtle: #151b23;
+    --card: #151b23;
+    --line: #3d444d;
+    --accent: #22c55e;
+    --accent-strong: #4ade80;
+    --accent-soft: #052e16;
+    --on-accent: #052e16;
+    --code-bg: #0d1117;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
+  }
+}
