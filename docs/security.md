@@ -13,6 +13,7 @@ This guide covers security features and best practices for mcp-server-db2i.
 - **Query validation**: AST-based SQL parsing plus regex validation blocks dangerous operations
 - **Result limiting**: Queries return 1000 rows unless the caller asks for more (`QUERY_DEFAULT_LIMIT`), and never more than 10000 (`QUERY_MAX_LIMIT`)
 - **Query timeout**: A statement that runs longer than `QUERY_TIMEOUT` (default 120 seconds) is cancelled on the IBM i
+- **Query exports**: Off by default. When on, files stay on the server host and HTTP callers get a single-use link that expires. See [Query exports](#query-exports)
 - **Rate limiting**: Configurable request throttling to prevent abuse (100 req/15 min default)
 - **Structured logging**: Automatic redaction of sensitive fields like passwords
 - **HTTP auth**: `required` (per-user credentials via `/auth`), `token` (static bearer), or `none` (trusted networks)
@@ -309,6 +310,19 @@ The server rejects a statement that uses a masked column as anything other than 
 `extended metadata=true` in `DB2I_JDBC_OPTIONS` makes JT400 label result keys with `LABEL ON` text instead of the column name. Masking would miss those keys, so the server refuses to start when that option is set and a masking rule is loaded. The same check applies to the `mapepire` driver, which reads the same JDBC options.
 
 A view, an alias, or a table function that reads a masked table is not covered unless the view itself is listed in `masking`.
+
+## Query exports
+
+`export_query` writes query results to files in `EXPORT_DIR` on the server host. It is off until `EXPORT_ENABLED` and `EXPORT_DIR` are set. Things to know before turning it on:
+
+- **Same checks as `execute_query`.** The statement goes through the SQL validator, `QUERY_ALLOWED_SCHEMAS`, the parse check, and column masking. Masked columns are masked in the file and in the sample rows. If a masked column the statement selects is missing from the result, the export fails and no file is kept.
+- **A download link works like a password.** Over HTTP the link is `<MCP_PUBLIC_URL>/exports/<id>`, where the id is 256 random bits. Anyone who has the link can download the file until it expires (`EXPORT_TTL_MINUTES`, 15 by default), with no bearer token, because a browser following a link from a chat cannot send one. By default a link works once (`EXPORT_SINGLE_USE`). Treat a chat that holds a link as holding the data.
+- **Link previews.** A chat client that fetches a link to show a preview could use up a single-use link. The route answers `HEAD` without using it up, but a client that previews with `GET` spends it. If users report links that are already used, set `EXPORT_SINGLE_USE=false` and rely on the expiry.
+- **Files on the host.** Exports are files on the MCP host, readable by the user the server runs as. The directory is created with mode `0700`, files with `0600`, and the server refuses a directory that is a symbolic link or belongs to another user. Files are deleted after download (single use), when they expire, at shutdown, and at the next startup.
+- **Load on the IBM i.** Exports read many more rows than `execute_query` returns. `EXPORT_MAX_ROWS` (100,000), `EXPORT_MAX_BYTES` (100 MB), `EXPORT_TIMEOUT` and `EXPORT_MAX_CONCURRENT` (2) bound that. Keep them low on a production system.
+- **Formulas.** XLSX files hold values only, never formulas. In CSV files a text value that starts with `=`, `+`, `-` or `@` gets a leading `'`, so a spreadsheet does not run it as a formula.
+- **Audit.** The export is recorded like any tool call, with `rowCount` and `bytes`. Each download request adds a line with `"event":"export_download"`, the first 8 characters of the id, the IP address, who ran the export, and whether it succeeded. The full link is never logged.
+- **Rate limit.** `/exports/:id` allows 30 requests per minute per IP address.
 
 ## Mapepire driver (SSH)
 

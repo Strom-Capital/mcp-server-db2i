@@ -38,6 +38,7 @@ The agent can do most of that groundwork:
 - **Draft the incremental extract.** The agent finds a change date or a sequence column and writes a watermark query, for example every `MYLIB.ORDERHDR` row changed since the last run.
 - **Check the extract's access paths.** `index_advice` lists the indexes the optimizer has asked for on the source tables, ranked by how often it built temporary indexes instead. A watermark query on a change date with no index behind it scans the whole file on every run.
 - **Map legacy codes to dimensions.** Status codes, order types, and warehouse codes become readable dimension attributes, using the annotations as the source of truth.
+- **Pull a test extract.** `export_query` writes the extract's rows to a CSV file, so the agent can load it with DuckDB or pandas, or a person can check it, without the rows going through the conversation. See [Query exports](tools.md#query-exports).
 
 A prompt to start with:
 
@@ -74,6 +75,7 @@ The agent finds the tables, writes the query, runs it, and summarizes the result
 
 - **Business SQL tools** turn a reviewed SELECT into a named tool with typed parameters, such as `search_sales_orders`. See [Business SQL tools](custom-tools.md) and the example pack in [examples/erp-tools](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/erp-tools).
 - **Column masking** hides fields such as email addresses or bank details from the agent. See [Masking](custom-tools.md#masking).
+- **Query exports** answer "send me that as a spreadsheet". `export_query` writes the full result to an Excel or CSV file and gives the user a download link, however many rows there are. See [Query exports](tools.md#query-exports).
 - **The HTTP transport** serves shared or hosted agents with token authentication. See [HTTP Transport](http-transport.md).
 
 ## Guardrails
@@ -84,6 +86,7 @@ The same settings keep every use case safe:
 - `QUERY_DEFAULT_LIMIT` and `QUERY_MAX_LIMIT` cap the rows a query returns.
 - `QUERY_TIMEOUT` cancels a statement on the IBM i once it runs too long, 120 seconds by default.
 - `QUERY_ALLOWED_SCHEMAS` keeps queries inside the libraries you list.
+- `export_query` is off unless `EXPORT_ENABLED` is set, and its files expire.
 - `MCP_AUDIT_LOG` records every tool call.
 - Connect with a user profile that has read access only to the data the agent needs.
 

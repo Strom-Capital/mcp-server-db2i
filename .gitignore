@@ -39,3 +39,6 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Query export files (EXPORT_DIR in .env.example)
+exports/

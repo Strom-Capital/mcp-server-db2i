@@ -67,8 +67,13 @@ COPY --from=builder /app/node_modules ./node_modules
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create non-root user for security
-RUN useradd -m -s /bin/bash mcpuser
+# Create non-root user for security, and the directory export_query writes to
+# (EXPORT_DIR=/data/exports). A named volume mounted there takes its owner and
+# mode from this directory.
+RUN useradd -m -s /bin/bash mcpuser \
+    && mkdir -p /data/exports \
+    && chown mcpuser:mcpuser /data/exports \
+    && chmod 700 /data/exports
 
 # Environment variables (to be provided at runtime)
 # Database connection

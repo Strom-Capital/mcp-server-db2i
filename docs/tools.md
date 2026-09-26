@@ -11,6 +11,7 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 | Tool | Description |
 |------|-------------|
 | `execute_query` | Execute read-only SELECT queries |
+| `export_query` | Write every row of a read-only query to a CSV or XLSX file: a path over stdio, a single-use download link over HTTP. Off unless `EXPORT_ENABLED` is set |
 | `list_schemas` | List schemas/libraries (with optional filter) |
 | `list_tables` | List tables in a schema (with optional filter) |
 | `search_tables` | Find tables by name or description across libraries |
@@ -71,6 +72,33 @@ Templates look like `CALL MYLIB.GET_ORDER(ORDERNO => ?)`, `SELECT MYLIB.ORDER_TO
 | `reasons` | Reason codes with IBM's description, such as `I1` (row selection) and `I2` (ordering or grouping) |
 
 Results are sorted by `mti_used`, then `times_advised`. Advice the optimizer kept building a temporary index for is the strongest candidate for a permanent one. `since` keeps only advisor rows last given on or after that date or timestamp, also in the system's local time. The tool only reads the advice. Review it before creating an index, because the advisor does not check whether an existing index or keyed logical file already covers the keys.
+
+### Query exports
+
+`export_query` is for results the user wants as a file, such as "all open orders for customer 1001 as a spreadsheet". It runs a SELECT with the same checks as `execute_query` and writes every row to a file on the server host, instead of returning the rows to the model. It is registered only when `EXPORT_ENABLED=true` and `EXPORT_DIR` are set. See [Query exports](configuration.md#query-exports) for the settings.
+
+| Argument | Meaning |
+|----------|---------|
+| `sql`, `params` | The query, checked like `execute_query`: read-only statements, `QUERY_ALLOWED_SCHEMAS`, the parse check, and column masking |
+| `format` | `xlsx` (default) or `csv` |
+| `filename` | Name for the file, without extension. Letters, digits, `.`, `_` and `-` are kept |
+| `max_rows` | Most rows to write, capped by `EXPORT_MAX_ROWS` |
+
+The result tells the model where the file is and what is in it:
+
+| Field | Meaning |
+|-------|---------|
+| `path` | Over stdio: the file on this machine |
+| `url` | Over HTTP: a download link under `MCP_PUBLIC_URL`, also sent as a `resource_link`. By default it works once |
+| `expiresAt` | When the file is deleted, after `EXPORT_TTL_MINUTES` |
+| `rowCount`, `bytes`, `columns` | What was written |
+| `truncated` | `rows` or `bytes` when the file stops at the row or size cap, otherwise `false` |
+| `sample` | The first five rows, masked, so the model can check the export looks right |
+
+- **XLSX** has one sheet with a bold, frozen header row and a filter. Numbers, dates, times and timestamps are typed cells. A decimal or `BIGINT` wider than 15 digits is written as text so it keeps every digit. Text is always text, so a value that starts with `=` never becomes a formula. One sheet holds at most 1,048,575 rows.
+- **CSV** is UTF-8 with a byte order mark, so Excel opens accented characters correctly, and fields are quoted as in RFC 4180. A text value that starts with `=`, `+`, `-` or `@` gets a leading `'`, so a spreadsheet does not run it as a formula. Numbers are never changed.
+- CHAR padding is removed. Binary columns are written as hex.
+- Give every column a unique name. A result with two columns of the same name, such as `a.ORDERNO` and `b.ORDERNO`, is rejected; use `AS`.
 
 ### Failed statements
 
