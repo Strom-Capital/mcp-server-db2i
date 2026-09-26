@@ -43,6 +43,10 @@
     "url": "https://github.com/Strom-Capital/mcp-server-db2i/issues"
   },
   "homepage": "https://db2i-mcp.com",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/Strom-Capital"
+  },
   "dependencies": {
     "@modelcontextprotocol/node": "^2.1.0",
     "@modelcontextprotocol/server": "^2.1.0",

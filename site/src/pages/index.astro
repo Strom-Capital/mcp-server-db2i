@@ -44,8 +44,11 @@ const latest = (await getPosts()).slice(0, 3);
           <div class="btn-row">
             <a class="btn btn--primary" href={links.quickstart}>Get started <span aria-hidden="true">→</span></a>
             <a class="link-rule" href={links.issues}>Open an issue</a>
-            <a class="link-rule" href={links.sponsor}>Sponsor</a>
           </div>
+          <p class="sponsor">
+            If it saves your team time, <a href={links.sponsor}>sponsoring</a> pays for testing against real IBM i
+            systems and new features.
+          </p>
         </div>
       </div>
     </div>
@@ -56,4 +59,5 @@ const latest = (await getPosts()).slice(0, 3);
   .head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
   .cta { border-top: 1px solid var(--line-strong); padding-top: var(--space-6); margin-bottom: 0; }
   .cta .btn-row { margin-top: var(--space-6); }
+  .sponsor { margin: var(--space-5) 0 0; color: var(--muted); max-width: 56ch; }
 </style>
