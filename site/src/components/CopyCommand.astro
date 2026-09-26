@@ -22,9 +22,9 @@ const { command } = Astro.props;
 </script>
 
 <style>
-  .copycmd { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); max-width: 26rem; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 6px 6px 14px; }
-  code { background: none; border: 0; padding: 0; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .prompt { color: var(--muted); user-select: none; }
-  button { font: 600 0.8rem var(--font-sans); color: var(--fg); background: var(--bg-subtle); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; min-width: 4.5rem; }
-  button:hover { border-color: var(--muted); }
+  .copycmd { display: inline-flex; align-items: stretch; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-code); background: var(--surface); font: 14px/1 var(--font-mono); }
+  .copycmd code { padding: 12px 14px; background: none; border: 0; font-size: inherit; white-space: nowrap; overflow-x: auto; }
+  .prompt { color: var(--muted); }
+  .copycmd button { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; background: var(--fg); color: var(--bg); border: 0; padding: 0 14px; cursor: pointer; border-radius: 0 3px 3px 0; }
+  .copycmd button:hover { background: var(--accent); color: var(--on-accent); }
 </style>

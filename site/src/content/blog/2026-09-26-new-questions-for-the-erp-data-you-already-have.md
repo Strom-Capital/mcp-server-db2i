@@ -3,7 +3,6 @@ title: New questions for the ERP data you already have
 description: How an AI assistant can answer the one-off questions between reports, against live ERP data on IBM i, alongside the screens, Excel workbooks and BI tools you already use.
 date: 2026-09-26T09:00:00Z
 audience: business
-icon: message-circle-question-mark
 tags: [business, erp]
 ---
 

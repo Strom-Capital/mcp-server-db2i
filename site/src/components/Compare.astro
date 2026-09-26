@@ -26,20 +26,24 @@ const options = [
   },
 ];
 ---
-<section class="section section--subtle" id="compare">
+<section class="section" id="compare">
   <div class="container">
-    <p class="eyebrow">Other options</p>
-    <h2>Which MCP server fits you</h2>
-    <p class="lead">IBM maintains its own open-source MCP server for IBM i. Both are free, and they start from different places. Here is how to choose.</p>
-    <div class="grid grid--2 options">
+    <div class="sec-head">
+      <p class="label">Other options</p>
+      <div>
+        <h2>Which MCP server fits you.</h2>
+        <p class="lead">IBM maintains its own open-source MCP server for IBM i. Both are free, and they start from different places. Here is how to choose.</p>
+      </div>
+    </div>
+    <div class="options">
       {options.map((o) => (
-        <div class="card option">
+        <div class="option">
           <h3>{o.title}</h3>
-          <p class="muted">{o.intro}</p>
-          <ul>
+          <p class="label">{o.intro}</p>
+          <ul class="rows">
             {o.points.map((p) => <li>{p}</li>)}
           </ul>
-          <a href={o.href}>{o.label} →</a>
+          <a class="link-rule" href={o.href}>{o.label} <span aria-hidden="true">→</span></a>
         </div>
       ))}
     </div>
@@ -47,10 +51,15 @@ const options = [
 </section>
 
 <style>
-  .options { margin-top: var(--space-6); }
-  .option { display: flex; flex-direction: column; }
-  .option p { margin: 0 0 var(--space-2); }
-  .option ul { margin: 0 0 var(--space-4); padding-left: 1.2em; font-size: 0.95rem; }
-  .option li + li { margin-top: var(--space-2); }
-  .option a { margin-top: auto; }
+  .options { display: grid; border-top: 1px solid var(--line-strong); }
+  @media (min-width: 760px) { .options { grid-template-columns: 1fr 1fr; } }
+  .option { display: flex; flex-direction: column; gap: 14px; padding: 24px 0 32px; }
+  .option + .option { border-top: 1px solid var(--line); }
+  @media (min-width: 760px) {
+    .option { padding-right: 32px; }
+    .option + .option { border-top: 0; border-left: 1px solid var(--line); padding-left: 32px; padding-right: 0; }
+  }
+  .option h3 { margin: 0; font-size: 1.75rem; font-weight: 400; letter-spacing: -0.025em; }
+  .option .rows li { padding: 10px 0; color: var(--muted); font-size: 0.95rem; }
+  .option .link-rule { margin-top: auto; align-self: flex-start; }
 </style>

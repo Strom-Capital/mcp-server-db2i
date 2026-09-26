@@ -1,16 +1,25 @@
 ---
 import Base from '../layouts/Base.astro';
+import DataPath from '../components/DataPath.astro';
 import { url } from '../lib/links';
 ---
 <Base title="Page not found" description="This page does not exist.">
   <section class="section">
     <div class="container">
-      <h1>Page not found</h1>
+      <p class="label">404 / Not found</p>
+      <h1>This route doesn't go anywhere.</h1>
+      <div class="path"><DataPath pulse={false} nodes={[{ at: '0%' }, { at: '33%' }, { at: '66%', on: true }, { at: '100%', off: true }]} /></div>
       <p class="lead">The page you were looking for isn't here. It may have moved.</p>
       <div class="btn-row">
         <a class="btn btn--primary" href={url('/')}>Home</a>
-        <a class="btn" href={url('/blog')}>Blog</a>
+        <a class="link-rule" href={url('/blog')}>Blog</a>
       </div>
     </div>
   </section>
 </Base>
+
+<style>
+  h1 { margin: 18px 0 0; max-width: 14ch; }
+  .path { margin: 48px 0 32px; }
+  .lead { margin-bottom: 28px; }
+</style>

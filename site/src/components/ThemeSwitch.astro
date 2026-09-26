@@ -4,14 +4,11 @@
  * and applied as data-theme on <html>. The inline script in Base.astro's head
  * applies it before first paint, so the page never flashes the wrong theme.
  */
-import Monitor from '@lucide/astro/icons/monitor';
-import Moon from '@lucide/astro/icons/moon';
-import Sun from '@lucide/astro/icons/sun';
 ---
 <button type="button" class="theme-switch" data-theme-switch aria-label="Theme: system. Switch to light.">
-  <span data-icon="system"><Monitor size={18} stroke-width={1.75} /></span>
-  <span data-icon="light"><Sun size={18} stroke-width={1.75} /></span>
-  <span data-icon="dark"><Moon size={18} stroke-width={1.75} /></span>
+  <span data-icon="system">Auto</span>
+  <span data-icon="light">Light</span>
+  <span data-icon="dark">Dark</span>
 </button>
 
 <script>
@@ -58,11 +55,12 @@ import Sun from '@lucide/astro/icons/sun';
 </script>
 
 <style>
-  .theme-switch { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; }
-  .theme-switch:hover { color: var(--fg); border-color: var(--muted); }
-  .theme-switch span { display: none; line-height: 0; }
+  .theme-switch { display: inline-flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 10px; font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: var(--radius-btn); cursor: pointer; }
+  .theme-switch::before { content: ''; width: 6px; height: 6px; background: var(--accent); }
+  .theme-switch:hover { color: var(--fg); border-color: var(--line-strong); }
+  .theme-switch span { display: none; }
   .theme-switch:not([data-current]) [data-icon='system'],
   .theme-switch[data-current='system'] [data-icon='system'],
   .theme-switch[data-current='light'] [data-icon='light'],
-  .theme-switch[data-current='dark'] [data-icon='dark'] { display: block; }
+  .theme-switch[data-current='dark'] [data-icon='dark'] { display: inline; }
 </style>

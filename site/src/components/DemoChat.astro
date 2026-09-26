@@ -1,64 +1,78 @@
 ---
-/** A static example exchange. Generic data only: never a real system. */
+/**
+ * A static example exchange, set as three columns: the question, the tool
+ * calls the server makes, and the answer. Generic data only: never a real system.
+ */
+import DataPath from './DataPath.astro';
 ---
-<figure class="demo" aria-label="Example: an assistant answers a question using the MCP server">
-  <div class="window">
-    <div class="titlebar" aria-hidden="true"><span></span><span></span><span></span><em>Claude</em></div>
-    <div class="body">
-      <p class="msg user">Which customers have the most open orders right now?</p>
-
-      <div class="tool">
-        <div class="tool-head"><span class="dot"></span><code>describe_table</code><span class="muted">MYLIB.ORDERHDR</span></div>
-        <p class="note">Table note: <code>STATUS = 'O'</code> means open.</p>
+<figure class="query" aria-label="Example: an assistant answers a question using the MCP server">
+  <DataPath nodes={[{ at: '0%' }, { at: '33.3%', on: true }, { at: '74%' }, { at: '100%' }]} />
+  <div class="cols">
+    <div class="col">
+      <div class="head"><span class="label">01 / Question</span><span class="who">Claude</span></div>
+      <p class="question">Which customers have the most open orders right now?</p>
+    </div>
+    <div class="col">
+      <div class="head"><span class="label">02 / Tool calls</span><span class="who">mcp-server-db2i</span></div>
+      <div class="call">
+        <div class="call-h"><b>describe_table</b><span>MYLIB.ORDERHDR</span></div>
+        <p>Table note: <code>STATUS = 'O'</code> means open.</p>
       </div>
-
-      <div class="tool">
-        <div class="tool-head"><span class="dot"></span><code>execute_query</code><span class="badge">read-only</span></div>
-        <pre><code>SELECT C.NAME, COUNT(*) AS OPEN_ORDERS
-FROM MYLIB.ORDERHDR H
-JOIN MYLIB.CUSTOMERS C ON C.CUSTNO = H.CUSTNO
-WHERE H.STATUS = 'O'
-GROUP BY C.NAME
-ORDER BY OPEN_ORDERS DESC
-FETCH FIRST 3 ROWS ONLY</code></pre>
-      </div>
-
-      <div class="msg assistant">
-        <p>Three customers account for most of the open orders:</p>
-        <table>
-          <thead><tr><th>Customer</th><th>Open orders</th></tr></thead>
-          <tbody>
-            <tr><td>Acme Tools</td><td>14</td></tr>
-            <tr><td>Birch Supply</td><td>9</td></tr>
-            <tr><td>Harbor Parts</td><td>7</td></tr>
-          </tbody>
-        </table>
+      <div class="call">
+        <div class="call-h"><b>execute_query</b><span class="tag">read-only</span></div>
+        <pre><code><span class="k">SELECT</span> C.NAME, COUNT(*) <span class="k">AS</span> OPEN_ORDERS
+<span class="k">FROM</span> MYLIB.ORDERHDR H
+<span class="k">JOIN</span> MYLIB.CUSTOMERS C <span class="k">ON</span> C.CUSTNO = H.CUSTNO
+<span class="k">WHERE</span> H.STATUS = 'O'
+<span class="k">GROUP BY</span> C.NAME
+<span class="k">ORDER BY</span> OPEN_ORDERS <span class="k">DESC</span>
+<span class="k">FETCH FIRST</span> 3 <span class="k">ROWS ONLY</span></code></pre>
       </div>
     </div>
+    <div class="col">
+      <div class="head"><span class="label">03 / Result</span><span class="who">3 rows</span></div>
+      <p class="answer">Three customers account for most of the open orders.</p>
+      <table>
+        <thead><tr><th>Customer</th><th>Open orders</th></tr></thead>
+        <tbody>
+          <tr><td>Acme Tools</td><td>14</td></tr>
+          <tr><td>Birch Supply</td><td>9</td></tr>
+          <tr><td>Harbor Parts</td><td>7</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
-  <figcaption class="muted">Illustration with example data.</figcaption>
+  <figcaption><span>Fig. 1</span><span>Illustration with example data</span></figcaption>
 </figure>
 
 <style>
-  .demo { margin: 0; min-width: 0; }
-  .window { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
-  .titlebar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--bg-subtle); }
-  .titlebar span { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
-  .titlebar em { font-style: normal; font-size: 0.8rem; color: var(--muted); margin-left: 8px; }
-  .body { padding: var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); font-size: 0.92rem; }
-  .msg { margin: 0; }
-  .user { justify-self: end; max-width: 85%; background: var(--accent-soft); color: var(--fg); padding: 8px 12px; border-radius: 12px 12px 4px 12px; }
-  .tool { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg); }
-  .tool-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.85rem; }
-  .tool-head code { background: none; border: 0; padding: 0; font-weight: 600; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--spark); }
-  .badge { font-size: 0.72rem; font-weight: 600; color: var(--accent); border: 1px solid currentColor; border-radius: 999px; padding: 0 7px; }
-  .note { margin: 6px 0 0; font-size: 0.85rem; color: var(--muted); }
-  pre { margin: 8px 0 0; padding: 10px; font-size: 0.78rem; border-radius: 6px; }
-  .assistant p { margin: 0 0 8px; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 600; }
+  .query { margin: 0; min-width: 0; }
+  .cols { display: grid; border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line); }
+  @media (min-width: 1000px) { .cols { grid-template-columns: 1fr 1.35fr 1fr; } }
+  .col { display: grid; gap: 18px; align-content: start; padding: 22px 0 32px; min-width: 0; }
+  .col + .col { border-top: 1px solid var(--line); }
+  @media (min-width: 1000px) {
+    .col { padding: 22px 32px 40px; }
+    .col:first-child { padding-left: 0; }
+    .col:last-child { padding-right: 0; }
+    .col + .col { border-top: 0; border-left: 1px solid var(--line); }
+  }
+  .head { display: flex; justify-content: space-between; gap: 12px; }
+  .who { font: 12px/1.4 var(--font-mono); color: var(--muted); }
+  .question { margin: 0; font-size: clamp(1.5rem, 2.4vw, 1.9rem); line-height: 1.2; letter-spacing: -0.02em; text-wrap: balance; }
+  .call { display: grid; gap: 8px; min-width: 0; }
+  .call-h { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; font: 13px/1.4 var(--font-mono); }
+  .call-h b { font-weight: 500; }
+  .call-h span { color: var(--muted); }
+  .call-h .tag { font: 500 10.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid currentColor; padding: 3px 6px 2px; border-radius: 2px; }
+  .call p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+  pre { margin: 0; font-size: 12.5px; }
+  pre code { font-size: inherit; }
+  .k { color: var(--accent); }
+  .answer { margin: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 0 0 8px; border-bottom: 1px solid var(--line-strong); }
+  td { padding: 11px 0; border-bottom: 1px solid var(--line); }
   td:last-child, th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-  figcaption { font-size: 0.78rem; margin-top: 8px; text-align: right; }
+  figcaption { display: flex; justify-content: space-between; padding-top: 12px; font: 12px/1.4 var(--font-mono); color: var(--muted); }
 </style>

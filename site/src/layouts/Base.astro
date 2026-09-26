@@ -1,5 +1,9 @@
 ---
+import '@fontsource-variable/geist';
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-500.css';
 import '../styles/global.css';
+import faviconSvg from '../../../docs/assets/brand/svg/favicon.svg?raw';
 import Logo from '../components/Logo.astro';
 import AskDocs from '../components/AskDocs.astro';
 import ThemeSwitch from '../components/ThemeSwitch.astro';
@@ -30,11 +34,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 const path = Astro.url.pathname;
 const current = (prefix: string) => (path === url(prefix) || path.startsWith(url(prefix) + '/') ? 'page' : undefined);
 
-const favicon =
-  'data:image/svg+xml,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="54 42 160 142"><style>g{stroke:#0f172a}@media (prefers-color-scheme:dark){g{stroke:#f0f6fc}}</style><g fill="none" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="116" cy="96" rx="54" ry="20"/><path d="M62 96v30c0 11 24 20 54 20s54-9 54-20V96"/><path d="M62 126c0 11 24 20 54 20s54-9 54-20"/><path d="M62 126v30c0 11 24 20 54 20s54-9 54-20v-30"/><path d="M62 156c0 11 24 20 54 20s54-9 54-20"/></g><path d="M184 48C184 62 192 70 206 70C192 70 184 78 184 92C184 78 176 70 162 70C176 70 184 62 184 48Z" fill="#22C55E"/></svg>',
-  );
+const favicon = 'data:image/svg+xml,' + encodeURIComponent(faviconSvg);
 ---
 <!doctype html>
 <html lang="en">
@@ -67,15 +67,15 @@ const favicon =
     <a class="skip" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="container bar">
-        <a class="brand" href={url('/')}>
-          <Logo size={30} />
-          <span>Db2 for i MCP Server</span>
+        <a class="brand" href={url('/')} aria-label="db2i/mcp home">
+          <Logo variant="lockup" height={20} />
         </a>
         <nav aria-label="Main">
+          <a href={url('/')} aria-current={path === url('/') ? 'page' : undefined}>Product</a>
           <a href={url('/business')} aria-current={current('/business')}>For business</a>
           <a href={url('/blog')} aria-current={current('/blog')}>Blog</a>
           <a href={links.docs}>Docs</a>
-          <a href={links.github} class="gh">GitHub</a>
+          <a href={links.github}>GitHub <span aria-hidden="true">↗</span></a>
           <ThemeSwitch />
         </nav>
       </div>
@@ -89,14 +89,11 @@ const favicon =
       <div class="container">
         <div class="cols">
           <div class="about">
-            <a class="brand" href={url('/')}>
-              <Logo size={26} />
-              <span>Db2 for i MCP Server</span>
-            </a>
+            <a class="brand" href={url('/')} aria-label="db2i/mcp home"><Logo variant="lockup" height={20} /></a>
             <p class="muted">An open-source MCP server for IBM Db2 for i. MIT licensed.</p>
           </div>
           <div>
-            <h2>Project</h2>
+            <h2 class="label">Project</h2>
             <ul>
               <li><a href={links.docs}>Docs</a></li>
               <li><a href={url('/blog')}>Blog</a></li>
@@ -105,7 +102,7 @@ const favicon =
             </ul>
           </div>
           <div>
-            <h2>Get it</h2>
+            <h2 class="label">Get it</h2>
             <ul>
               <li><a href={links.npm}>npm</a></li>
               <li><a href={links.github}>GitHub</a></li>
@@ -113,7 +110,7 @@ const favicon =
             </ul>
           </div>
           <div>
-            <h2>Community</h2>
+            <h2 class="label">Community</h2>
             <ul>
               <li><a href={links.issues}>Issues</a></li>
               <li><a href={links.sponsor}>Sponsor</a></li>
@@ -121,8 +118,8 @@ const favicon =
           </div>
         </div>
         <p class="legal">
-          IBM, IBM i and Db2 are trademarks of International Business Machines Corporation.
-          This project is not affiliated with IBM.
+          <span>db2i/mcp · open source, MIT</span>
+          <span>IBM, IBM i and Db2 are trademarks of International Business Machines Corporation. This project is not affiliated with IBM.</span>
         </p>
       </div>
     </footer>
@@ -132,33 +129,33 @@ const favicon =
 </html>
 
 <style>
-  .skip { position: absolute; left: -999px; top: 8px; background: var(--card); padding: 8px 12px; border-radius: var(--radius-sm); z-index: 10; }
+  .skip { position: absolute; left: -999px; top: 8px; background: var(--surface); padding: 8px 12px; z-index: 10; }
   .skip:focus { left: 8px; }
 
-  .site-header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: saturate(160%) blur(10px); border-bottom: 1px solid var(--line); }
-  .bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: 60px; }
-  .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--fg); text-decoration: none; font-weight: 650; letter-spacing: -0.01em; }
+  .site-header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: 64px; }
+  .brand { display: inline-flex; align-items: center; color: var(--fg); text-decoration: none; }
   .brand:hover { color: var(--fg); }
-  nav { display: flex; align-items: center; gap: var(--space-4); font-size: 0.95rem; }
+  nav { display: flex; align-items: center; gap: 28px; font-size: 0.9rem; }
   nav a { display: inline-flex; align-items: center; min-height: 34px; color: var(--muted); text-decoration: none; white-space: nowrap; }
   nav a:hover, nav a[aria-current] { color: var(--fg); }
 
-  @media (max-width: 639px) {
-    .site-header .brand span { display: none; }
-    nav { gap: var(--space-3); font-size: 0.9rem; }
+  @media (max-width: 759px) {
+    nav { gap: var(--space-4); font-size: 0.85rem; }
+    nav a:first-child { display: none; }
   }
-  @media (max-width: 359px) {
-    nav { gap: 10px; font-size: 0.85rem; }
+  @media (max-width: 479px) {
+    .bar { flex-wrap: wrap; padding-block: 10px; }
+    nav { width: 100%; justify-content: space-between; gap: 10px; }
   }
 
-  .site-footer { border-top: 1px solid var(--line); padding: var(--space-7) 0 var(--space-6); margin-top: var(--space-8); font-size: 0.95rem; }
-  .cols { display: grid; gap: var(--space-5); grid-template-columns: 1fr 1fr; }
+  .site-footer { border-top: 1px solid var(--line-strong); padding: var(--space-7) 0 var(--space-5); margin-top: var(--space-8); font-size: 0.95rem; }
+  .cols { display: grid; gap: var(--space-6); grid-template-columns: 1fr 1fr; }
   .about { grid-column: 1 / -1; }
-  @media (min-width: 720px) { .cols { grid-template-columns: 2fr 1fr 1fr 1fr; } .about { grid-column: auto; } }
-  .about p { margin-top: var(--space-3); max-width: 22rem; }
-  .site-footer h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: var(--space-3); }
+  @media (min-width: 760px) { .cols { grid-template-columns: 2fr 1fr 1fr 1fr; } .about { grid-column: auto; } }
+  .about p { margin-top: var(--space-4); max-width: 24rem; }
+  .site-footer .label { margin-bottom: var(--space-3); }
   .site-footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  .site-footer ul a { color: var(--fg); text-decoration: none; }
-  .site-footer ul a:hover { color: var(--accent); }
-  .legal { margin: var(--space-6) 0 0; padding-top: var(--space-4); border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--muted); }
+  .site-footer ul a { text-decoration: none; }
+  .legal { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3) var(--space-6); margin: var(--space-7) 0 0; padding-top: var(--space-4); border-top: 1px solid var(--line); font: 12px/1.5 var(--font-mono); color: var(--muted); }
 </style>

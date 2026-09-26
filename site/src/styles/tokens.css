@@ -1,26 +1,24 @@
 /*
- * Brand tokens. The sign-in page (src/auth/oauth.ts) and docs/docs.json use the
- * same palette: change them together.
+ * Brand tokens (docs/assets/brand/README.md). The sign-in page (src/auth/oauth.ts),
+ * docs/docs.json, docs/style.css and src/branding.ts use the same palette:
+ * change them together.
  */
 :root {
   color-scheme: light dark;
 
-  --fg: #1f2328;
-  --muted: #59636e;
-  --bg: #ffffff;
-  --bg-subtle: #f6f8fa;
-  --card: #ffffff;
-  --line: #d1d9e0;
-  --accent: #15803d;
-  --accent-strong: #166534;
-  --accent-soft: #dcfce7;
+  --bg: #f3f1eb;
+  --surface: #faf9f6;
+  --fg: #161716;
+  --muted: #666962;
+  --line: #d8d6cf;
+  --line-strong: #161716;
+  --accent: #3159e8;
+  --accent-strong: #2447c9;
   --on-accent: #ffffff;
-  --brand: #16a34a;
-  --spark: #22c55e;
-  --code-bg: #f6f8fa;
+  --error: #b42318;
 
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --font-sans: 'Geist Variable', Geist, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -28,13 +26,18 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --space-7: 48px;
-  --space-8: 72px;
+  --space-7: 56px;
+  --space-8: 96px;
 
-  --radius: 12px;
-  --radius-sm: 8px;
-  --max: 1080px;
-  --shadow: 0 1px 2px rgb(31 35 40 / 6%), 0 8px 24px rgb(31 35 40 / 6%);
+  --radius-btn: 3px;
+  --radius-input: 2px;
+  --radius-code: 4px;
+  --max: 1240px;
+  --gutter: 20px;
+}
+
+@media (min-width: 900px) {
+  :root { --gutter: 56px; }
 }
 
 /*
@@ -43,35 +46,31 @@
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --fg: #f0f6fc;
-    --muted: #9198a1;
-    --bg: #0d1117;
-    --bg-subtle: #151b23;
-    --card: #151b23;
-    --line: #3d444d;
-    --accent: #22c55e;
-    --accent-strong: #4ade80;
-    --accent-soft: #052e16;
-    --on-accent: #052e16;
-    --code-bg: #0d1117;
-    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
+    --bg: #121312;
+    --surface: #181918;
+    --fg: #ecebe4;
+    --muted: #9c9e97;
+    --line: #2e302d;
+    --line-strong: #ecebe4;
+    --accent: #7d97ff;
+    --accent-strong: #a3b6ff;
+    --on-accent: #0d1330;
+    --error: #f97066;
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --fg: #f0f6fc;
-  --muted: #9198a1;
-  --bg: #0d1117;
-  --bg-subtle: #151b23;
-  --card: #151b23;
-  --line: #3d444d;
-  --accent: #22c55e;
-  --accent-strong: #4ade80;
-  --accent-soft: #052e16;
-  --on-accent: #052e16;
-  --code-bg: #0d1117;
-  --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
+  --bg: #121312;
+  --surface: #181918;
+  --fg: #ecebe4;
+  --muted: #9c9e97;
+  --line: #2e302d;
+  --line-strong: #ecebe4;
+  --accent: #7d97ff;
+  --accent-strong: #a3b6ff;
+  --on-accent: #0d1330;
+  --error: #f97066;
 }
 
 :root[data-theme='light'] {

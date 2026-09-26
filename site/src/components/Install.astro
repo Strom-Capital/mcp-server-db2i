@@ -42,9 +42,13 @@ const tabs = [
 ---
 <section class="section" id="install">
   <div class="container">
-    <p class="eyebrow">Install</p>
-    <h2>Pick how you run it</h2>
-    <p class="lead">The default ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the machine that runs the server. Nothing is installed on the IBM i.</p>
+    <div class="sec-head">
+      <p class="label">Install</p>
+      <div>
+        <h2>Pick how you run it.</h2>
+        <p class="lead">The default ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the machine that runs the server. Nothing is installed on the IBM i.</p>
+      </div>
+    </div>
 
     <div class="tabs">
       <div class="tablist" role="tablist" aria-label="Install options">
@@ -56,7 +60,7 @@ const tabs = [
         <div class="panel" role="tabpanel" id={`panel-${t.id}`} aria-labelledby={`tab-${t.id}`} hidden={i !== 0}>
           <p>{t.intro}</p>
           <pre><code>{t.code}</code></pre>
-          <a href={t.more}>{t.moreLabel} →</a>
+          <a class="link-rule" href={t.more}>{t.moreLabel} <span aria-hidden="true">→</span></a>
         </div>
       ))}
     </div>
@@ -84,10 +88,13 @@ const tabs = [
 </script>
 
 <style>
-  .tabs { margin-top: var(--space-5); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-  .tablist { display: flex; gap: 2px; border-bottom: 1px solid var(--line); background: var(--bg-subtle); padding: 6px 6px 0; overflow-x: auto; }
-  [role='tab'] { font: 600 0.9rem var(--font-sans); color: var(--muted); background: none; border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
-  [role='tab'][aria-selected='true'] { color: var(--fg); background: var(--card); border-color: var(--line); margin-bottom: -1px; }
-  .panel { padding: var(--space-5); }
-  .panel pre { font-size: 0.85rem; }
+  .tabs { border-top: 1px solid var(--line-strong); }
+  .tablist { display: flex; gap: 28px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  [role='tab'] { font: 500 12px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; padding: 18px 0 14px; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
+  [role='tab']:hover { color: var(--fg); }
+  [role='tab'][aria-selected='true'] { color: var(--fg); border-bottom-color: var(--accent); }
+  .tabs .panel { background: none; border: 0; padding: 24px 0 0; display: grid; gap: 16px; max-width: 860px; }
+  .tabs .panel p { margin: 0; color: var(--muted); }
+  .tabs .panel pre { margin: 0; font-size: 0.82rem; }
+  .tabs .panel a { justify-self: start; }
 </style>

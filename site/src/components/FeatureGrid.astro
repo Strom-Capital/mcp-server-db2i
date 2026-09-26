@@ -1,93 +1,92 @@
 ---
-import BookOpenText from '@lucide/astro/icons/book-open-text';
-import Cable from '@lucide/astro/icons/cable';
-import EyeOff from '@lucide/astro/icons/eye-off';
-import KeyRound from '@lucide/astro/icons/key-round';
-import Layers from '@lucide/astro/icons/layers';
-import ListChecks from '@lucide/astro/icons/list-checks';
-import ScrollText from '@lucide/astro/icons/scroll-text';
-import Search from '@lucide/astro/icons/search';
-import ShieldCheck from '@lucide/astro/icons/shield-check';
-import IconTile from './IconTile.astro';
 import { links } from '../lib/links';
 
-const features = [
+interface Item { title: string; body: string; href: string }
+interface Group { label: string; heading: string; items: Item[] }
+
+const groups: Group[] = [
   {
-    title: 'Read-only by design',
-    icon: ShieldCheck,
-    body: 'A read-only database connection, a SQL validator that only accepts queries, and a timeout that cancels runaway statements on the IBM i itself.',
-    href: links.security,
+    label: '01 / Safety',
+    heading: 'Reads only, and only what you allow.',
+    items: [
+      { title: 'Read-only by design', href: links.security, body: 'A read-only database connection, a SQL validator that only accepts queries, and a timeout that cancels runaway statements on the IBM i itself.' },
+      { title: 'Library allowlist and masking', href: links.allowlist, body: 'Limit queries and catalog browsing to the libraries you choose. Redact sensitive columns, or show only their last four characters.' },
+      { title: 'IBM i checks the SQL', href: links.tools, body: 'validate_query parses a statement on the IBM i and checks every table and column against the catalog before anything runs.' },
+    ],
   },
   {
-    title: 'Library allowlist and masking',
-    icon: EyeOff,
-    body: 'Limit queries and catalog browsing to the libraries you choose. Redact sensitive columns, or show only their last four characters.',
-    href: links.allowlist,
+    label: '02 / Connection',
+    heading: 'Fits the network you have.',
+    items: [
+      { title: 'Three ways to connect', href: links.drivers, body: 'The IBM i Access ODBC driver by default, JT400 if you prefer JDBC, or Mapepire over SSH when only port 22 is open.' },
+      { title: 'Several systems, one server', href: links.multipleSystems, body: 'Development, test and production side by side, each with its own driver, credentials and library allowlist.' },
+    ],
   },
   {
-    title: 'Sign in as yourself',
-    icon: KeyRound,
-    body: 'Built-in OAuth 2.1. People add one URL in claude.ai, Cursor or Claude Code, sign in with their own IBM i profile and keep the authority they already have.',
-    href: links.oauth,
+    label: '03 / Auth',
+    heading: 'Everyone signs in as themselves.',
+    items: [
+      { title: 'Sign in as yourself', href: links.oauth, body: 'Built-in OAuth 2.1. People add one URL in claude.ai, Cursor or Claude Code, sign in with their own IBM i profile and keep the authority they already have.' },
+    ],
   },
   {
-    title: 'Three ways to connect',
-    icon: Cable,
-    body: 'The IBM i Access ODBC driver by default, JT400 if you prefer JDBC, or Mapepire over SSH when only port 22 is open.',
-    href: links.drivers,
+    label: '04 / Context',
+    heading: 'Answers in your own terms.',
+    items: [
+      { title: 'Your business definitions', href: links.customTools, body: 'Describe tables and status codes in YAML, and turn your vetted queries into named tools with bound parameters.' },
+      { title: 'Find your way around', href: links.tools, body: 'Search tables and columns across libraries, profile a table, read DDL, and look up procedures, functions and index advice.' },
+    ],
   },
   {
-    title: 'Several systems, one server',
-    icon: Layers,
-    body: 'Development, test and production side by side, each with its own driver, credentials and library allowlist.',
-    href: links.multipleSystems,
-  },
-  {
-    title: 'Your business definitions',
-    icon: BookOpenText,
-    body: 'Describe tables and status codes in YAML, and turn your vetted queries into named tools with bound parameters.',
-    href: links.customTools,
-  },
-  {
-    title: 'IBM i checks the SQL',
-    icon: ListChecks,
-    body: 'validate_query parses a statement on the IBM i and checks every table and column against the catalog before anything runs.',
-    href: links.tools,
-  },
-  {
-    title: 'Find your way around',
-    icon: Search,
-    body: 'Search tables and columns across libraries, profile a table, read DDL, and look up procedures, functions and index advice.',
-    href: links.tools,
-  },
-  {
-    title: 'Audit log',
-    icon: ScrollText,
-    body: 'Every tool call written as one JSON line, with the SQL hashed by default, ready for your log pipeline.',
-    href: links.auditLog,
+    label: '05 / Operations',
+    heading: 'Every call on the record.',
+    items: [
+      { title: 'Audit log', href: links.auditLog, body: 'Every tool call written as one JSON line, with the SQL hashed by default, ready for your log pipeline.' },
+    ],
   },
 ];
 ---
 <section class="section" id="features">
   <div class="container">
-    <p class="eyebrow">What you get</p>
-    <h2>Built for production IBM i systems</h2>
-    <p class="lead">The read-only checks are always on. The allowlist, masking and audit log are one setting each. Every control is documented, so your IBM i team can see exactly what is enforced and where.</p>
-    <div class="grid grid--3 features">
-      {features.map((f) => (
-        <a class="card feature" href={f.href}>
-          <IconTile icon={f.icon} />
-          <h3>{f.title}</h3>
-          <p class="muted">{f.body}</p>
-        </a>
+    <div class="sec-head">
+      <p class="label">What you get</p>
+      <div>
+        <h2>Built for production IBM i systems.</h2>
+        <p class="lead">The read-only checks are always on. The allowlist, masking and audit log are one setting each. Every control is documented, so your IBM i team can see exactly what is enforced and where.</p>
+      </div>
+    </div>
+    <div class="groups">
+      {groups.map((g) => (
+        <div class="group">
+          <p class="label">{g.label}</p>
+          <h3>{g.heading}</h3>
+          <ul class="rows">
+            {g.items.map((item) => (
+              <li>
+                <a class="item" href={item.href}>
+                  <b>{item.title}</b>
+                  <span>{item.body}</span>
+                  <em aria-hidden="true">→</em>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
       ))}
     </div>
   </div>
 </section>
 
 <style>
-  .features { margin-top: var(--space-6); }
-  .feature { text-decoration: none; color: var(--fg); transition: border-color 0.15s; }
-  .feature:hover { border-color: var(--accent); color: var(--fg); }
-  .feature p { margin: 0; font-size: 0.95rem; }
+  .groups { border-top: 1px solid var(--line-strong); }
+  .group { display: grid; gap: 16px 64px; padding-block: 28px 36px; border-bottom: 1px solid var(--line); }
+  @media (min-width: 1000px) { .group { grid-template-columns: 200px 300px minmax(0, 1fr); } }
+  .group h3 { margin: 0; font-size: 1.75rem; font-weight: 400; line-height: 1.1; letter-spacing: -0.025em; }
+  .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; padding: 14px 0; text-decoration: none; color: var(--fg); }
+  .rows > li:first-child .item { padding-top: 2px; }
+  .item b { font-weight: 500; }
+  .item span { grid-column: 1; color: var(--muted); max-width: 62ch; font-size: 0.95rem; }
+  .item em { grid-row: 1 / span 2; grid-column: 2; font-style: normal; color: var(--muted); transition: transform 0.15s, color 0.15s; }
+  .item:hover { color: var(--fg); }
+  .item:hover em { color: var(--accent); transform: translateX(3px); }
 </style>
