@@ -10,7 +10,17 @@ const questions = [
   { area: 'Finance', items: ['Which customers have invoices more than 60 days overdue?', 'How do this month’s sales compare with the same month last year, by product group?'] },
 ];
 
-const summary = `mcp-server-db2i: an open-source (MIT) MCP server that lets AI assistants such as Claude, Cursor and Claude Code query Db2 for i, read-only.
+const siteUrl = new URL(url('/'), Astro.site).href;
+
+const emailSubject = 'Could we try an AI assistant on our ERP data?';
+
+const summary = `Hi,
+
+I came across mcp-server-db2i, an open-source tool that lets AI assistants such as Claude answer questions about our ERP data in plain language. It only reads data, and people sign in with their own user.
+
+I'd like to use it for the one-off questions we don't have reports for. Could you take a look and let me know if we could try it?
+
+The main points for you:
 
 What is enforced
 - Read-only: a read-only database connection and a SQL validator that only accepts queries.
@@ -20,15 +30,20 @@ What is enforced
 
 Who sees what
 - With the HTTP transport, people sign in with their own IBM i user profile (OAuth 2.1), so object authority and exit programs apply as usual. With stdio, the server uses the credentials in its configuration.
-- Query results go to the AI assistant the user connects, so use one the company has approved.
+- Query results go to the AI assistant the user connects, so it should be one the company has approved.
 
 How it connects
 - The server runs on a machine you choose: a workstation, a server or Docker.
 - The ODBC driver (default) and JT400 use the IBM i host servers. Nothing is installed on the IBM i. The ODBC driver needs unixODBC and the IBM i Access ODBC Driver on the server machine.
 - Mapepire over SSH works when only port 22 is open. It copies its server JAR to the user's home directory on first use.
 
+Overview: ${siteUrl}
 Quickstart: ${links.quickstart}
-Security: ${links.security}`;
+Security: ${links.security}
+
+It is free and MIT licensed, so there is nothing to buy.
+
+Thanks!`;
 ---
 <Base
   title="For business teams"
@@ -150,7 +165,7 @@ Security: ${links.security}`;
         <p class="label">Next step</p>
         <h2 class="h2s">Share it with your IT team.</h2>
         <p>
-          Ask the documentation assistant anything about setup, security or what it can do. Or send the summary on the
+          Ask the documentation assistant anything about setup, security or what it can do. Or send the email on the
           right to your IT team. It is free and open source, with nothing to buy.
         </p>
         <div class="btn-row">
@@ -160,9 +175,10 @@ Security: ${links.security}`;
       </div>
       <div class="panel share">
         <div class="share-head">
-          <span class="label">For your IT team</span>
-          <button type="button" class="copy" data-copy-summary>Copy</button>
+          <span class="label">Email to your IT team</span>
+          <button type="button" class="copy" data-copy-summary>Copy email</button>
         </div>
+        <p class="subject"><span class="label">Subject</span> {emailSubject}</p>
         <pre id="summary">{summary}</pre>
       </div>
     </div>
@@ -179,7 +195,7 @@ Security: ${links.security}`;
     } catch {
       button.textContent = 'Select and copy';
     }
-    setTimeout(() => (button.textContent = 'Copy'), 1600);
+    setTimeout(() => (button.textContent = 'Copy email'), 1600);
   });
 </script>
 
@@ -215,5 +231,7 @@ Security: ${links.security}`;
   .share-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
   .copy { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; background: var(--fg); color: var(--bg); border: 0; border-radius: var(--radius-btn); padding: 8px 12px; cursor: pointer; }
   .copy:hover { background: var(--accent); color: var(--on-accent); }
+  .subject { margin: 0 0 var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+  .subject .label { margin-right: 8px; }
   .share pre { margin: 0; padding: 0; border: 0; background: none; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; }
 </style>
