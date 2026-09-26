@@ -7,6 +7,7 @@
     "url": "https://github.com/Strom-Capital/mcp-server-db2i",
     "source": "github"
   },
+  "websiteUrl": "https://db2i-mcp.com",
   "version": "2.11.0",
   "packages": [
     {

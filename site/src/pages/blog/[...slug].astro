@@ -1,0 +1,54 @@
+---
+import { render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import { audienceLabel, getPosts } from '../../lib/posts';
+import { formatDate, links, url } from '../../lib/links';
+
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+<Base title={post.data.title} description={post.data.description} type="article">
+  <article class="section">
+    <div class="container narrow">
+      <a class="back" href={url('/blog')}>← All posts</a>
+      <p class="meta"><time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time> · {audienceLabel[post.data.audience]}</p>
+      <h1>{post.data.title}</h1>
+      <p class="lead">{post.data.description}</p>
+      {post.data.originalUrl && (
+        <p class="original">The original announcement is <a href={post.data.originalUrl}>on r/IBMi</a>, with the discussion that followed.</p>
+      )}
+      <div class="prose"><Content /></div>
+      <aside class="card after">
+        <strong>Questions or ideas?</strong>
+        <p class="muted">Open an issue on GitHub, or read the full <a href={links.changelog}>changelog</a>.</p>
+        <div class="btn-row">
+          <a class="btn btn--primary" href={links.issues}>Open an issue</a>
+          <a class="btn" href={links.docs} data-ask-docs="blog">Ask the docs</a>
+        </div>
+      </aside>
+    </div>
+  </article>
+</Base>
+
+<style>
+  .narrow { max-width: 720px; }
+  .back { font-size: 0.9rem; text-decoration: none; }
+  .meta { color: var(--muted); font-size: 0.9rem; margin: var(--space-5) 0 var(--space-2); }
+  h1 { font-size: clamp(1.9rem, 4.5vw, 2.6rem); }
+  .original { font-size: 0.9rem; color: var(--muted); border-left: 3px solid var(--spark); padding-left: var(--space-3); }
+  .prose { font-size: 1.05rem; line-height: 1.7; margin-top: var(--space-5); }
+  .prose :global(h2) { font-size: 1.4rem; margin-top: var(--space-6); }
+  .prose :global(h3) { margin-top: var(--space-5); }
+  .prose :global(li) { margin-bottom: 6px; }
+  .prose :global(pre) { font-size: 0.88rem; }
+  .prose :global(table) { border-collapse: collapse; width: 100%; font-size: 0.95rem; display: block; overflow-x: auto; margin: var(--space-4) 0; }
+  .prose :global(th), .prose :global(td) { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  .prose :global(blockquote) { margin: var(--space-4) 0; padding-left: var(--space-4); border-left: 3px solid var(--line); color: var(--muted); }
+  .after { margin-top: var(--space-7); }
+  .after p { margin: 6px 0 var(--space-4); }
+</style>
