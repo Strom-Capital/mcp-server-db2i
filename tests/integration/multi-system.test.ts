@@ -26,6 +26,7 @@ vi.mock('../../src/utils/rateLimiter.js', async (importOriginal) => {
   };
 });
 
+import { withExecute } from '../helpers/jt400Fake.js';
 import { loadCustomTools, systemLoadOptions, CustomToolsError } from '../../src/customTools/loader.js';
 import { resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
 import {
@@ -112,7 +113,7 @@ describe('several IBM i systems', () => {
     vi.clearAllMocks();
     mockQuery.mockReset();
     mockQuery.mockResolvedValue([{ ORDERNO: 1 }]);
-    mockPool.mockImplementation(() => ({ query: mockQuery, close: vi.fn() }));
+    mockPool.mockImplementation(() => withExecute({ query: mockQuery, close: vi.fn() }));
 
     process.env = {
       ...originalEnv,

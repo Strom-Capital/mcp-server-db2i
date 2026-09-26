@@ -10,11 +10,14 @@ import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextpro
 
 // Mock node-jt400 before importing modules that use it
 const mockQuery = vi.fn();
-vi.mock('node-jt400', () => ({
-  pool: vi.fn(() => ({
-    query: mockQuery,
-  })),
-}));
+vi.mock('node-jt400', async () => {
+  const { withExecute } = await import('../helpers/jt400Fake.js');
+  return {
+    pool: vi.fn(() => withExecute({
+      query: mockQuery,
+    })),
+  };
+});
 
 // Mock the rate limiter to control its behavior in tests
 vi.mock('../../src/utils/rateLimiter.js', async (importOriginal) => {

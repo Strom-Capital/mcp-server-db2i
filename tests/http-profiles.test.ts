@@ -10,12 +10,15 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Express } from 'express';
 
-vi.mock('node-jt400', () => ({
-  pool: vi.fn(() => ({
-    query: vi.fn().mockResolvedValue([]),
-    close: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
+vi.mock('node-jt400', async () => {
+  const { withExecute } = await import('./helpers/jt400Fake.js');
+  return {
+    pool: vi.fn(() => withExecute({
+      query: vi.fn().mockResolvedValue([]),
+      close: vi.fn().mockResolvedValue(undefined),
+    })),
+  };
+});
 
 const sshLogins = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 

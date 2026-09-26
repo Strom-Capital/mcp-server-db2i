@@ -10,11 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 
 const mockQuery = vi.fn();
-vi.mock('node-jt400', () => ({
-  pool: vi.fn(() => ({
-    query: mockQuery,
-  })),
-}));
+vi.mock('node-jt400', async () => {
+  const { withExecute } = await import('../helpers/jt400Fake.js');
+  return {
+    pool: vi.fn(() => withExecute({
+      query: mockQuery,
+    })),
+  };
+});
 
 vi.mock('../../src/utils/rateLimiter.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/utils/rateLimiter.js')>();
