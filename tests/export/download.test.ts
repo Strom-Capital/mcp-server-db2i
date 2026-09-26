@@ -71,7 +71,7 @@ beforeEach(async () => {
     EXPORT_DIR: join(dir, 'exports'),
     MCP_AUDIT_LOG: join(dir, 'audit.log'),
   };
-  delete process.env.EXPORT_SINGLE_USE;
+  delete process.env.EXPORT_MAX_DOWNLOADS;
   delete process.env.MCP_CORS_ORIGINS;
   initAuditLog();
   await initExportStore();
@@ -118,7 +118,7 @@ async function auditLines(): Promise<Array<Record<string, unknown>>> {
 }
 
 describe('export download link', () => {
-  it('downloads once with attachment headers, then answers 404 and deletes the file', async () => {
+  it('allows EXPORT_MAX_DOWNLOADS downloads with attachment headers, then answers 404 and deletes the file', async () => {
     const { url, path } = await makeExport();
     const expected = await readFile(path);
 
@@ -132,13 +132,17 @@ describe('export download link', () => {
     // Compare bytes: text() would drop the byte order mark
     expect(Buffer.from(await first.arrayBuffer()).equals(expected)).toBe(true);
 
-    const second = await fetch(url);
-    expect(second.status).toBe(404);
-    expect(await second.text()).toMatch(/expired or was already used/);
+    // The default allows three downloads, so a link preview or the agent's own check does not spend the user's
+    expect((await fetch(url)).status).toBe(200);
+    expect(await readdir(join(dir, 'exports'))).toHaveLength(1);
+    expect((await fetch(url)).status).toBe(200);
+    const fourth = await fetch(url);
+    expect(fourth.status).toBe(404);
+    expect(await fourth.text()).toMatch(/expired or has been used as many times as allowed/);
 
     await vi.waitFor(async () => expect(await readdir(join(dir, 'exports'))).toEqual([]));
     const events = (await auditLines()).filter((line) => line.event === 'export_download');
-    expect(events.map((line) => line.outcome)).toEqual(['success', 'not_found']);
+    expect(events.map((line) => line.outcome)).toEqual(['success', 'success', 'success', 'not_found']);
     expect(events[0]).toMatchObject({ identity: 'TESTUSER', bytes: expected.length, rowCount: 1 });
     expect(String(events[0].exportId)).toHaveLength(8);
     expect(JSON.stringify(events)).not.toContain(url.split('/').pop());
@@ -173,14 +177,15 @@ describe('export download link', () => {
     expect((await fetch(url)).status).toBe(404);
   });
 
-  it('keeps a link usable until it expires when EXPORT_SINGLE_USE is false', async () => {
+  it('makes a link single use with EXPORT_MAX_DOWNLOADS=1', async () => {
     await closeExportStore();
-    process.env.EXPORT_SINGLE_USE = 'false';
+    process.env.EXPORT_MAX_DOWNLOADS = '1';
     await initExportStore();
     const { url } = await makeExport();
 
+    expect((await fetch(url, { method: 'HEAD' })).status).toBe(200);
     expect((await fetch(url)).status).toBe(200);
-    expect((await fetch(url)).status).toBe(200);
+    expect((await fetch(url)).status).toBe(404);
   });
 
   it('rejects a request whose Host is not allowed', async () => {
@@ -210,6 +215,6 @@ describe('export download route', () => {
 
     const res = await fetch(`${baseUrl}/exports/${'A'.repeat(43)}`);
     expect(res.status).toBe(404);
-    expect(await res.text()).not.toMatch(/expired or was already used/);
+    expect(await res.text()).not.toMatch(/as many times as allowed/);
   });
 });

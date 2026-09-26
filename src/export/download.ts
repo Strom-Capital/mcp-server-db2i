@@ -5,8 +5,8 @@
  * The route has no bearer check. The link is the credential: its id is 256
  * random bits, it is only found in the in-memory registry, and it expires. A
  * browser following the link from a chat cannot send the MCP token anyway.
- * HEAD answers from the registry without using up a single-use link, so a
- * link preview does not spend it.
+ * HEAD answers from the registry without counting as a download, so a link
+ * preview that checks with HEAD does not spend one.
  */
 
 import { createReadStream } from 'node:fs';
@@ -23,7 +23,7 @@ import {
 
 const log = createChildLogger({ component: 'export-download' });
 
-const GONE_MESSAGE = 'This download link has expired or was already used. Ask for the export again.';
+const GONE_MESSAGE = 'This download link has expired or has been used as many times as allowed. Ask for the export again.';
 
 /** The first characters of an id, enough to match audit lines, too few to use. */
 function idPrefix(id: string): string {
@@ -47,9 +47,9 @@ function notFound(res: Response): void {
 }
 
 /**
- * Send an export file. A single-use export leaves the registry before the
- * first byte is sent, and its file is deleted when the response ends, whether
- * or not the download completed.
+ * Send an export file. Every GET counts as a download. The last allowed one
+ * removes the link before the first byte is sent, and its file is deleted when
+ * the response ends, whether or not the download completed.
  */
 export function exportDownloadHandler(req: Request, res: Response): void {
   const id = String(req.params.id ?? '');

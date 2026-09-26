@@ -150,7 +150,7 @@ See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, C
 | Tool | Description |
 |------|-------------|
 | `execute_query` | Execute read-only SELECT queries |
-| `export_query` | Write every row of a read-only query to a CSV or XLSX file: a path over stdio, a single-use download link over HTTP. Off unless `EXPORT_ENABLED` is set |
+| `export_query` | Write every row of a read-only query to a CSV or XLSX file: a path over stdio, a short-lived download link over HTTP. Off unless `EXPORT_ENABLED` is set |
 | `list_schemas` | List schemas/libraries (with optional filter) |
 | `list_tables` | List tables in a schema (with optional filter) |
 | `search_tables` | Find tables by name or description across libraries |

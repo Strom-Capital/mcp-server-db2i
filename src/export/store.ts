@@ -5,8 +5,8 @@
  * and, in HTTP mode, is the whole download link: the registry below is the
  * only way from an id to a file, so an id that is not in it leads nowhere,
  * and a request can never name a path. Entries expire after
- * EXPORT_TTL_MINUTES, and a single-use link is removed from the registry the
- * moment its download starts.
+ * EXPORT_TTL_MINUTES, and a link is removed from the registry the moment its
+ * last allowed download (EXPORT_MAX_DOWNLOADS) starts.
  *
  * The registry lives in memory. After a restart the old files are orphans, so
  * startup deletes them.
@@ -48,6 +48,8 @@ export interface ExportEntry {
   rows: number;
   /** Epoch milliseconds. */
   expiresAt: number;
+  /** Downloads started so far. */
+  downloads: number;
 }
 
 /** An export that has started and not finished. */
@@ -58,7 +60,7 @@ export interface ExportSlot {
   /** Renamed to on success. */
   finalPath: string;
   /** Rename the finished file and register it. */
-  complete(entry: Omit<ExportEntry, 'id' | 'path' | 'expiresAt'>): Promise<ExportEntry>;
+  complete(entry: Omit<ExportEntry, 'id' | 'path' | 'expiresAt' | 'downloads'>): Promise<ExportEntry>;
   /** Give the slot back. Deletes the part file if it is still there. Never throws. */
   release(): Promise<void>;
 }
@@ -119,7 +121,7 @@ export async function initExportStore(): Promise<void> {
     void sweepExpired();
   }, SWEEP_INTERVAL_MS);
   sweeper.unref();
-  log.info({ ttlMinutes: current.ttlMinutes, singleUse: current.singleUse }, 'Query exports enabled');
+  log.info({ ttlMinutes: current.ttlMinutes, maxDownloads: current.maxDownloads }, 'Query exports enabled');
 }
 
 /**
@@ -193,6 +195,7 @@ export function beginExport(format: ExportFormat): ExportSlot {
         id,
         path: finalPath,
         expiresAt: Date.now() + settings.ttlMinutes * 60_000,
+        downloads: 0,
       };
       entries.set(id, entry);
       return entry;
@@ -224,9 +227,10 @@ export function peekExport(id: string): ExportEntry | undefined {
 }
 
 /**
- * Take an export for download. A single-use link is removed from the registry
- * here, synchronously, so two requests racing for the same link cannot both
- * get the file. The caller deletes the file once the download ends.
+ * Take an export for download and count it against EXPORT_MAX_DOWNLOADS. The
+ * count is taken synchronously, so requests racing for the same link can never
+ * get more downloads than allowed. The last allowed download removes the link
+ * from the registry, and its caller deletes the file once that download ends.
  *
  * @returns The export, and whether the caller must delete the file afterwards
  */
@@ -235,7 +239,8 @@ export function takeExport(id: string): { entry: ExportEntry; deleteAfter: boole
   if (!entry || !config) {
     return undefined;
   }
-  if (config.singleUse) {
+  entry.downloads += 1;
+  if (entry.downloads >= config.maxDownloads) {
     entries.delete(id);
     return { entry, deleteAfter: true };
   }

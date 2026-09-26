@@ -113,7 +113,7 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 | `EXPORT_MAX_BYTES` | `104857600` | Largest export file in bytes (100 MB). The export stops after the batch that reaches it, and the result says `truncated: "bytes"` |
 | `EXPORT_TIMEOUT` | `QUERY_TIMEOUT` | Seconds an export may take, from the query to the last row. The statement is cancelled on the IBM i at the limit, as with `QUERY_TIMEOUT`. `0` turns the limit off |
 | `EXPORT_TTL_MINUTES` | `15` | Minutes a finished file is kept. Then the file and its link are gone |
-| `EXPORT_SINGLE_USE` | `true` | A download link works once and the file is deleted after it. `false` keeps the link working until it expires |
+| `EXPORT_MAX_DOWNLOADS` | `3` | Downloads a link allows. After the last one the link stops working and the file is deleted. `HEAD` requests do not count. `1` makes links single use |
 | `EXPORT_MAX_CONCURRENT` | `2` | Exports that may run at the same time. Each holds a connection (or a Mapepire job) until it finishes |
 | `EXPORT_DIR_MAX_BYTES` | `1073741824` | Bytes all export files may take together (1 GB). A new export is refused when it could go over |
 | `MCP_PUBLIC_URL` | - | Needed over HTTP: download links are `<MCP_PUBLIC_URL>/exports/<id>`. The same variable the OAuth server uses; its host is added to the allowed hosts |

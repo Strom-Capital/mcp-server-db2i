@@ -18,7 +18,12 @@ import {
   peekExport,
   sweepExpired,
 } from '../../src/export/store.js';
-import { exportFilename, exportQueryTool, type ExportQueryInput } from '../../src/tools/exportQuery.js';
+import {
+  exportFilename,
+  exportQueryTool,
+  mayHaveLostDigits,
+  type ExportQueryInput,
+} from '../../src/tools/exportQuery.js';
 
 const openCursor = vi.mocked(openQueryCursor);
 const query = vi.mocked(executeQuery);
@@ -100,6 +105,18 @@ describe('exportFilename', () => {
     expect(exportFilename('../../etc/passwd', 'csv')).toBe('etc_passwd.csv');
     expect(exportFilename(undefined, 'xlsx', new Date('2026-09-26T17:30:05Z'))).toBe('export-20260926-173005.xlsx');
     expect(exportFilename('x'.repeat(200), 'csv')).toHaveLength(84);
+  });
+});
+
+describe('mayHaveLostDigits', () => {
+  it('flags numbers with 15 or more significant digits', () => {
+    expect(mayHaveLostDigits(12.5)).toBe(false);
+    expect(mayHaveLostDigits(123456.78)).toBe(false);
+    expect(mayHaveLostDigits(0.1)).toBe(false);
+    expect(mayHaveLostDigits(0)).toBe(false);
+    expect(mayHaveLostDigits(12345678901234.5)).toBe(true);
+    expect(mayHaveLostDigits(-12345678901234567000)).toBe(true);
+    expect(mayHaveLostDigits(1e15)).toBe(true);
   });
 });
 
@@ -221,21 +238,32 @@ describe('export_query', () => {
     expect(await exportFiles()).toEqual([]);
   });
 
-  it('warns about columns the driver rounded', async () => {
-    openCursor.mockResolvedValueOnce(
-      fakeCursor(
-        [
-          { name: 'ORDERNO', kind: 'int', dbType: 'INTEGER' },
-          { name: 'TOTAL', kind: 'decimal', dbType: 'DECIMAL', precision: 31, lossy: true },
-        ],
-        [[[1001, 12.5]]]
-      )
-    );
+  it('warns about rounded decimals only when a value has 15 or more significant digits', async () => {
+    const columns: DbColumn[] = [
+      { name: 'ORDERNO', kind: 'int', dbType: 'INTEGER' },
+      { name: 'TOTAL', kind: 'decimal', dbType: 'DECIMAL', precision: 17, scale: 2, lossy: true },
+      { name: 'QTY', kind: 'decimal', dbType: 'DECIMAL', precision: 17, scale: 3, lossy: true },
+    ];
+    openCursor.mockResolvedValueOnce(fakeCursor(columns, [[[1001, 12.5, 3]]]));
+    const small = await exportQueryTool(input());
+    expect(small.success).toBe(true);
+    expect(small.warnings).toBeUndefined();
+
+    openCursor.mockResolvedValueOnce(fakeCursor(columns, [[[1001, 123456789012345.67, 3], [1002, 1, 2]]]));
+    const large = await exportQueryTool(input());
+    expect(large.warnings).toHaveLength(1);
+    expect(large.warnings?.[0]).toMatch(/^TOTAL had values with 15 or more significant digits.*jt400 or mapepire/);
+    expect(large.warnings?.[0]).not.toMatch(/VARCHAR/);
+  });
+
+  it('warns when text contains the replacement character', async () => {
+    openCursor.mockResolvedValueOnce(fakeCursor(COLUMNS, [[[1001, 'Hyv\uFFFD tilaus'], [1002, 'OK']]]));
 
     const result = await exportQueryTool(input());
 
     expect(result.success).toBe(true);
-    expect(result.warnings?.[0]).toMatch(/TOTAL may not be exact.*CAST\(<column> AS VARCHAR\(40\)\)/);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings?.[0]).toMatch(/^Text in NOTE contains the replacement character.*CCSID=1208/);
   });
 
   it('rejects a result with two columns of the same name', async () => {
@@ -275,7 +303,7 @@ describe('export_query', () => {
 
     expect(result.success).toBe(true);
     expect(result.path).toBeUndefined();
-    expect(result.singleUse).toBe(true);
+    expect(result.downloadsAllowed).toBe(3);
     const match = /^https:\/\/mcp\.example\.com\/exports\/([A-Za-z0-9_-]{43})$/.exec(result.url ?? '');
     expect(match).not.toBeNull();
     expect(peekExport(match![1])).toMatchObject({ owner: 'TESTUSER', rows: 2, filename: result.filename });

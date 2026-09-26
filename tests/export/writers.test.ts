@@ -145,6 +145,33 @@ describe('XLSX file', () => {
     expect(writer.rawBytes).toBe(Buffer.byteLength(sheet, 'utf8'));
   });
 
+  it('shows every digit of a decimal scale with a number format, and leaves scale 0 and masked columns alone', async () => {
+    const path = join(dir, 'decimals.xlsx');
+    const writer = new XlsxWriter(path);
+    await writer.writeHeader([
+      { name: 'AMOUNT', kind: 'decimal', masked: false, scale: 2 },
+      { name: 'QTY', kind: 'decimal', masked: false, scale: 3 },
+      { name: 'PRICE', kind: 'decimal', masked: false, scale: 2 },
+      { name: 'ORDDATE', kind: 'decimal', masked: false, scale: 0 },
+      { name: 'SECRET', kind: 'decimal', masked: true, scale: 2 },
+    ]);
+    await writer.writeRows([[72.5, 3, 9.99, 20260926, '****']]);
+    await writer.finish();
+
+    const files = unzipSync(new Uint8Array(await readFile(path)));
+    const sheet = strFromU8(files['xl/worksheets/sheet1.xml']);
+    const styles = strFromU8(files['xl/styles.xml']);
+    expect(styles).toContain('<numFmt numFmtId="167" formatCode="#,##0.00"/>');
+    expect(styles).toContain('<numFmt numFmtId="168" formatCode="#,##0.000"/>');
+    expect(styles).toContain('<cellXfs count="7">');
+    expect(sheet).toContain('<c r="A2" s="5"><v>72.5</v></c>');
+    expect(sheet).toContain('<c r="B2" s="6"><v>3</v></c>');
+    // Same scale, same style
+    expect(sheet).toContain('<c r="C2" s="5"><v>9.99</v></c>');
+    expect(sheet).toContain('<c r="D2"><v>20260926</v></c>');
+    expect(sheet).toContain('<c r="E2" t="inlineStr">');
+  });
+
   it('writes a valid empty workbook when there are no rows', async () => {
     const path = join(dir, 'empty.xlsx');
     const writer = new XlsxWriter(path);

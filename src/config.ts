@@ -1200,8 +1200,8 @@ export interface ExportConfig {
   timeoutSeconds: number;
   /** Minutes a finished export can be downloaded. */
   ttlMinutes: number;
-  /** When true, a download link works once. */
-  singleUse: boolean;
+  /** Downloads a link allows before it stops working. HEAD requests do not count. */
+  maxDownloads: number;
   /** Exports running at the same time. Each holds a connection or job. */
   maxConcurrent: number;
   /** Bytes all export files in the directory may take together. */
@@ -1225,7 +1225,7 @@ const DEFAULT_EXPORT_DIR_MAX_BYTES = 1024 * 1024 * 1024;
  * - EXPORT_MAX_BYTES: bytes per export file (default 100 MB).
  * - EXPORT_TIMEOUT: seconds per export (default QUERY_TIMEOUT, 0 for none).
  * - EXPORT_TTL_MINUTES: minutes a file can be downloaded (default 15).
- * - EXPORT_SINGLE_USE: `false` lets a link be used until it expires (default true).
+ * - EXPORT_MAX_DOWNLOADS: downloads per link before it stops working (default 3).
  * - EXPORT_MAX_CONCURRENT: exports at the same time (default 2).
  * - EXPORT_DIR_MAX_BYTES: bytes all export files may take (default 1 GB).
  *
@@ -1241,7 +1241,6 @@ export function getExportConfig(): ExportConfig | undefined {
   if (!dir) {
     throw new Error('EXPORT_DIR is required when EXPORT_ENABLED is set');
   }
-  const singleUse = process.env.EXPORT_SINGLE_USE?.trim().toLowerCase();
   return {
     dir,
     maxRows: readIntEnvInRange('EXPORT_MAX_ROWS', 100_000, 1, 10_000_000),
@@ -1253,7 +1252,7 @@ export function getExportConfig(): ExportConfig | undefined {
       MAX_QUERY_TIMEOUT_SECONDS
     ),
     ttlMinutes: readIntEnvInRange('EXPORT_TTL_MINUTES', 15, 1, 1440),
-    singleUse: singleUse !== 'false' && singleUse !== '0',
+    maxDownloads: readIntEnvInRange('EXPORT_MAX_DOWNLOADS', 3, 1, 100),
     maxConcurrent: readIntEnvInRange('EXPORT_MAX_CONCURRENT', 2, 1, 100),
     dirMaxBytes: readIntEnvInRange('EXPORT_DIR_MAX_BYTES', DEFAULT_EXPORT_DIR_MAX_BYTES, 1024, Number.MAX_SAFE_INTEGER),
     publicUrl: readPublicUrl(),

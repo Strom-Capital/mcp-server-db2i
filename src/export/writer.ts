@@ -15,6 +15,8 @@ export interface ExportColumn {
   kind: ColumnKind;
   /** Masked values are text whatever the column type, so they are written as text. */
   masked: boolean;
+  /** Digits after the decimal point, for DECIMAL and NUMERIC columns. */
+  scale?: number;
 }
 
 /** One export file being written. Rows arrive in column order. */

@@ -166,7 +166,7 @@ const exportOutputSchema = z.object({
   path: z.string().optional().describe('The file on the server host (stdio)'),
   url: z.string().optional().describe('Download link for the user (HTTP)'),
   expiresAt: z.string().optional(),
-  singleUse: z.boolean().optional(),
+  downloadsAllowed: z.number().int().optional().describe('Downloads the link allows before it stops working'),
 });
 
 const listSchemasOutputSchema = z.object({
@@ -764,7 +764,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
           'Run a read-only SQL SELECT and write every row to a CSV or Excel (XLSX) file for the user, instead of returning the rows. ' +
           'Use it when the user asks for a file, a spreadsheet, or more rows than execute_query returns. ' +
           (delivery === 'link'
-            ? 'The result has a download link: give it to the user as is. It expires, and by default it works once. '
+            ? 'The result has a download link: give it to the user as is, and do not open it yourself, because each download counts against a small limit. It expires after a few minutes. '
             : 'The result has the file path on this machine: tell the user where the file is. ') +
           'The result also has the row count, the columns, and a few sample rows so you can check the export. ' +
           'Same checks as execute_query; masked columns are masked in the file.',

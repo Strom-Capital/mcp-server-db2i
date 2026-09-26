@@ -11,7 +11,7 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 | Tool | Description |
 |------|-------------|
 | `execute_query` | Execute read-only SELECT queries |
-| `export_query` | Write every row of a read-only query to a CSV or XLSX file: a path over stdio, a single-use download link over HTTP. Off unless `EXPORT_ENABLED` is set |
+| `export_query` | Write every row of a read-only query to a CSV or XLSX file: a path over stdio, a short-lived download link over HTTP. Off unless `EXPORT_ENABLED` is set |
 | `list_schemas` | List schemas/libraries (with optional filter) |
 | `list_tables` | List tables in a schema (with optional filter) |
 | `search_tables` | Find tables by name or description across libraries |
@@ -89,16 +89,18 @@ The result tells the model where the file is and what is in it:
 | Field | Meaning |
 |-------|---------|
 | `path` | Over stdio: the file on this machine |
-| `url` | Over HTTP: a download link under `MCP_PUBLIC_URL`, also sent as a `resource_link`. By default it works once |
+| `url` | Over HTTP: a download link under `MCP_PUBLIC_URL`, also sent as a `resource_link` |
+| `downloadsAllowed` | How many downloads the link allows (`EXPORT_MAX_DOWNLOADS`, 3 by default) |
 | `expiresAt` | When the file is deleted, after `EXPORT_TTL_MINUTES` |
 | `rowCount`, `bytes`, `columns` | What was written |
 | `truncated` | `rows` or `bytes` when the file stops at the row or size cap, otherwise `false` |
 | `sample` | The first five rows, masked, so the model can check the export looks right |
-| `warnings` | Things to pass on to the user, such as columns the driver rounded |
+| `warnings` | Things to pass on to the user: decimals the driver may have rounded, or text with characters lost in decoding |
 
-- **XLSX** has one sheet with a bold, frozen header row and a filter. Numbers, dates, times and timestamps are typed cells. A decimal or `BIGINT` wider than 15 digits is written as text so it keeps every digit. Text is always text, so a value that starts with `=` never becomes a formula. One sheet holds at most 1,048,575 rows.
+- **XLSX** has one sheet with a bold, frozen header row and a filter. Numbers, dates, times and timestamps are typed cells. A decimal column with digits after the point gets a number format with its scale, so `72.5` in a `DECIMAL(9,2)` column shows as `72.50` and still adds up. A decimal or `BIGINT` wider than 15 digits is written as text so it keeps every digit. Text is always text, so a value that starts with `=` never becomes a formula. One sheet holds at most 1,048,575 rows.
 - **CSV** is UTF-8 with a byte order mark, so Excel opens accented characters correctly, and fields are quoted as in RFC 4180. A text value that starts with `=`, `+`, `-` or `@` gets a leading `'`, so a spreadsheet does not run it as a formula. Numbers are never changed.
-- With the `odbc` driver, node-odbc reads `DECIMAL` and `NUMERIC` values as JavaScript numbers, so a column wider than 15 digits is rounded. The result then has a `warnings` entry naming the column. Select it as `CAST(<column> AS VARCHAR(40))` to keep every digit, or use the `jt400` or `mapepire` driver, which keep it exact.
+- With the `odbc` driver, node-odbc reads `DECIMAL` and `NUMERIC` values as JavaScript numbers, so digits past the 15th are rounded. When a value in the export has 15 or more significant digits, the result has a `warnings` entry naming the column. Use the `jt400` or `mapepire` driver when such values must be exact.
+- Text that contains the replacement character `�` means characters were lost when the driver decoded it. The result then has a `warnings` entry naming the columns. With the `odbc` driver, set `CCSID=1208` in `DB2I_ODBC_OPTIONS`.
 - CHAR padding is removed. Binary columns are written as hex with `odbc`. With `jt400` and `mapepire`, `FOR BIT DATA` columns arrive as text translated by the driver, the same as in `execute_query`.
 - Give every column a unique name. A result with two columns of the same name, such as `a.ORDERNO` and `b.ORDERNO`, is rejected; use `AS`.
 

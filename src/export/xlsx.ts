@@ -124,8 +124,12 @@ function inlineString(ref: string, text: string, style?: number): string {
   return `<c r="${ref}"${styleAttr} t="inlineStr"><is><t${space}>${escapeXml(clipped)}</t></is></c>`;
 }
 
-/** One cell as sheet XML. Null has no cell at all. */
-export function xlsxCell(value: unknown, column: ExportColumn, ref: string): string {
+/**
+ * One cell as sheet XML. Null has no cell at all.
+ *
+ * @param numberStyle - Style for a numeric value, such as a decimal format with the column's scale
+ */
+export function xlsxCell(value: unknown, column: ExportColumn, ref: string, numberStyle?: number): string {
   if (value === null || value === undefined) {
     return '';
   }
@@ -138,7 +142,8 @@ export function xlsxCell(value: unknown, column: ExportColumn, ref: string): str
     case 'decimal':
     case 'float':
       if (typeof value === 'number' && Number.isFinite(value)) {
-        return `<c r="${ref}"><v>${value}</v></c>`;
+        const style = numberStyle ? ` s="${numberStyle}"` : '';
+        return `<c r="${ref}"${style}><v>${value}</v></c>`;
       }
       // Wider than a double holds exactly, so it stays exact text
       return inlineString(ref, String(value));
@@ -177,29 +182,58 @@ const WORKBOOK_RELS =
   `<Relationship Id="rId2" Type="${NS_REL}/styles" Target="styles.xml"/>` +
   '</Relationships>';
 
-const STYLES =
-  `${XML_DECL}<styleSheet xmlns="${NS_MAIN}">` +
-  '<numFmts count="3">' +
-  '<numFmt numFmtId="164" formatCode="yyyy\\-mm\\-dd"/>' +
-  '<numFmt numFmtId="165" formatCode="yyyy\\-mm\\-dd\\ hh:mm:ss"/>' +
-  '<numFmt numFmtId="166" formatCode="hh:mm:ss"/>' +
-  '</numFmts>' +
-  '<fonts count="2">' +
-  '<font><sz val="10"/><name val="Arial"/><family val="2"/></font>' +
-  '<font><b/><sz val="10"/><name val="Arial"/><family val="2"/></font>' +
-  '</fonts>' +
-  '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
-  '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
-  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-  '<cellXfs count="5">' +
-  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
-  '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
-  '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
-  '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
-  '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
-  '</cellXfs>' +
-  '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
-  '</styleSheet>';
+/** Cell styles before the decimal formats: default, header, date, timestamp, time. */
+const FIXED_STYLE_COUNT = 5;
+
+/** Most decimal places a format shows. Db2 allows up to 63. */
+const MAX_FORMAT_SCALE = 15;
+
+/**
+ * Number format for a decimal scale: `#,##0.00` for scale 2. The thousands
+ * separator and decimal point follow the reader's locale.
+ */
+export function decimalFormat(scale: number): string {
+  return `#,##0.${'0'.repeat(scale)}`;
+}
+
+/**
+ * styles.xml with a format for each decimal scale the sheet uses. The scale
+ * with index i gets cell style FIXED_STYLE_COUNT + i.
+ */
+function stylesXml(scales: readonly number[]): string {
+  const decimalFormats = scales
+    .map((scale, index) => `<numFmt numFmtId="${167 + index}" formatCode="${decimalFormat(scale)}"/>`)
+    .join('');
+  const decimalStyles = scales
+    .map((_scale, index) => `<xf numFmtId="${167 + index}" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`)
+    .join('');
+  return (
+    `${XML_DECL}<styleSheet xmlns="${NS_MAIN}">` +
+    `<numFmts count="${3 + scales.length}">` +
+    '<numFmt numFmtId="164" formatCode="yyyy\\-mm\\-dd"/>' +
+    '<numFmt numFmtId="165" formatCode="yyyy\\-mm\\-dd\\ hh:mm:ss"/>' +
+    '<numFmt numFmtId="166" formatCode="hh:mm:ss"/>' +
+    decimalFormats +
+    '</numFmts>' +
+    '<fonts count="2">' +
+    '<font><sz val="10"/><name val="Arial"/><family val="2"/></font>' +
+    '<font><b/><sz val="10"/><name val="Arial"/><family val="2"/></font>' +
+    '</fonts>' +
+    '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    `<cellXfs count="${FIXED_STYLE_COUNT + scales.length}">` +
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    decimalStyles +
+    '</cellXfs>' +
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+    '</styleSheet>'
+  );
+}
 
 function workbookXml(sheetName: string, filterRef: string | undefined): string {
   const defined = filterRef
@@ -224,6 +258,10 @@ export class XlsxWriter implements ExportWriter {
   private readonly sheet: ZipDeflate;
   private readonly sheetName: string;
   private columns: readonly ExportColumn[] = [];
+  /** Decimal scales with a number format, in style order. */
+  private scales: number[] = [];
+  /** Style for numeric values per column, from its scale. */
+  private numberStyles: Array<number | undefined> = [];
   private rowNumber = 0;
   private written: Promise<void> = Promise.resolve();
   private zipError: Error | undefined;
@@ -275,6 +313,18 @@ export class XlsxWriter implements ExportWriter {
 
   async writeHeader(columns: readonly ExportColumn[]): Promise<void> {
     this.columns = columns;
+    // A decimal with digits after the point shows them all, so 72.5 in a DECIMAL(9,2) reads 72.50
+    this.numberStyles = columns.map((column) => {
+      if (column.kind !== 'decimal' || column.masked || !column.scale || column.scale < 1) {
+        return undefined;
+      }
+      const scale = Math.min(column.scale, MAX_FORMAT_SCALE);
+      let index = this.scales.indexOf(scale);
+      if (index < 0) {
+        index = this.scales.push(scale) - 1;
+      }
+      return FIXED_STYLE_COUNT + index;
+    });
     const cols = columns
       .map((column, index) => `<col min="${index + 1}" max="${index + 1}" width="${widthFor(column.name)}" customWidth="1"/>`)
       .join('');
@@ -307,7 +357,7 @@ export class XlsxWriter implements ExportWriter {
       }
       const r = this.rowNumber;
       const cells = this.columns
-        .map((column, index) => xlsxCell(row[index], column, `${columnLetters(index)}${r}`))
+        .map((column, index) => xlsxCell(row[index], column, `${columnLetters(index)}${r}`, this.numberStyles[index]))
         .join('');
       parts.push(`<row r="${r}">${cells}</row>`);
     }
@@ -330,7 +380,7 @@ export class XlsxWriter implements ExportWriter {
     addPart('_rels/.rels', ROOT_RELS);
     addPart('xl/workbook.xml', workbookXml(this.sheetName, filterRef));
     addPart('xl/_rels/workbook.xml.rels', WORKBOOK_RELS);
-    addPart('xl/styles.xml', STYLES);
+    addPart('xl/styles.xml', stylesXml(this.scales));
     this.zip.end();
 
     await this.ended;

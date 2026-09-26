@@ -71,8 +71,32 @@ export type ExportQueryResult = SqlErrorDetails & {
   url?: string;
   /** ISO time the file or link expires. */
   expiresAt?: string;
-  singleUse?: boolean;
+  /** How many times the link can be downloaded before it stops working. */
+  downloadsAllowed?: number;
 };
+
+/** U+FFFD, which a decoder puts in place of bytes it could not convert. */
+const REPLACEMENT_CHARACTER = '�';
+
+/**
+ * True when a number read from a DECIMAL may have lost digits: it has 15 or
+ * more significant digits, the most a double holds exactly. toExponential()
+ * gives the shortest digits that identify the double.
+ */
+export function mayHaveLostDigits(value: number): boolean {
+  if (!Number.isFinite(value)) {
+    return false;
+  }
+  if (Math.abs(value) >= 1e15) {
+    return true;
+  }
+  const digits = Math.abs(value).toExponential().split('e')[0].replace('.', '').replace(/0+$/, '');
+  return digits.length >= 15;
+}
+
+function columnList(names: readonly string[], indexes: ReadonlySet<number>): string {
+  return [...indexes].sort((a, b) => a - b).map((index) => names[index]).join(', ');
+}
 
 /** The export ran past EXPORT_TIMEOUT. */
 class ExportTimeoutError extends Error {
@@ -221,14 +245,20 @@ export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQu
       return { success: false, error: maskError };
     }
     const masks: Array<MaskRule | undefined> = names.map((name) => prepared.maskRules.get(name.toUpperCase()));
-    // A masked column is text, so its rounding does not matter
-    const lossyColumns = cursor.columns
-      .filter((column, index) => column.lossy && masks[index] === undefined)
-      .map((column) => column.name);
+    // Masked columns are text, so neither check below applies to them
+    const lossyIndexes = cursor.columns.flatMap((column, index) =>
+      column.lossy && masks[index] === undefined ? [index] : []
+    );
+    const textIndexes = cursor.columns.flatMap((column, index) =>
+      (column.kind === 'string' || column.kind === 'other') && masks[index] === undefined ? [index] : []
+    );
+    const rounded = new Set<number>();
+    const garbled = new Set<number>();
     const columns: ExportColumn[] = cursor.columns.map((column, index) => ({
       name: column.name,
       kind: column.kind,
       masked: masks[index] !== undefined,
+      scale: column.scale,
     }));
 
     writer = format === 'csv' ? new CsvWriter(slot.partPath) : new XlsxWriter(slot.partPath);
@@ -251,6 +281,20 @@ export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQu
           return rule ? maskValue(value, rule) : value;
         })
       );
+      for (const row of rows) {
+        for (const index of lossyIndexes) {
+          const value = row[index];
+          if (typeof value === 'number' && mayHaveLostDigits(value)) {
+            rounded.add(index);
+          }
+        }
+        for (const index of textIndexes) {
+          const value = row[index];
+          if (typeof value === 'string' && value.includes(REPLACEMENT_CHARACTER)) {
+            garbled.add(index);
+          }
+        }
+      }
       for (const row of rows) {
         if (sample.length >= SAMPLE_ROWS) break;
         sample.push(Object.fromEntries(names.map((name, index) => [name, row[index]])));
@@ -285,15 +329,26 @@ export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQu
       sample,
       expiresAt: new Date(entry.expiresAt).toISOString(),
     };
-    if (lossyColumns.length > 0) {
-      result.warnings = [
-        `The ODBC driver rounds DECIMAL and NUMERIC values past 15 digits, so ${lossyColumns.join(', ')} may not be exact. ` +
-          'Select the column as CAST(<column> AS VARCHAR(40)) to keep every digit, or use the jt400 or mapepire driver.',
-      ];
+    const warnings: string[] = [];
+    if (rounded.size > 0) {
+      warnings.push(
+        `${columnList(names, rounded)} had values with 15 or more significant digits. The ODBC driver reads DECIMAL and ` +
+          'NUMERIC as floating-point numbers, so digits past the 15th may be rounded. Use the jt400 or mapepire driver for exact values.'
+      );
+    }
+    if (garbled.size > 0) {
+      warnings.push(
+        `Text in ${columnList(names, garbled)} contains the replacement character �, so some characters were lost when ` +
+          'the text was decoded. With the odbc driver, set CCSID=1208 in DB2I_ODBC_OPTIONS, or use the jt400 or mapepire driver. ' +
+          'Tell the user before they rely on the file.'
+      );
+    }
+    if (warnings.length > 0) {
+      result.warnings = warnings;
     }
     if (input.delivery === 'link') {
       result.url = `${config.publicUrl}/exports/${entry.id}`;
-      result.singleUse = config.singleUse;
+      result.downloadsAllowed = config.maxDownloads;
     } else {
       result.path = entry.path;
     }
