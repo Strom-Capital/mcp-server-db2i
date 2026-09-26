@@ -12,6 +12,9 @@ const questions = [
 
 const siteUrl = new URL(url('/'), Astro.site).href;
 
+/** The docs assistant needs the Mintlify widget. Without it, "Ask the docs" would only open the technical docs. */
+const hasDocsAssistant = Boolean(import.meta.env.PUBLIC_MINTLIFY_WIDGET_ID);
+
 const emailSubject = 'Could we try an AI assistant on our ERP data?';
 
 const summary = `Hi,
@@ -46,8 +49,8 @@ Thanks!`;
         from live data. Your reports and tools stay as they are.
       </p>
       <div class="btn-row">
-        <a class="btn btn--primary" href={links.docs} data-ask-docs="business-hero">Ask the docs</a>
-        <a class="link-rule" href="#send-to-it">Send this to your IT team</a>
+        <a class="btn btn--primary" href="#send-to-it">Send this to your IT team <span aria-hidden="true">↓</span></a>
+        {hasDocsAssistant && <a class="link-rule" href={links.docs} data-ask-docs="business-hero">Ask the docs</a>}
       </div>
     </div>
   </section>
