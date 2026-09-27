@@ -51,7 +51,7 @@ Example client config (Claude Desktop, Cursor):
     "mcpServers": {
       "db2i": {
         "command": "npx",
-        "args": ["-y", "mcp-server-db2i"],
+        "args": ["-y", "mcp-server-db2i@latest"],
         "env": {
           "DB2I_HOSTNAME": "ibmi.example.com",
           "DB2I_USERNAME": "MYUSER",

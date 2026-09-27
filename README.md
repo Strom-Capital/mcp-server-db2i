@@ -110,7 +110,7 @@ npm install -g mcp-server-db2i node-jt400              # DB2I_DRIVER=jt400, need
 npm install -g mcp-server-db2i @ibm/mapepire-js ssh2   # DB2I_DRIVER=mapepire, when only SSH reaches the IBM i
 ```
 
-With npx, pass them with `-p`, for example `npx -y -p mcp-server-db2i -p node-jt400 mcp-server-db2i`. See [Installing the jt400 and mapepire packages](docs/configuration.md#installing-the-jt400-and-mapepire-packages).
+With npx, pass them with `-p`, for example `npx -y -p mcp-server-db2i@latest -p node-jt400 mcp-server-db2i`. See [Installing the jt400 and mapepire packages](docs/configuration.md#installing-the-jt400-and-mapepire-packages).
 
 Or with Docker:
 
@@ -139,7 +139,7 @@ Add to your MCP client config (e.g., `~/.cursor/mcp.json`):
   "mcpServers": {
     "db2i": {
       "command": "npx",
-      "args": ["mcp-server-db2i"],
+      "args": ["-y", "mcp-server-db2i@latest"],
       "env": {
         "DB2I_HOSTNAME": "${env:DB2I_HOSTNAME}",
         "DB2I_USERNAME": "${env:DB2I_USERNAME}",

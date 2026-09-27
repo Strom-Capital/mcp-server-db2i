@@ -77,14 +77,14 @@ export function findMissingDriverPackages(
  */
 export function driverInstallHelp(driver: DbDriverName, packages: readonly string[] = DRIVER_PACKAGES[driver]): string {
   const npxPackages = packages.map((name) => `-p ${name}`).join(' ');
-  const args = ['-y', '-p', 'mcp-server-db2i', ...packages.flatMap((name) => ['-p', name]), 'mcp-server-db2i']
+  const args = ['-y', '-p', 'mcp-server-db2i@latest', ...packages.flatMap((name) => ['-p', name]), 'mcp-server-db2i']
     .map((arg) => JSON.stringify(arg))
     .join(', ');
   const lines = [
     `The ${driver} driver needs ${packages.join(' and ')}, which ${packages.length === 1 ? 'is' : 'are'} not installed by default.`,
     '',
     `With npx, add ${packages.length === 1 ? 'it' : 'them'} to the same command:`,
-    `  npx -y -p mcp-server-db2i ${npxPackages} mcp-server-db2i`,
+    `  npx -y -p mcp-server-db2i@latest ${npxPackages} mcp-server-db2i`,
     '',
     `  In a client config: "command": "npx", "args": [${args}]`,
     '',

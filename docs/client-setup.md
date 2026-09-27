@@ -24,7 +24,7 @@ This guide covers setting up mcp-server-db2i with MCP-compatible clients. The JS
 - **All platforms**: `~/.claude.json`
 - **Project-specific**: `.mcp.json` in project root
 - **Env var syntax**: `${VAR_NAME}`
-- **CLI**: `claude mcp add --scope user db2i -- npx mcp-server-db2i`
+- **CLI**: `claude mcp add --scope user db2i -- npx -y mcp-server-db2i@latest`
 
 ## Setup Options
 
@@ -113,7 +113,7 @@ export DB2I_PASSWORD="your-password"
   "mcpServers": {
     "db2i": {
       "command": "npx",
-      "args": ["mcp-server-db2i"],
+      "args": ["-y", "mcp-server-db2i@latest"],
       "env": {
         "DB2I_HOSTNAME": "${env:DB2I_HOSTNAME}",
         "DB2I_USERNAME": "${env:DB2I_USERNAME}",
@@ -124,10 +124,18 @@ export DB2I_PASSWORD="your-password"
 }
 ```
 
+#### Choosing a version
+
+`mcp-server-db2i@latest` makes npx ask npm for the newest release each time the client starts the server, so you get fixes without doing anything. Without a version, npx keeps running whichever version it cached first and never updates it.
+
+To upgrade on your own schedule, for example on a shared or production setup, pin an exact version instead: `"args": ["-y", "mcp-server-db2i@3.0.0"]`. Major versions can change setup steps, so read the [changelog](https://github.com/Strom-Capital/mcp-server-db2i/blob/main/CHANGELOG.md) before moving to a new one.
+
+#### Drivers that need extra packages
+
 The `jt400` and `mapepire` drivers need packages that npx does not install by default. Pass them with `-p`:
 
 ```json
-"args": ["-y", "-p", "mcp-server-db2i", "-p", "node-jt400", "mcp-server-db2i"]
+"args": ["-y", "-p", "mcp-server-db2i@latest", "-p", "node-jt400", "mcp-server-db2i"]
 ```
 
 For `mapepire`, use `"-p", "@ibm/mapepire-js", "-p", "ssh2"` instead of `"-p", "node-jt400"`. Set `DB2I_DRIVER` in `env` as well. See [Installing the jt400 and mapepire packages](configuration.md#installing-the-jt400-and-mapepire-packages).
@@ -141,7 +149,7 @@ For `mapepire`, use `"-p", "@ibm/mapepire-js", "-p", "ssh2"` instead of `"-p", "
   "mcpServers": {
     "db2i": {
       "command": "npx",
-      "args": ["mcp-server-db2i"],
+      "args": ["-y", "mcp-server-db2i@latest"],
       "env": {
         "DB2I_HOSTNAME": "your-host",
         "DB2I_USERNAME": "your-user",
@@ -227,7 +235,7 @@ Enable debug logging for troubleshooting:
   "mcpServers": {
     "db2i": {
       "command": "npx",
-      "args": ["mcp-server-db2i"],
+      "args": ["-y", "mcp-server-db2i@latest"],
       "env": {
         "DB2I_HOSTNAME": "your-host",
         "DB2I_USERNAME": "your-user",
@@ -328,7 +336,7 @@ You can configure multiple IBM i connections:
   "mcpServers": {
     "db2i-prod": {
       "command": "npx",
-      "args": ["mcp-server-db2i"],
+      "args": ["-y", "mcp-server-db2i@latest"],
       "env": {
         "DB2I_HOSTNAME": "prod-ibmi.example.com",
         "DB2I_USERNAME": "produser",
@@ -338,7 +346,7 @@ You can configure multiple IBM i connections:
     },
     "db2i-dev": {
       "command": "npx",
-      "args": ["mcp-server-db2i"],
+      "args": ["-y", "mcp-server-db2i@latest"],
       "env": {
         "DB2I_HOSTNAME": "dev-ibmi.example.com",
         "DB2I_USERNAME": "devuser",
@@ -373,7 +381,7 @@ export DB2I_PASSWORD="your-password"
   "mcpServers": {
     "db2i": {
       "command": "npx",
-      "args": ["mcp-server-db2i"],
+      "args": ["-y", "mcp-server-db2i@latest"],
       "env": {
         "DB2I_HOSTNAME": "${DB2I_HOSTNAME}",
         "DB2I_USERNAME": "${DB2I_USERNAME}",
@@ -390,10 +398,10 @@ This keeps credentials out of config files - Claude Code expands `${VAR}` at run
 
 ```bash
 # Add server (credentials from shell environment)
-claude mcp add --scope user db2i -- npx mcp-server-db2i
+claude mcp add --scope user db2i -- npx -y mcp-server-db2i@latest
 
 # With the jt400 driver, add its package to the npx command
-claude mcp add --scope user db2i -e DB2I_DRIVER=jt400 -- npx -y -p mcp-server-db2i -p node-jt400 mcp-server-db2i
+claude mcp add --scope user db2i -e DB2I_DRIVER=jt400 -- npx -y -p mcp-server-db2i@latest -p node-jt400 mcp-server-db2i
 
 # Verify installation
 claude mcp list

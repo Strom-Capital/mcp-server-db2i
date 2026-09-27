@@ -30,7 +30,7 @@ description: "Install mcp-server-db2i, point it at an IBM i, and connect an MCP 
     npm install -g mcp-server-db2i @ibm/mapepire-js ssh2   # mapepire
     ```
 
-    With npx, pass them with `-p` instead: `"args": ["-y", "-p", "mcp-server-db2i", "-p", "node-jt400", "mcp-server-db2i"]`. See [Installing the jt400 and mapepire packages](/configuration#installing-the-jt400-and-mapepire-packages).
+    With npx, pass them with `-p` instead: `"args": ["-y", "-p", "mcp-server-db2i@latest", "-p", "node-jt400", "mcp-server-db2i"]`. See [Installing the jt400 and mapepire packages](/configuration#installing-the-jt400-and-mapepire-packages).
   </Step>
 
   <Step title="Add it to your MCP client">
@@ -41,7 +41,7 @@ description: "Install mcp-server-db2i, point it at an IBM i, and connect an MCP 
       "mcpServers": {
         "db2i": {
           "command": "npx",
-          "args": ["mcp-server-db2i"],
+          "args": ["-y", "mcp-server-db2i@latest"],
           "env": {
             "DB2I_HOSTNAME": "${env:DB2I_HOSTNAME}",
             "DB2I_USERNAME": "${env:DB2I_USERNAME}",
@@ -55,8 +55,10 @@ description: "Install mcp-server-db2i, point it at an IBM i, and connect an MCP 
     The `${env:...}` references keep credentials out of the config file. Set the variables in your shell profile (`~/.zshrc` or `~/.bashrc`). Claude Code uses `${VAR_NAME}` instead, and can add the server with:
 
     ```bash
-    claude mcp add --scope user db2i -- npx mcp-server-db2i
+    claude mcp add --scope user db2i -- npx -y mcp-server-db2i@latest
     ```
+
+    `@latest` makes npx check for a new release each time the client starts the server. Without it, npx keeps running the version it cached first. To upgrade on your own schedule instead, pin a version, such as `mcp-server-db2i@3.0.0`. See [Choosing a version](/client-setup#choosing-a-version).
 
     See [Client setup](/client-setup) for config paths in Cursor, Claude Desktop, and Claude Code, and for Docker-based setups.
   </Step>
