@@ -14,9 +14,18 @@ const config = {
 };
 ---
 {widgetId && (
-  <>
-    <script is:inline type="module" src="https://widget.mintlify.com/v1/embed.js"></script>
-    <script is:inline type="module" define:vars={{ config }}>
+  <script is:inline type="module" define:vars={{ config }}>
+    // The widget is about 400 KiB of JavaScript, so it loads after the page has
+    // rendered (or on the first "Ask the docs" click, whichever comes first).
+    let ready;
+    const load = () => (ready ??= new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.src = 'https://widget.mintlify.com/v1/embed.js';
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.append(script);
+    }).then(async () => {
       const saved = (() => { try { return localStorage.getItem('theme'); } catch { return null; } })();
       if (saved === 'light' || saved === 'dark') config.appearance.theme = saved;
       await window.MintlifyAssistant.init(config);
@@ -24,12 +33,20 @@ const config = {
       document.addEventListener('themechange', (event) => {
         void window.MintlifyAssistant.update({ appearance: { theme: event.detail } });
       });
-      for (const el of document.querySelectorAll('[data-ask-docs]')) {
-        el.addEventListener('click', (event) => {
-          event.preventDefault();
-          void window.MintlifyAssistant.open({ source: el.getAttribute('data-ask-docs') || 'site', focus: true });
-        });
-      }
-    </script>
-  </>
+    }));
+
+    for (const el of document.querySelectorAll('[data-ask-docs]')) {
+      el.addEventListener('click', (event) => {
+        event.preventDefault();
+        load().then(
+          () => window.MintlifyAssistant.open({ source: el.getAttribute('data-ask-docs') || 'site', focus: true }),
+          () => { location.href = el.href; },
+        );
+      });
+    }
+
+    const idle = () => ('requestIdleCallback' in window ? requestIdleCallback(() => load(), { timeout: 3000 }) : setTimeout(load, 1000));
+    if (document.readyState === 'complete') idle();
+    else addEventListener('load', idle, { once: true });
+  </script>
 )}
