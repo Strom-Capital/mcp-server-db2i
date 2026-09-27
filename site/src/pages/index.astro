@@ -8,12 +8,14 @@ import Compare from '../components/Compare.astro';
 import PostList from '../components/PostList.astro';
 import { getPosts } from '../lib/posts';
 import { links, url } from '../lib/links';
+import { homeJsonLd } from '../lib/structuredData';
 
 const latest = (await getPosts()).slice(0, 3);
 ---
 <Base
   title="Db2 for i MCP Server"
   description="An open-source MCP server that lets Claude, Cursor and other AI assistants read IBM Db2 for i. Read-only by design, with a library allowlist, masking, OAuth sign-in and an audit log."
+  jsonLd={homeJsonLd(Astro.site!)}
 >
   <Hero />
   <FeatureGrid />
