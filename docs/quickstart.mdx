@@ -11,7 +11,7 @@ description: "Install mcp-server-db2i, point it at an IBM i, and connect an MCP 
     |--------|-----|-------|
     | `odbc` (default) | nothing | unixODBC and the IBM i Access ODBC Driver on the machine that runs the server. No Java. |
     | `jt400` | `DB2I_DRIVER=jt400` | A JDK when you run `npm install`, and a JRE 11 or higher at runtime. |
-    | `mapepire` | `DB2I_DRIVER=mapepire` | SSH access to the IBM i, and Java 8 or higher on the IBM i. Nothing to install on the IBM i. |
+    | `mapepire` | `DB2I_DRIVER=mapepire` | SSH access to the IBM i, and Java 8 or higher on the IBM i. No administrator install: the first connection uploads the Mapepire JAR (about 10 MB) to the user's home directory. |
 
     See [Database drivers](/configuration#database-drivers) for install steps per platform.
   </Step>
