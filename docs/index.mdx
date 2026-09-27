@@ -27,47 +27,8 @@ It connects through the IBM i Access ODBC driver by default. It can also use the
 
 Local clients such as Claude Desktop, Claude Code, and Cursor start the server as a process and talk over stdio. Remote clients connect over Streamable HTTP at `/mcp`, signing in with OAuth 2.1 (claude.ai custom connectors) or a bearer token (custom agents). One server can reach several IBM i systems through connection profiles, each with its own driver.
 
-```mermaid
-graph LR
-    subgraph clients ["AI Clients"]
-        local("Claude Desktop, Claude Code, Cursor")
-        remote("claude.ai connectors")
-        agents("Custom Agents")
-    end
-
-    subgraph server ["MCP Server"]
-        stdio["stdio"]
-        http["Streamable HTTP + Auth"]
-        tools[["MCP Tools"]]
-        profiles{{"System profiles"}}
-        odbc["IBM i Access ODBC"]
-        jdbc["JT400 JDBC (optional)"]
-        mapepire["Mapepire over SSH (optional)"]
-    end
-
-    subgraph prod ["IBM i: prod"]
-        db2prod[("Db2 for i")]
-    end
-
-    subgraph test ["IBM i: test"]
-        db2test[("Db2 for i")]
-    end
-
-    subgraph dev ["IBM i: dev"]
-        db2dev[("Db2 for i")]
-    end
-
-    local -->|local process| stdio
-    local -.->|remote URL| http
-    remote -->|OAuth 2.1| http
-    agents -->|bearer token| http
-    stdio & http --> tools
-    tools --> profiles
-    profiles --> odbc & jdbc & mapepire
-    odbc -->|ODBC| db2prod
-    jdbc -->|JDBC| db2test
-    mapepire -->|SSH| db2dev
-```
+<img className="block dark:hidden" src="/assets/architecture-light.svg" alt="Architecture: local clients (Claude Desktop, Cursor, VS Code, Claude Code) start the server over stdio, and remote clients (claude.ai, Claude for Excel, custom agents) reach it over HTTPS with OAuth 2.1 or a token. Every call passes the SQL validator, the library allowlist, column masking, the query timeout and the audit log. The server reaches Db2 for i through the IBM i Access ODBC driver or JT400 JDBC via the database host server, or Mapepire over SSH, on a read-only connection." />
+<img className="hidden dark:block" src="/assets/architecture-dark.svg" alt="Architecture: local clients (Claude Desktop, Cursor, VS Code, Claude Code) start the server over stdio, and remote clients (claude.ai, Claude for Excel, custom agents) reach it over HTTPS with OAuth 2.1 or a token. Every call passes the SQL validator, the library allowlist, column masking, the query timeout and the audit log. The server reaches Db2 for i through the IBM i Access ODBC driver or JT400 JDBC via the database host server, or Mapepire over SSH, on a read-only connection." />
 
 ## Features
 
