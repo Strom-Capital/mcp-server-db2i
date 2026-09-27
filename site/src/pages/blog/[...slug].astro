@@ -3,6 +3,7 @@ import { render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import { getPosts } from '../../lib/posts';
 import { formatDate, links, url } from '../../lib/links';
+import { postJsonLd } from '../../lib/structuredData';
 
 export async function getStaticPaths() {
   const posts = await getPosts();
@@ -12,7 +13,7 @@ export async function getStaticPaths() {
 const { post } = Astro.props;
 const { Content } = await render(post);
 ---
-<Base title={post.data.title} description={post.data.description} type="article">
+<Base title={post.data.title} description={post.data.description} type="article" jsonLd={postJsonLd(post, Astro.site!)}>
   <article class="section">
     <div class="container">
       <div class="post-head">
