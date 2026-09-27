@@ -38,7 +38,7 @@ import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { createServer, pinStdioServer, SERVER_NAME, SERVER_VERSION } from './server.js';
 import { startCustomToolsWatch } from './customTools/watch.js';
-import { parseCliArgs, runValidateTools } from './cli.js';
+import { missingConnectionHelp, parseCliArgs, runValidateTools } from './cli.js';
 import { loadCustomToolsFromEnv } from './customTools/loader.js';
 import { initAuditLog } from './utils/auditLog.js';
 import { initExportStore } from './export/store.js';
@@ -185,6 +185,9 @@ async function main(): Promise<void> {
     } else if (httpEnabled) {
       logger.info('MCP server running with HTTP transport only');
     }
+    if (stdioEnabled && process.stdin.isTTY) {
+      logger.info('Started from a terminal. MCP clients start this command themselves; press Ctrl+C to stop.');
+    }
 
     // Handle shutdown gracefully. SIGHUP is what a closing terminal sends.
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
@@ -246,7 +249,17 @@ function warnConnectionSecurity(system: SystemProfile, profiles: boolean): void 
 }
 
 const command = parseCliArgs(process.argv.slice(2));
-if (command.kind === 'serve') {
+const setupHelp = command.kind === 'serve' ? missingConnectionHelp() : null;
+if (setupHelp) {
+  process.stderr.write(setupHelp);
+  process.exit(1);
+} else if (command.kind === 'help') {
+  process.stdout.write(command.message);
+  process.exit(0);
+} else if (command.kind === 'version') {
+  process.stdout.write(`${SERVER_VERSION}\n`);
+  process.exit(0);
+} else if (command.kind === 'serve') {
   main().catch((error) => {
     logger.fatal({ err: error }, 'Fatal error during server startup');
     flushLogger();

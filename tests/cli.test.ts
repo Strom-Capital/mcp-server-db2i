@@ -22,7 +22,7 @@ vi.mock('../src/db/connection.js', () => ({
 }));
 
 import { closeGlobalPool } from '../src/db/connection.js';
-import { parseCliArgs, runValidateTools } from '../src/cli.js';
+import { missingConnectionHelp, parseCliArgs, runValidateTools } from '../src/cli.js';
 
 const dirs: string[] = [];
 
@@ -268,3 +268,25 @@ function restoreDbEnv(previous: { host?: string; user?: string; password?: strin
   if (previous.password === undefined) delete process.env.DB2I_PASSWORD;
   else process.env.DB2I_PASSWORD = previous.password;
 }
+
+describe('help, version and first-run setup', () => {
+  it('parses --help and --version', () => {
+    expect(parseCliArgs(['--help']).kind).toBe('help');
+    expect(parseCliArgs(['-h']).kind).toBe('help');
+    expect(parseCliArgs(['--version'])).toEqual({ kind: 'version' });
+    expect(parseCliArgs(['-v'])).toEqual({ kind: 'version' });
+  });
+
+  it('shows setup help when stdio has no connection settings', () => {
+    const help = missingConnectionHelp({});
+    expect(help).toContain('DB2I_HOSTNAME');
+    expect(help).toContain('"command": "npx"');
+  });
+
+  it('stays quiet when a host, a profiles file or HTTP only is configured', () => {
+    expect(missingConnectionHelp({ DB2I_HOSTNAME: 'ibmi.example.com' })).toBeNull();
+    expect(missingConnectionHelp({ DB2I_PROFILES: 'profiles.yaml' })).toBeNull();
+    expect(missingConnectionHelp({ MCP_TRANSPORT: 'http' })).toBeNull();
+    expect(missingConnectionHelp({ MCP_TRANSPORT: 'both' })).not.toBeNull();
+  });
+});
