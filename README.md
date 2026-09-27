@@ -260,6 +260,10 @@ Contributions are welcome! See the [Development Guide](docs/development.md) for 
 
 MIT License - see [LICENSE](LICENSE) for details.
 
+## Trademarks
+
+IBM, IBM i and Db2 are trademarks of International Business Machines Corporation. This project is not affiliated with or endorsed by IBM.
+
 ## Acknowledgments
 
 - [node-jt400](https://www.npmjs.com/package/node-jt400) - JT400 JDBC driver wrapper for Node.js
