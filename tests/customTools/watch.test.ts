@@ -57,12 +57,17 @@ tools:
 `;
 }
 
-async function waitFor(check: () => boolean): Promise<void> {
+async function waitFor(check: () => boolean, retry?: () => void): Promise<void> {
   // fs.watch events can lag when the whole suite runs in parallel
   const deadline = Date.now() + 5000;
+  let nextRetry = Date.now() + 200;
   while (Date.now() < deadline) {
     if (check()) {
       return;
+    }
+    if (retry && Date.now() >= nextRetry) {
+      retry();
+      nextRetry = Date.now() + 200;
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
@@ -154,8 +159,12 @@ describe('custom tools watch', () => {
     const listChanged = vi.spyOn(server, 'sendToolListChanged');
     startCustomToolsWatch({ debounceMs: 30 });
 
-    writeFileSync(orders, toolYaml('search_sales_orders', 'Closed sales orders'));
-    await waitFor(() => liveCustomTool(server, 'search_sales_orders')?.description === 'Closed sales orders');
+    // On macOS fs.watch starts its FSEvents stream after watch() returns, and a
+    // write before the stream is running is never reported. Repeat the first
+    // write until it lands. Once one event arrives, later writes are seen.
+    const editOrders = () => writeFileSync(orders, toolYaml('search_sales_orders', 'Closed sales orders'));
+    editOrders();
+    await waitFor(() => liveCustomTool(server, 'search_sales_orders')?.description === 'Closed sales orders', editOrders);
     expect(listChanged).toHaveBeenCalled();
     expect(getCustomTools().tools[0]?.description).toBe('Closed sales orders');
 
