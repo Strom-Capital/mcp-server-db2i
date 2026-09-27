@@ -5,6 +5,7 @@
  */
 import { Code } from 'astro:components';
 import type { ComponentProps } from 'astro/types';
+import { shikiContrast } from '../lib/shikiContrast';
 
 type Lang = ComponentProps<typeof Code>['lang'];
 
@@ -16,4 +17,4 @@ interface Props {
 }
 const { code, lang, title } = Astro.props;
 ---
-<Code code={code} lang={lang} themes={{ light: 'vitesse-light', dark: 'vitesse-dark' }} defaultColor={false} data-title={title} />
+<Code code={code} lang={lang} themes={{ light: 'vitesse-light', dark: 'vitesse-dark' }} defaultColor={false} transformers={[shikiContrast]} data-title={title} />
