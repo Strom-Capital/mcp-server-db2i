@@ -10,8 +10,8 @@ description: "Install mcp-server-db2i, point it at an IBM i, and connect an MCP 
     | Driver | Set | Needs |
     |--------|-----|-------|
     | `odbc` (default) | nothing | unixODBC and the IBM i Access ODBC Driver on the machine that runs the server. No Java. |
-    | `jt400` | `DB2I_DRIVER=jt400` | A JDK when you run `npm install`, and a JRE 11 or higher at runtime. |
-    | `mapepire` | `DB2I_DRIVER=mapepire` | SSH access to the IBM i, and Java 8 or higher on the IBM i. No administrator install: the first connection uploads the Mapepire JAR (about 10 MB) to the user's home directory. |
+    | `jt400` | `DB2I_DRIVER=jt400` | The `node-jt400` package, a JDK to install it, and a JRE 11 or higher at runtime. |
+    | `mapepire` | `DB2I_DRIVER=mapepire` | The `@ibm/mapepire-js` and `ssh2` packages, SSH access to the IBM i, and Java 8 or higher on the IBM i. No administrator install: the first connection uploads the Mapepire JAR (about 10 MB) to the user's home directory. |
 
     See [Database drivers](/configuration#database-drivers) for install steps per platform.
   </Step>
@@ -22,6 +22,15 @@ description: "Install mcp-server-db2i, point it at an IBM i, and connect an MCP 
     ```
 
     Or run it with `npx mcp-server-db2i` from the client config, as in the next step. To run it in a container instead, see [Docker](/docker).
+
+    Only the `odbc` driver installs with the server. For `jt400` or `mapepire`, add its packages:
+
+    ```bash
+    npm install -g mcp-server-db2i node-jt400              # jt400
+    npm install -g mcp-server-db2i @ibm/mapepire-js ssh2   # mapepire
+    ```
+
+    With npx, pass them with `-p` instead: `"args": ["-y", "-p", "mcp-server-db2i", "-p", "node-jt400", "mcp-server-db2i"]`. See [Installing the jt400 and mapepire packages](/configuration#installing-the-jt400-and-mapepire-packages).
   </Step>
 
   <Step title="Add it to your MCP client">

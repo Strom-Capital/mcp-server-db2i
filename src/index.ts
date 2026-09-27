@@ -33,6 +33,7 @@ import {
   getQueryTimeoutSeconds,
 } from './config.js';
 import { initializePool, testConnection, closeGlobalPool, pendingPoolCloses } from './db/connection.js';
+import { findMissingDriverPackages, missingDriverPackagesMessage } from './db/driverPackages.js';
 import { defaultSystem, getSystems, isProfilesFileConfigured, type SystemProfile } from './systems.js';
 import { logger, flushLogger } from './utils/logger.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
@@ -75,6 +76,17 @@ async function main(): Promise<void> {
     }
     for (const system of systems) {
       warnConnectionSecurity(system, profiles);
+    }
+    // npm leaves out the jt400 and mapepire packages. Say what to install now, not on the first query.
+    const missingPackages = findMissingDriverPackages(
+      systems.map((system) => ({ name: system.name, driver: system.config.driver })),
+      { profiles }
+    );
+    if (missingPackages.length > 0) {
+      logger.fatal({ missing: missingPackages }, 'Database driver packages are not installed');
+      flushLogger();
+      process.stderr.write(`\n${missingDriverPackagesMessage(missingPackages)}`);
+      process.exit(1);
     }
 
     // Validates tool files and MCP_TOOLS_ENABLED / MCP_TOOLS_DISABLED before any transport starts

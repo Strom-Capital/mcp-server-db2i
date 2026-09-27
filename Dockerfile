@@ -5,6 +5,8 @@
 # Multi-stage build with two runtime targets:
 #   odbc (default): IBM i Access ODBC driver, no Java
 #   jt400:          JDBC via node-jt400, ships OpenJDK 17 JRE
+# Both include the mapepire driver (@ibm/mapepire-js and ssh2), which needs no
+# Java on this side. Only the jt400 target carries node-jt400.
 #
 #   docker build -t mcp-server-db2i .                        # odbc image
 #   docker build --target jt400 -t mcp-server-db2i:jt400 .   # jt400 image
@@ -49,8 +51,18 @@ COPY src ./src
 # Build TypeScript
 RUN npm run build
 
-# Prune dev dependencies for smaller production image
-RUN npm prune --omit=dev
+# Production node_modules, one set per runtime target. node-jt400, @ibm/mapepire-js
+# and ssh2 are optional peer dependencies that npm leaves out, so each target first
+# lists the ones it needs as dependencies. Versions still come from package-lock.json.
+FROM builder AS deps-odbc
+RUN node -e "const fs=require('fs');const p=require('./package.json');for(const n of process.argv.slice(1)){p.dependencies[n]=p.peerDependencies[n];delete p.devDependencies[n]}fs.writeFileSync('package.json',JSON.stringify(p,null,2))" \
+      @ibm/mapepire-js ssh2 \
+    && npm install --omit=dev --no-audit --no-fund
+
+FROM builder AS deps-jt400
+RUN node -e "const fs=require('fs');const p=require('./package.json');for(const n of process.argv.slice(1)){p.dependencies[n]=p.peerDependencies[n];delete p.devDependencies[n]}fs.writeFileSync('package.json',JSON.stringify(p,null,2))" \
+      node-jt400 @ibm/mapepire-js ssh2 \
+    && npm install --omit=dev --no-audit --no-fund
 
 # Shared runtime layer: application files, user and env placeholders.
 # The driver-specific stages below add their native runtime and set USER.
@@ -61,10 +73,7 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Copy pre-built node_modules from builder (already pruned to production only)
-COPY --from=builder /app/node_modules ./node_modules
-
-# Copy built files from builder stage
+# Copy built files from builder stage. Each target adds its own node_modules.
 COPY --from=builder /app/dist ./dist
 
 # Create non-root user for security, the directory export_query writes to
@@ -82,7 +91,7 @@ ENV DB2I_HOSTNAME=""
 ENV DB2I_USERNAME=""
 ENV DB2I_PASSWORD=""
 ENV DB2I_SCHEMA=""
-# odbc (default) | jt400. Each runtime target sets its own value.
+# odbc (default) | jt400 | mapepire. Each runtime target sets its own value.
 ENV DB2I_DRIVER=""
 ENV DB2I_JDBC_OPTIONS=""
 ENV DB2I_ODBC_OPTIONS=""
@@ -128,6 +137,8 @@ RUN ln -s /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/java-17-openjdk
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
+COPY --from=deps-jt400 /app/node_modules ./node_modules
+
 ENV DB2I_DRIVER="jt400"
 
 USER mcpuser
@@ -154,6 +165,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends ibm-iaccess \
     && apt-get purge -y curl && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=deps-odbc /app/node_modules ./node_modules
 
 ENV DB2I_DRIVER="odbc"
 

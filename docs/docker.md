@@ -280,9 +280,9 @@ Over HTTP, users download through the link and never see the path. Over stdio th
 
 The Dockerfile uses a multi-stage build with two runtime targets:
 
-1. **Builder stage**: Compiles TypeScript to JavaScript and prunes dev dependencies
+1. **Builder stage**: Compiles TypeScript to JavaScript, then installs the production packages for each target. Both include `@ibm/mapepire-js` and `ssh2`; only the `jt400` target includes `node-jt400`
 2. **`odbc` target** (default): unixODBC and the IBM i Access ODBC Driver from IBM's apt repository, no Java. Sets `DB2I_DRIVER=odbc`.
-3. **`jt400` target**: OpenJDK 17 JRE for the JT400 JDBC driver. Sets `DB2I_DRIVER=jt400`.
+3. **`jt400` target**: OpenJDK 17 JRE and `node-jt400` for the JT400 JDBC driver. Sets `DB2I_DRIVER=jt400`.
 
 ```bash
 # ODBC image (default), no JDK or JRE
