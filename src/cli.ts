@@ -1,7 +1,7 @@
 /**
  * Command-line entry points that do not start a transport.
  *
- * `validate-tools` checks YAML tool files and exits.
+ * `validate-tools` checks YAML tool files and exits. `--help` and `--version` print and exit.
  */
 
 import { parseArgs } from 'node:util';
@@ -24,12 +24,51 @@ import {
 
 const USAGE = `Usage: mcp-server-db2i [validate-tools [--connect] <path...>]
 
+  (no arguments)             Start the MCP server (stdio unless MCP_TRANSPORT is set)
   validate-tools <path...>   Check YAML tool files and exit
   --connect                   Also parse each statement with QSYS2.PARSE_STATEMENT
+  -h, --help                 Show this help
+  -v, --version              Show the version
+
+Docs: https://docs.db2i-mcp.com
+`;
+
+const SETUP = `mcp-server-db2i is an MCP server. An MCP client such as Claude, Cursor or VS Code
+starts it and talks to it over stdin/stdout, so running it by hand only checks the setup.
+
+No IBM i connection is configured. Set these environment variables:
+
+  DB2I_HOSTNAME   IBM i host name or IP address
+  DB2I_USERNAME   IBM i user profile
+  DB2I_PASSWORD   Password (or DB2I_PASSWORD_FILE)
+  DB2I_SCHEMA     Default library (optional)
+
+Or point DB2I_PROFILES at a YAML file that lists several systems.
+
+Example client config (Claude Desktop, Cursor):
+
+  {
+    "mcpServers": {
+      "db2i": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-db2i"],
+        "env": {
+          "DB2I_HOSTNAME": "ibmi.example.com",
+          "DB2I_USERNAME": "MYUSER",
+          "DB2I_PASSWORD": "..."
+        }
+      }
+    }
+  }
+
+The default driver needs the IBM i Access ODBC Driver. Quickstart and other drivers:
+https://docs.db2i-mcp.com/quickstart
 `;
 
 export type CliCommand =
   | { kind: 'serve' }
+  | { kind: 'help'; message: string }
+  | { kind: 'version' }
   | { kind: 'validate-tools'; paths: string[]; connect: boolean }
   | { kind: 'usage'; message: string };
 
@@ -42,6 +81,12 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   }
 
   const [command, ...rest] = argv;
+  if (command === '-h' || command === '--help' || command === 'help') {
+    return { kind: 'help', message: USAGE };
+  }
+  if (command === '-v' || command === '--version') {
+    return { kind: 'version' };
+  }
   if (command !== 'validate-tools') {
     return { kind: 'usage', message: `Unknown command: ${command}\n\n${USAGE}` };
   }
@@ -70,6 +115,22 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
     paths: parsed.positionals,
     connect: parsed.values.connect === true,
   };
+}
+
+/**
+ * A setup guide when stdio would start with no connection settings at all, else null.
+ * A first `npx mcp-server-db2i` lands here, so it gets instructions instead of a stack trace.
+ * Partial settings still get the specific error from config loading.
+ */
+export function missingConnectionHelp(env: NodeJS.ProcessEnv = process.env): string | null {
+  const transport = env.MCP_TRANSPORT?.toLowerCase();
+  if (transport === 'http') {
+    return null;
+  }
+  if (env.DB2I_PROFILES?.trim() || env.DB2I_HOSTNAME?.trim()) {
+    return null;
+  }
+  return SETUP;
 }
 
 export async function runValidateTools(options: {
