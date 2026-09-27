@@ -21,6 +21,7 @@ import type {
   SqlDiagnostics,
 } from '../driver.js';
 import { DbError, QueryTimeoutError, sqlcodeFromMessageId, withQueryTimeout } from '../driver.js';
+import { driverInstallHelp } from '../driverPackages.js';
 
 type Row = Record<string, unknown>;
 
@@ -73,7 +74,7 @@ function loadJt400(): Promise<Jt400Module> {
       }
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `DB2I_DRIVER=jt400 needs the optional node-jt400 package and a Java runtime (JRE 11 or later). Install it with a JDK present: npm install node-jt400. ${message}`,
+        `Could not load node-jt400: ${message}\n\n${driverInstallHelp('jt400')}`,
         { cause: error }
       );
     });

@@ -51,7 +51,7 @@
         },
         {
           "name": "DB2I_DRIVER",
-          "description": "Database driver: odbc (default, IBM i Access ODBC driver, no Java), jt400 (optional node-jt400 package, needs a JDK at install and a JRE at runtime) or mapepire (Mapepire over SSH, needs Java on the IBM i only)",
+          "description": "Database driver: odbc (default, IBM i Access ODBC driver, no Java), jt400 (install node-jt400 next to the server; needs a JDK at install and a JRE at runtime) or mapepire (install @ibm/mapepire-js and ssh2; Mapepire over SSH, needs Java on the IBM i only)",
           "isRequired": false,
           "default": "odbc"
         },

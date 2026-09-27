@@ -11,7 +11,7 @@
  * transport (a running Mapepire server on port 8076) would add a factory and
  * reuse the pool.
  *
- * Both packages are optional dependencies, imported only when a mapepire pool
+ * Both packages are optional peer dependencies, imported only when a mapepire pool
  * is first needed.
  */
 
@@ -32,6 +32,7 @@ import type {
   RowCursor,
 } from '../driver.js';
 import { CANCEL_GRACE_MS, DbError, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
+import { driverInstallHelp } from '../driverPackages.js';
 import { createHostKeyVerifier } from './sshHostKey.js';
 
 type MapepireModule = typeof import('@ibm/mapepire-js');
@@ -81,7 +82,7 @@ function loadOptional<T>(
     }
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `DB2I_DRIVER=mapepire needs the optional @ibm/mapepire-js and ssh2 packages: npm install @ibm/mapepire-js ssh2. ${message}`,
+      `Could not load ${specifier}: ${message}\n\n${driverInstallHelp('mapepire')}`,
       { cause: error }
     );
   });

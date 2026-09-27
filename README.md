@@ -103,7 +103,14 @@ graph LR
 npm install -g mcp-server-db2i
 ```
 
-The default `odbc` driver needs unixODBC and the IBM i Access ODBC Driver on the machine. No Java is needed. To use the JT400 JDBC driver instead, have a JDK installed when you run `npm install` and set `DB2I_DRIVER=jt400`. If only SSH reaches the IBM i, set `DB2I_DRIVER=mapepire`: it needs SSH access and Java on the IBM i, and nothing else. See [Database Drivers](docs/configuration.md#database-drivers).
+The default `odbc` driver needs unixODBC and the IBM i Access ODBC Driver on the machine. No Java is needed. The other drivers' packages are not installed by default, so add them next to the server:
+
+```bash
+npm install -g mcp-server-db2i node-jt400              # DB2I_DRIVER=jt400, needs a JDK to install and a JRE to run
+npm install -g mcp-server-db2i @ibm/mapepire-js ssh2   # DB2I_DRIVER=mapepire, when only SSH reaches the IBM i
+```
+
+With npx, pass them with `-p`, for example `npx -y -p mcp-server-db2i -p node-jt400 mcp-server-db2i`. See [Installing the jt400 and mapepire packages](docs/configuration.md#installing-the-jt400-and-mapepire-packages).
 
 Or with Docker:
 

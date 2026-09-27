@@ -41,7 +41,7 @@ DB2I_PASSWORD=your-password
 | `DB2I_PORT` | No | `446` | Not used. The `odbc` and `jt400` drivers connect to the IBM i host servers (8471, or 9471 with TLS), not the DRDA port. `mapepire` uses SSH (`sshPort` in `DB2I_MAPEPIRE_OPTIONS`) |
 | `DB2I_DATABASE` | No | `*LOCAL` | Not used. To reach an independent ASP, set the driver option (`database name` for jt400, `DATABASE` for ODBC) |
 | `DB2I_SCHEMA` | No | - | Default schema/library. Also the library list for `execute_query` (JDBC `libraries`, ODBC `DBQ`) when the option is not set |
-| `DB2I_DRIVER` | No | `odbc` | Database driver: `odbc` (IBM i Access ODBC driver, no Java), `jt400` (JDBC via the optional node-jt400 package, needs Java) or `mapepire` (Mapepire over SSH, needs Java on the IBM i only). See [Database Drivers](#database-drivers) |
+| `DB2I_DRIVER` | No | `odbc` | Database driver: `odbc` (IBM i Access ODBC driver, no Java), `jt400` (JDBC via node-jt400, installed separately, needs Java) or `mapepire` (Mapepire over SSH, @ibm/mapepire-js and ssh2 installed separately, needs Java on the IBM i only). See [Database Drivers](#database-drivers) |
 | `DB2I_JDBC_OPTIONS` | No | - | Additional JDBC options (semicolon-separated). `jt400` and `mapepire` drivers |
 | `DB2I_ODBC_OPTIONS` | No | - | Additional ODBC connection keywords (semicolon-separated). `odbc` driver only |
 | `DB2I_MAPEPIRE_OPTIONS` | No | - | SSH and Mapepire settings (semicolon-separated). `mapepire` driver only. See [Using the Mapepire driver](#using-the-mapepire-driver-ssh) |
@@ -276,9 +276,41 @@ Pick by what the network allows: `odbc` and `jt400` need the database host serve
 |--------|---------|-------|------------------|
 | `odbc` (default) | [odbc](https://www.npmjs.com/package/odbc) (IBM/node-odbc) | unixODBC and the IBM i Access ODBC Driver | `DB2I_ODBC_OPTIONS` |
 | `jt400` | [node-jt400](https://www.npmjs.com/package/node-jt400) | A JDK when running `npm install`, and a Java Runtime Environment 11 or later at runtime | `DB2I_JDBC_OPTIONS` |
-| `mapepire` | [@ibm/mapepire-js](https://www.npmjs.com/package/@ibm/mapepire-js) and [ssh2](https://www.npmjs.com/package/ssh2) | SSH access to the IBM i, and Java 8 or later on the IBM i. Nothing on the MCP server side | `DB2I_MAPEPIRE_OPTIONS`, plus `DB2I_JDBC_OPTIONS` |
+| `mapepire` | [@ibm/mapepire-js](https://www.npmjs.com/package/@ibm/mapepire-js) and [ssh2](https://www.npmjs.com/package/ssh2) | SSH access to the IBM i, and Java 8 or later on the IBM i. No Java on the MCP server side | `DB2I_MAPEPIRE_OPTIONS`, plus `DB2I_JDBC_OPTIONS` |
 
-All driver packages are optional dependencies, so `npm install` succeeds when one of them cannot build. If the `odbc` prebuilt binary is missing for your platform, `npm install` builds it from source and needs the unixODBC headers (`unixodbc-dev` on Debian and Ubuntu, `unixODBC-devel` on RHEL and SUSE).
+Only the `odbc` package installs with the server. It is an optional dependency, so `npm install` still succeeds when it cannot build. If the `odbc` prebuilt binary is missing for your platform, `npm install` builds it from source and needs the unixODBC headers (`unixodbc-dev` on Debian and Ubuntu, `unixODBC-devel` on RHEL and SUSE).
+
+### Installing the jt400 and mapepire packages
+
+`node-jt400`, `@ibm/mapepire-js` and `ssh2` are optional peer dependencies: npm and npx do not install them. Add the packages for the driver you pick next to the server.
+
+| Driver | With npx | With npm |
+|--------|----------|----------|
+| `jt400` | `npx -y -p mcp-server-db2i -p node-jt400 mcp-server-db2i` | `npm install -g mcp-server-db2i node-jt400` |
+| `mapepire` | `npx -y -p mcp-server-db2i -p @ibm/mapepire-js -p ssh2 mcp-server-db2i` | `npm install -g mcp-server-db2i @ibm/mapepire-js ssh2` |
+
+`npx` can only add packages that are on its command line, so a client config passes each one with `-p`. For `jt400`:
+
+```json
+{
+  "mcpServers": {
+    "db2i": {
+      "command": "npx",
+      "args": ["-y", "-p", "mcp-server-db2i", "-p", "node-jt400", "mcp-server-db2i"],
+      "env": {
+        "DB2I_DRIVER": "jt400",
+        "DB2I_HOSTNAME": "ibmi.example.com",
+        "DB2I_USERNAME": "MYUSER",
+        "DB2I_PASSWORD": "..."
+      }
+    }
+  }
+}
+```
+
+For `mapepire`, use `"args": ["-y", "-p", "mcp-server-db2i", "-p", "@ibm/mapepire-js", "-p", "ssh2", "mcp-server-db2i"]` and `"DB2I_DRIVER": "mapepire"`.
+
+In a project instead of a global install, leave out `-g`. When a system (from `DB2I_DRIVER` or a profile in `DB2I_PROFILES`) uses a driver whose packages are missing, the server stops at startup and prints the command to run. In [Docker](docker.md), both images include the mapepire packages and the `jt400` image includes `node-jt400`.
 
 ### Values that differ by driver
 
@@ -290,17 +322,19 @@ The `odbc` driver reads every `DECIMAL` and `NUMERIC` value as a JavaScript numb
 
 ### Using the JT400 driver
 
-`node-jt400` builds a native Java bridge during `npm install`. Without a JDK the build fails, npm skips the package, and the install still succeeds with ODBC only. To use JT400:
+`node-jt400` builds a native Java bridge when it installs, so the install needs a JDK and a compiler toolchain. To use JT400:
 
 1. Install a JDK (11 or later) and make sure `JAVA_HOME` points at it.
-2. Install or reinstall the server, for example `npm install -g mcp-server-db2i`, so `node-jt400` builds.
+2. Add `node-jt400` next to the server, with `-p node-jt400` for npx or `npm install -g mcp-server-db2i node-jt400` (see [Installing the jt400 and mapepire packages](#installing-the-jt400-and-mapepire-packages)).
 3. Set `DB2I_DRIVER=jt400`, or `driver: jt400` on a profile.
 
-If the package is missing, the first query fails with an error that names `node-jt400`. The server itself still starts.
+If the build fails, the install fails with it. npm prints `glob` deprecation warnings while installing `node-jt400`. They come from its Java bridge and its build tools, and do not affect the server.
 
 ### Using the Mapepire driver (SSH)
 
 The `mapepire` driver reaches Db2 for i through [Mapepire](https://mapepire-ibmi.github.io/) over SSH. It logs in with SSH as the configured user and starts the Mapepire server inside that session. No Mapepire daemon runs on the IBM i, no port besides SSH is used, and no administrator install is needed.
+
+Add `@ibm/mapepire-js` and `ssh2` next to the server first (see [Installing the jt400 and mapepire packages](#installing-the-jt400-and-mapepire-packages)). Neither needs a build or Java on the MCP server side.
 
 On the first connection, mapepire-js uploads its bundled server JAR (about 10 MB) to `$HOME/.mapepire` in the user's home directory. Later connections reuse it. A JAR that Code for i already installed in `$HOME/.vscode` is reused too. To use an installed server instead, for example the `mapepire-server` RPM, set `serverPath`.
 

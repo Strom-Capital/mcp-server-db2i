@@ -65,12 +65,15 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@ibm/mapepire-js": "^1.0.0",
     "@modelcontextprotocol/client": "^2.1.0",
     "@types/express": "^5.0.6",
     "@types/node": "^22.20.4",
     "@types/ssh2": "^1.15.6",
     "@vitest/coverage-v8": "^5.0.1",
     "eslint": "^10.11.0",
+    "node-jt400": "^7.0.1",
+    "ssh2": "^1.17.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.70.1",
@@ -88,9 +91,22 @@
     "LICENSE"
   ],
   "optionalDependencies": {
+    "odbc": "^2.6.0"
+  },
+  "peerDependencies": {
     "@ibm/mapepire-js": "^1.0.0",
     "node-jt400": "^7.0.1",
-    "odbc": "^2.6.0",
     "ssh2": "^1.17.0"
+  },
+  "peerDependenciesMeta": {
+    "@ibm/mapepire-js": {
+      "optional": true
+    },
+    "node-jt400": {
+      "optional": true
+    },
+    "ssh2": {
+      "optional": true
+    }
   }
 }

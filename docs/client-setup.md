@@ -124,6 +124,14 @@ export DB2I_PASSWORD="your-password"
 }
 ```
 
+The `jt400` and `mapepire` drivers need packages that npx does not install by default. Pass them with `-p`:
+
+```json
+"args": ["-y", "-p", "mcp-server-db2i", "-p", "node-jt400", "mcp-server-db2i"]
+```
+
+For `mapepire`, use `"-p", "@ibm/mapepire-js", "-p", "ssh2"` instead of `"-p", "node-jt400"`. Set `DB2I_DRIVER` in `env` as well. See [Installing the jt400 and mapepire packages](configuration.md#installing-the-jt400-and-mapepire-packages).
+
 ### Using npx with inline credentials
 
 > **Security Warning:** This stores credentials in plain text in your config file. Only use for local development or testing.
@@ -383,6 +391,9 @@ This keeps credentials out of config files - Claude Code expands `${VAR}` at run
 ```bash
 # Add server (credentials from shell environment)
 claude mcp add --scope user db2i -- npx mcp-server-db2i
+
+# With the jt400 driver, add its package to the npx command
+claude mcp add --scope user db2i -e DB2I_DRIVER=jt400 -- npx -y -p mcp-server-db2i -p node-jt400 mcp-server-db2i
 
 # Verify installation
 claude mcp list
