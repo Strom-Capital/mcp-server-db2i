@@ -60,7 +60,6 @@ export function homeJsonLd(site: URL): JsonLd {
 
 /** Blog post page. */
 export function postJsonLd(post: Post, site: URL): JsonLd {
-  const home = abs('/', site);
   const postUrl = abs(`/blog/${post.id}/`, site);
   return {
     '@context': 'https://schema.org',
@@ -77,7 +76,6 @@ export function postJsonLd(post: Post, site: URL): JsonLd {
     author: organization(site),
     publisher: organization(site),
     isPartOf: { '@type': 'Blog', '@id': `${abs('/blog/', site)}#blog`, name: `${SITE_NAME} blog`, url: abs('/blog/', site) },
-    about: { '@type': 'SoftwareApplication', '@id': `${home}#software`, name: SITE_NAME },
   };
 }
 
