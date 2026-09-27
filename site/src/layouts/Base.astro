@@ -10,6 +10,7 @@ import CodeCopy from '../components/CodeCopy.astro';
 import Analytics from '../components/Analytics.astro';
 import ThemeSwitch from '../components/ThemeSwitch.astro';
 import { links, url } from '../lib/links';
+import { serializeJsonLd, type JsonLd } from '../lib/structuredData';
 
 interface Props {
   title: string;
@@ -17,12 +18,15 @@ interface Props {
   /** Up to three questions shown when the docs assistant opens. */
   starterQuestions?: string[];
   type?: 'website' | 'article';
+  /** schema.org structured data for this page. See lib/structuredData.ts. */
+  jsonLd?: JsonLd;
 }
 
 const {
   title,
   description,
   type = 'website',
+  jsonLd,
   starterQuestions = [
     'How do I connect Claude Desktop to my IBM i?',
     'Which driver should I use: ODBC, JT400 or Mapepire?',
@@ -51,6 +55,7 @@ const ogImage = new URL(url('/og.png'), Astro.site).href;
     <link rel="icon" href={favicon} type="image/svg+xml" />
     <link rel="alternate" type="application/rss+xml" title="Db2 for i MCP Server blog" href={url('/rss.xml')} />
     <link rel="sitemap" href={url('/sitemap-index.xml')} />
+    <link rel="alternate" type="text/markdown" title="Summary for AI assistants" href={url('/llms.txt')} />
     <meta name="color-scheme" content="light dark" />
     <script is:inline>
       // Apply a saved theme before first paint. See ThemeSwitch.astro.
@@ -70,6 +75,7 @@ const ogImage = new URL(url('/og.png'), Astro.site).href;
     <meta property="og:image:alt" content="db2i/mcp: Ask your IBM i in plain language. A read-only MCP server for IBM Db2 for i." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={ogImage} />
+    {jsonLd && <script type="application/ld+json" is:inline set:html={serializeJsonLd(jsonLd)} />}
     <slot name="head" />
     <Analytics />
   </head>
