@@ -286,8 +286,8 @@ Only the `odbc` package installs with the server. It is an optional dependency, 
 
 | Driver | With npx | With npm |
 |--------|----------|----------|
-| `jt400` | `npx -y -p mcp-server-db2i -p node-jt400 mcp-server-db2i` | `npm install -g mcp-server-db2i node-jt400` |
-| `mapepire` | `npx -y -p mcp-server-db2i -p @ibm/mapepire-js -p ssh2 mcp-server-db2i` | `npm install -g mcp-server-db2i @ibm/mapepire-js ssh2` |
+| `jt400` | `npx -y -p mcp-server-db2i@latest -p node-jt400 mcp-server-db2i` | `npm install -g mcp-server-db2i node-jt400` |
+| `mapepire` | `npx -y -p mcp-server-db2i@latest -p @ibm/mapepire-js -p ssh2 mcp-server-db2i` | `npm install -g mcp-server-db2i @ibm/mapepire-js ssh2` |
 
 `npx` can only add packages that are on its command line, so a client config passes each one with `-p`. For `jt400`:
 
@@ -296,7 +296,7 @@ Only the `odbc` package installs with the server. It is an optional dependency, 
   "mcpServers": {
     "db2i": {
       "command": "npx",
-      "args": ["-y", "-p", "mcp-server-db2i", "-p", "node-jt400", "mcp-server-db2i"],
+      "args": ["-y", "-p", "mcp-server-db2i@latest", "-p", "node-jt400", "mcp-server-db2i"],
       "env": {
         "DB2I_DRIVER": "jt400",
         "DB2I_HOSTNAME": "ibmi.example.com",
@@ -308,7 +308,7 @@ Only the `odbc` package installs with the server. It is an optional dependency, 
 }
 ```
 
-For `mapepire`, use `"args": ["-y", "-p", "mcp-server-db2i", "-p", "@ibm/mapepire-js", "-p", "ssh2", "mcp-server-db2i"]` and `"DB2I_DRIVER": "mapepire"`.
+For `mapepire`, use `"args": ["-y", "-p", "mcp-server-db2i@latest", "-p", "@ibm/mapepire-js", "-p", "ssh2", "mcp-server-db2i"]` and `"DB2I_DRIVER": "mapepire"`.
 
 In a project instead of a global install, leave out `-g`. When a system (from `DB2I_DRIVER` or a profile in `DB2I_PROFILES`) uses a driver whose packages are missing, the server stops at startup and prints the command to run. In [Docker](docker.md), both images include the mapepire packages and the `jt400` image includes `node-jt400`.
 

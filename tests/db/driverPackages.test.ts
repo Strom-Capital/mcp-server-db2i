@@ -80,8 +80,8 @@ describe('findMissingDriverPackages', () => {
 describe('driverInstallHelp', () => {
   it('gives the npx command, a client config and an npm install for jt400', () => {
     const help = driverInstallHelp('jt400');
-    expect(help).toContain('npx -y -p mcp-server-db2i -p node-jt400 mcp-server-db2i');
-    expect(help).toContain('"args": ["-y", "-p", "mcp-server-db2i", "-p", "node-jt400", "mcp-server-db2i"]');
+    expect(help).toContain('npx -y -p mcp-server-db2i@latest -p node-jt400 mcp-server-db2i');
+    expect(help).toContain('"args": ["-y", "-p", "mcp-server-db2i@latest", "-p", "node-jt400", "mcp-server-db2i"]');
     expect(help).toContain('npm install -g mcp-server-db2i node-jt400');
     expect(help).toContain('JDK');
   });
@@ -89,7 +89,7 @@ describe('driverInstallHelp', () => {
   it('lists both mapepire packages', () => {
     const help = driverInstallHelp('mapepire');
     expect(help).toContain('needs @ibm/mapepire-js and ssh2, which are not installed');
-    expect(help).toContain('npx -y -p mcp-server-db2i -p @ibm/mapepire-js -p ssh2 mcp-server-db2i');
+    expect(help).toContain('npx -y -p mcp-server-db2i@latest -p @ibm/mapepire-js -p ssh2 mcp-server-db2i');
     expect(help).toContain('npm install -g mcp-server-db2i @ibm/mapepire-js ssh2');
   });
 });
