@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.0.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.12.0...v3.0.0) (2026-09-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* the jt400 and mapepire drivers need their packages installed next to the server. With npx: `npx -y -p mcp-server-db2i -p node-jt400 mcp-server-db2i` (jt400) or `-p @ibm/mapepire-js -p ssh2` (mapepire). With npm: `npm install -g mcp-server-db2i node-jt400`.
+
+### Features
+
+* show setup help on first run and add --help and --version ([#201](https://github.com/Strom-Capital/mcp-server-db2i/issues/201)) ([d244c76](https://github.com/Strom-Capital/mcp-server-db2i/commit/d244c769fa620c16d346de7051df4e204e4a63a5))
+* stop installing node-jt400 and the mapepire packages by default ([#203](https://github.com/Strom-Capital/mcp-server-db2i/issues/203)) ([17d4497](https://github.com/Strom-Capital/mcp-server-db2i/commit/17d4497e17b559a6d2f0ed0d368900338f5b3018))
+
 ## [2.12.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.11.0...v2.12.0) (2026-09-26)
 
 
