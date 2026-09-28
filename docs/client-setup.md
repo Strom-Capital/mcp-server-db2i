@@ -1,9 +1,9 @@
 ---
 title: "Client setup"
-description: "Configure Cursor, Claude Desktop, and Claude Code to start mcp-server-db2i, with npx or Docker."
+description: "Configure Cursor, VS Code, Claude Desktop, and Claude Code to start mcp-server-db2i, with npx or Docker."
 ---
 
-This guide covers setting up mcp-server-db2i with MCP-compatible clients. The JSON configuration format is the same for all clients - only the file location differs.
+This guide covers setting up mcp-server-db2i with MCP-compatible clients. Cursor, Claude Desktop and Claude Code use the same JSON format, and only the file location differs. VS Code uses its own format; see [VS Code](#vs-code-agent-mode).
 
 ## Configuration Paths
 
@@ -12,6 +12,13 @@ This guide covers setting up mcp-server-db2i with MCP-compatible clients. The JS
 - **macOS/Linux**: `~/.cursor/mcp.json`
 - **Windows**: `%USERPROFILE%\.cursor\mcp.json`
 - **Env var syntax**: `${env:VAR_NAME}`
+
+### VS Code
+
+- **Workspace**: `.vscode/mcp.json` in the project folder
+- **User**: run **MCP: Open User Configuration** from the Command Palette
+- **Format**: a `servers` object instead of `mcpServers`, and an optional `inputs` list
+- **Secrets**: `${input:ID}` prompts once and stores the value in VS Code's secret storage
 
 ### Claude Desktop
 
@@ -159,6 +166,39 @@ For `mapepire`, use `"-p", "@ibm/mapepire-js", "-p", "ssh2"` instead of `"-p", "
   }
 }
 ```
+
+### VS Code (agent mode)
+
+VS Code starts MCP servers for agent mode in Copilot Chat. Add `.vscode/mcp.json` to your project. The `inputs` entry makes VS Code ask for the password the first time the server starts, so it is not stored in the file:
+
+```json
+{
+  "inputs": [
+    { "type": "promptString", "id": "db2i-password", "description": "IBM i password", "password": true }
+  ],
+  "servers": {
+    "db2i": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-server-db2i@latest"],
+      "env": {
+        "DB2I_HOSTNAME": "ibmi.example.com",
+        "DB2I_USERNAME": "MYUSER",
+        "DB2I_PASSWORD": "${input:db2i-password}",
+        "DB2I_SCHEMA": "MYLIB",
+        "QUERY_ALLOWED_SCHEMAS": "MYLIB,QSYS2"
+      }
+    }
+  }
+}
+```
+
+Start the server from the **Start** link above `db2i` in the file, or with **MCP: List Servers**. **MCP: List Servers > db2i > Show Output** shows the server log. When it connects, VS Code lists the tools under **Configure Tools** in the Chat view.
+
+- `export_query` only appears when `EXPORT_ENABLED` is set, so VS Code lists one tool fewer than the startup log by default.
+- If the host servers use SSL, add `"DB2I_ODBC_OPTIONS": "SSL=1"` to `env`. Without it the log warns that the connection does not use TLS.
+- For the `jt400` or `mapepire` driver, change `args` as shown in [Drivers that need extra packages](#drivers-that-need-extra-packages) and set `DB2I_DRIVER`. If Code for IBM i has already deployed the Mapepire server JAR to `$HOME/.vscode` on the IBM i, the `mapepire` driver reuses it instead of uploading its own to `$HOME/.mapepire`.
+- Keep `.vscode/mcp.json` out of version control if it names a real host or user profile.
 
 ### Local Development
 
