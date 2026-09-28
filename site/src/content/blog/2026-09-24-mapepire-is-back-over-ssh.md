@@ -19,7 +19,7 @@ DB2I_DRIVER=mapepire
 The driver logs in over SSH and starts the Mapepire server inside that session. There is no daemon to run and nothing for an administrator to install.
 
 - **Only port 22 needs to be open to the network.** Inside the IBM i, Mapepire talks to the database host server over localhost. That server has to be running (it normally is), and your database exit programs still apply.
-- **On first use**, mapepire-js uploads its bundled server JAR to `$HOME/.mapepire` and checks its checksum. If Code for i has already put a JAR there, it's reused. If you run the `mapepire-server` package, point `serverPath` at it instead.
+- **On first use**, mapepire-js uploads its bundled server JAR to `$HOME/.mapepire` and checks its checksum. If Code for i has already deployed its JAR to `$HOME/.vscode`, that one is reused. If you run the `mapepire-server` package, point `serverPath` at it instead.
 - **On the IBM i**, it needs sshd and Java 8 or later. The client needs no Java and no ODBC driver.
 - **Before the password is sent**, it checks the host key against `~/.ssh/known_hosts` or a pinned `hostKey=SHA256:...` fingerprint.
 
