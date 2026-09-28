@@ -55,6 +55,8 @@ jobs:
           PUBLIC_MINTLIFY_WIDGET_ID: ${{ vars.MINTLIFY_WIDGET_ID }}
           # Public PostHog project key (EU cloud). Unset: the site builds without analytics.
           PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
+          # PostHog managed reverse proxy on our own subdomain. Unset: events go to eu.i.posthog.com.
+          PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
