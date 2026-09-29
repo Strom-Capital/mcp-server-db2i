@@ -643,6 +643,40 @@ describe('OAuth authorization server', () => {
     expect(up.status).toBe(200);
   });
 
+  it('does not undo a revocation that lands during the refresh credential check', async () => {
+    const { clientId, code, verifier } = await signIn();
+    const tokens = await exchange(clientId, code, verifier);
+
+    // Hold the refresh's test query until the revocation is done
+    let started!: () => void;
+    const queryStarted = new Promise<void>((resolve) => { started = resolve; });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { pool } = await import('node-jt400');
+    vi.mocked(pool).mockImplementationOnce(() => withExecute({
+      query: vi.fn(async () => {
+        started();
+        await gate;
+        return [];
+      }),
+      close: vi.fn().mockResolvedValue(undefined),
+    }) as never);
+
+    const refreshing = postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId });
+    await queryStarted;
+    expect((await revoke(clientId, tokens.access_token)).status).toBe(200);
+    release();
+
+    const res = await refreshing;
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.error).toBe('invalid_grant');
+    expect(body.access_token).toBeUndefined();
+    expect(body.refresh_token).toBeUndefined();
+    expect(getTokenManager().getStats().totalSessions).toBe(0);
+    expect(getSessionPoolCount()).toBe(0);
+  });
+
   it('does not let another client use up a refresh token', async () => {
     const { clientId, code, verifier } = await signIn();
     const tokens = await exchange(clientId, code, verifier);
