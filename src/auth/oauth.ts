@@ -31,8 +31,16 @@ import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
 import type { LoginRateLimitedHandler } from './authMiddleware.js';
 import { grantKey, RefreshGrantStore, type RefreshGrant, type StoredGrant } from './grantStore.js';
-import { authAllowedDbHosts, authConnection, testCredentials, verifyLogin } from './login.js';
-import { getTokenManager } from './tokenManager.js';
+import {
+  authAllowedDbHosts,
+  authConnection,
+  closeCheckPool,
+  handOverPool,
+  testCredentials,
+  verifyLogin,
+  type CredentialCheck,
+} from './login.js';
+import { getTokenManager, sessionPoolKey } from './tokenManager.js';
 
 const log = createChildLogger({ component: 'oauth' });
 
@@ -91,6 +99,8 @@ interface PendingCode {
   codeChallenge: string;
   system: string;
   config: DB2iConfig;
+  /** The sign-in's credential check pool, handed to the grant at the exchange. */
+  pool: string;
   expiresAt: number;
 }
 
@@ -103,12 +113,21 @@ const pendingCodes = new Map<string, PendingCode>();
 /** Keyed by grantKey(refreshToken). Replaced by createOAuthRouter with the configured store. */
 let refreshGrants = new RefreshGrantStore();
 const usedCodes = new Map<string, UsedCode>();
+/**
+ * Grants with a refresh waiting on the IBM i sign-on, keyed by grant ID. A
+ * revocation meanwhile marks the entry, so the refresh does not issue new
+ * tokens for it. Entries leave when their last refresh finishes.
+ */
+const refreshing = new Map<string, { count: number; revoked: boolean }>();
 
 /**
  * Drop pending codes and refresh tokens from memory. Used at shutdown and by
  * tests. A state file is left as it is, for the next start.
  */
 export function resetOAuthState(): void {
+  for (const pending of pendingCodes.values()) {
+    void closeCheckPool(pending.pool);
+  }
   pendingCodes.clear();
   refreshGrants.clear();
   usedCodes.clear();
@@ -146,6 +165,10 @@ function restoreGrant(stored: StoredGrant): RefreshGrant | undefined {
 
 /** End every access and refresh token issued from one sign-in. */
 async function revokeGrant(grantId: string): Promise<void> {
+  const inFlight = refreshing.get(grantId);
+  if (inFlight) {
+    inFlight.revoked = true;
+  }
   refreshGrants.deleteMany(
     refreshGrants.entries().filter(([, grant]) => grant.grantId === grantId).map(([key]) => key)
   );
@@ -521,24 +544,31 @@ interface GrantContext {
   config: DB2iConfig;
 }
 
-/** Issue an access token, plus a refresh token when the client and settings allow it. */
+/**
+ * Issue an access token, plus a refresh token when the client and settings allow it.
+ * The credential check's pool goes to the grant, so the token's first query finds it open.
+ */
 function issueTokens(
   res: Response,
   oauth: OAuthConfig,
   maxRefreshGrants: number,
   auth: { clientId: string; client: RegisteredClient },
-  grant: GrantContext
+  grant: GrantContext,
+  pool: string
 ): void {
   let access: { token: string; expiresIn: number };
   try {
     access = getTokenManager().createSession(grant.config, undefined, grant.system, auth.clientId, grant.grantId);
   } catch (err) {
+    void closeCheckPool(pool);
     if (err instanceof Error && err.message.includes('Maximum concurrent sessions')) {
       oauthError(res, 503, 'temporarily_unavailable', err.message);
       return;
     }
     throw err;
   }
+  // Only after the token exists: a grant's pool closes when it has no tokens left
+  void handOverPool(pool, sessionPoolKey(access.token, grant));
 
   const body: Record<string, string | number> = {
     access_token: access.token,
@@ -818,9 +848,12 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       const now = Date.now();
       sweepExpired(pendingCodes, now);
       if (pendingCodes.size >= MAX_PENDING_CODES) {
+        void closeCheckPool(login.pool);
         retry(503, 'Too many sign-ins are in progress. Try again shortly.');
         return;
       }
+      // A code nobody exchanges must not keep its pool. After a handover this finds nothing.
+      setTimeout(() => void closeCheckPool(login.pool), CODE_TTL_MS).unref();
       const code = randomToken();
       pendingCodes.set(code, {
         clientId: pending.clientId,
@@ -829,6 +862,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
         codeChallenge: pending.codeChallenge,
         system: login.system,
         config: login.config,
+        pool: login.pool,
         expiresAt: now + CODE_TTL_MS,
       });
 
@@ -875,14 +909,23 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
             }
           }
         }
-        if (!pending || pending.expiresAt <= Date.now() || pending.clientId !== auth.clientId) {
+        if (!pending) {
           oauthError(res, 400, 'invalid_grant', 'The authorization code is invalid or expired');
+          return;
+        }
+        // The code is used up from here on, so a refused exchange also ends its pool
+        const refuse = (description: string): void => {
+          void closeCheckPool(pending.pool);
+          oauthError(res, 400, 'invalid_grant', description);
+        };
+        if (pending.expiresAt <= Date.now() || pending.clientId !== auth.clientId) {
+          refuse('The authorization code is invalid or expired');
           return;
         }
         const redirectMatches =
           body.redirect_uri === undefined ? !pending.redirectUriExplicit : body.redirect_uri === pending.redirectUri;
         if (!redirectMatches) {
-          oauthError(res, 400, 'invalid_grant', 'redirect_uri does not match the authorization request');
+          refuse('redirect_uri does not match the authorization request');
           return;
         }
         const verifier = body.code_verifier;
@@ -891,7 +934,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
           !CODE_VERIFIER.test(verifier) ||
           !safeEqual(sha256(verifier).toString('base64url'), pending.codeChallenge)
         ) {
-          oauthError(res, 400, 'invalid_grant', 'code_verifier does not match the code challenge');
+          refuse('code_verifier does not match the code challenge');
           return;
         }
         const grantId = randomToken();
@@ -902,7 +945,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
           usedCodes.delete(key);
         }
         usedCodes.set(code as string, { grantId, expiresAt: now + USED_CODE_TTL_MS });
-        issueTokens(res, oauth, maxRefreshGrants, auth, { grantId, system: pending.system, config: pending.config });
+        issueTokens(res, oauth, maxRefreshGrants, auth, { grantId, system: pending.system, config: pending.config }, pending.pool);
         return;
       }
 
@@ -921,8 +964,31 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
           oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
           return;
         }
-        const failure = await testCredentials(grant.system, grant.config);
-        if (failure !== null) {
+        const flight = refreshing.get(grant.grantId) ?? { count: 0, revoked: false };
+        flight.count++;
+        refreshing.set(grant.grantId, flight);
+        // A new connection proves the password still works. It cannot use the
+        // grant's open pool, whose sign-on happened earlier.
+        let check: CredentialCheck;
+        try {
+          check = await testCredentials(grant.system, grant.config);
+        } finally {
+          if (--flight.count === 0) {
+            refreshing.delete(grant.grantId);
+          }
+        }
+        // The sign-on takes seconds. A revocation during it must not be undone by new tokens.
+        if (flight.revoked) {
+          if (check.ok) {
+            // Nothing else closes a refresh's check pool: it is handed over only with new tokens
+            await closeCheckPool(check.pool);
+          }
+          log.warn({ user: grant.config.username, system: grant.system }, 'OAuth refresh refused: grant revoked during the check');
+          oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
+          return;
+        }
+        if (!check.ok) {
+          const { failure } = check;
           if (failure.transient) {
             // The IBM i was not reached, so the credentials were never judged: keep the grant
             refreshGrants.set(key, grant);
@@ -937,7 +1003,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
           oauthError(res, 400, 'invalid_grant', 'The IBM i credentials are no longer accepted. Sign in again.');
           return;
         }
-        issueTokens(res, oauth, maxRefreshGrants, auth, grant);
+        issueTokens(res, oauth, maxRefreshGrants, auth, grant, check.pool);
         return;
       }
 

@@ -621,6 +621,29 @@ describe.each(probes)('driver contract: $name', (probe) => {
       expect(pool.close).toHaveBeenCalledTimes(1);
     });
 
+    it('lets a handed-over pool replace a session whose pools closed while idle', async () => {
+      connection.setSessionPoolIdleTimeout(1_000);
+      connection.initializeSessionPool('session-a');
+      const a = target('session-a', 'default', baseConfig(probe.name));
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], a);
+
+      // An open pool is never replaced
+      connection.initializeSessionPool('check-1');
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], target('check-1', 'default', baseConfig(probe.name)));
+      expect(connection.moveSessionPool('check-1', 'session-a')).toBe(false);
+      await connection.closeSessionPool('check-1');
+
+      await connection.closeIdleSessionPools(Date.now() + 60_000);
+      connection.initializeSessionPool('check-2');
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], target('check-2', 'default', baseConfig(probe.name)));
+      expect(connection.moveSessionPool('check-2', 'session-a')).toBe(true);
+      expect(connection.hasSessionPool('check-2')).toBe(false);
+
+      // The session's next query runs on the handed-over pool
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], a);
+      expect(probe.pools()).toHaveLength(3);
+    });
+
     it('closes nothing when set to 0', async () => {
       connection.setSessionPoolIdleTimeout(0);
       connection.initializeSessionPool('session-a');

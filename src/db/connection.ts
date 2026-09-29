@@ -181,6 +181,11 @@ export async function closeIdleSessionPools(now = Date.now()): Promise<void> {
   await Promise.all(closing);
 }
 
+/** Whether any of an owner's pools has been created and not closed. */
+function hasOpenPool(owner: Owner): boolean {
+  return [...owner.systems.values()].some((pair) => pair.query.pool !== undefined || pair.procedure?.pool !== undefined);
+}
+
 /**
  * Count a statement or cursor as use of its owner's pools until the returned
  * function is called, so the idle timeout never closes a pool under it.
@@ -200,6 +205,30 @@ function markActive(target: DbTarget): () => void {
       owner.lastUsed = Date.now();
     }
   };
+}
+
+/**
+ * Give the pools one session key owns to another key, keeping their open
+ * connections. Used to hand a credential check's pool to the token or OAuth
+ * grant it proved. Nothing moves when `to` already has an open pool or a
+ * statement running: the caller then closes `from`, so pools of two keys are
+ * never merged. A `to` whose pools the idle timeout closed is replaced.
+ *
+ * @returns true when the pools moved
+ */
+export function moveSessionPool(from: string, to: string): boolean {
+  const owner = owners.get(from);
+  if (!owner || from === STDIO_POOL_KEY || to === STDIO_POOL_KEY) {
+    return false;
+  }
+  const existing = owners.get(to);
+  if (existing && (existing.active > 0 || hasOpenPool(existing))) {
+    return false;
+  }
+  owners.delete(from);
+  owners.set(to, owner);
+  log.info({ from: shortId(from), sessionId: shortId(to) }, 'Session connection pool handed over');
+  return true;
 }
 
 /**

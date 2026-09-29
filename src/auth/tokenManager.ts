@@ -19,8 +19,22 @@ const log = createChildLogger({ component: 'token-manager' });
 /**
  * Callback type for session cleanup notification
  * Used to close associated resources (e.g., connection pools) when tokens expire
+ * or are revoked. The session is already gone from the manager when it runs.
  */
-export type SessionCleanupCallback = (token: string) => Promise<void> | void;
+export type SessionCleanupCallback = (token: string, session: TokenSession) => Promise<void> | void;
+
+/**
+ * The pool key a token's queries run on. Every token from one OAuth sign-in
+ * shares its grant's key, so a refreshed token keeps the pool that is already
+ * open. A POST /auth token is its own key. Tokens are base64url and never
+ * contain `:`, so the two kinds cannot collide.
+ *
+ * @param token - The access token
+ * @param session - The token's session, for its grant ID
+ */
+export function sessionPoolKey(token: string, session: Pick<TokenSession, 'grantId'> | undefined): string {
+  return session?.grantId ? `grant:${session.grantId}` : token;
+}
 
 /**
  * Token Manager singleton for managing authentication tokens
@@ -139,7 +153,7 @@ class TokenManager {
       );
       this.sessions.delete(token);
       // The sweep only sees tokens still in the map, so release the pool here
-      void this.notifyCleanup(token);
+      void this.notifyCleanup(token, session);
       return { valid: false, error: 'Token expired' };
     }
 
@@ -172,7 +186,7 @@ class TokenManager {
     this.sessions.delete(token);
     
     // Notify cleanup callback to close associated resources
-    await this.notifyCleanup(token);
+    await this.notifyCleanup(token, session);
     
     log.info(
       {
@@ -198,6 +212,20 @@ class TokenManager {
       await this.revokeToken(token);
     }
     return tokens.length;
+  }
+
+  /**
+   * Whether any token issued from one OAuth sign-in is still held, expired or not
+   *
+   * @param grantId - The grant the tokens descend from
+   */
+  hasGrant(grantId: string): boolean {
+    for (const session of this.sessions.values()) {
+      if (session.grantId === grantId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -232,19 +260,19 @@ class TokenManager {
    */
   private async cleanupExpiredSessions(): Promise<void> {
     const now = new Date();
-    const expiredTokens: string[] = [];
+    const expiredTokens: Array<[string, TokenSession]> = [];
 
     for (const [token, session] of this.sessions.entries()) {
       if (now > session.expiresAt) {
-        expiredTokens.push(token);
+        expiredTokens.push([token, session]);
       }
     }
 
     if (expiredTokens.length > 0) {
-      for (const token of expiredTokens) {
+      for (const [token, session] of expiredTokens) {
         this.sessions.delete(token);
         // Notify cleanup callback to close associated resources
-        await this.notifyCleanup(token);
+        await this.notifyCleanup(token, session);
       }
       log.info(
         {
@@ -288,13 +316,12 @@ class TokenManager {
     }
 
     // Notify cleanup callback for all remaining sessions
-    const tokens = Array.from(this.sessions.keys());
-    for (const token of tokens) {
-      await this.notifyCleanup(token);
-    }
-
     const sessionCount = this.sessions.size;
+    const sessions = Array.from(this.sessions.entries());
     this.sessions.clear();
+    for (const [token, session] of sessions) {
+      await this.notifyCleanup(token, session);
+    }
 
     log.info({ clearedSessions: sessionCount }, 'Token manager shutdown');
   }
@@ -327,10 +354,10 @@ class TokenManager {
   /**
    * Internal method to notify about session cleanup
    */
-  private async notifyCleanup(token: string): Promise<void> {
+  private async notifyCleanup(token: string, session: TokenSession): Promise<void> {
     if (this.cleanupCallback) {
       try {
-        await this.cleanupCallback(token);
+        await this.cleanupCallback(token, session);
       } catch (err) {
         log.error({ err, tokenPrefix: token.substring(0, 8) }, 'Error in cleanup callback');
       }
