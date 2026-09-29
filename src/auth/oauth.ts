@@ -31,7 +31,13 @@ import { defaultSystem, getSystems } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
 import type { LoginRateLimitedHandler } from './authMiddleware.js';
 import { grantKey, RefreshGrantStore, type RefreshGrant, type StoredGrant } from './grantStore.js';
-import { authAllowedDbHosts, authConnection, testCredentials, verifyLogin } from './login.js';
+import {
+  authAllowedDbHosts,
+  authConnection,
+  testCredentials,
+  verifyLogin,
+  type CredentialFailure,
+} from './login.js';
 import { getTokenManager } from './tokenManager.js';
 
 const log = createChildLogger({ component: 'oauth' });
@@ -103,6 +109,12 @@ const pendingCodes = new Map<string, PendingCode>();
 /** Keyed by grantKey(refreshToken). Replaced by createOAuthRouter with the configured store. */
 let refreshGrants = new RefreshGrantStore();
 const usedCodes = new Map<string, UsedCode>();
+/**
+ * Grants with a refresh waiting on the IBM i sign-on, keyed by grant ID. A
+ * revocation meanwhile marks the entry, so the refresh does not issue new
+ * tokens for it. Entries leave when their last refresh finishes.
+ */
+const refreshing = new Map<string, { count: number; revoked: boolean }>();
 
 /**
  * Drop pending codes and refresh tokens from memory. Used at shutdown and by
@@ -146,6 +158,10 @@ function restoreGrant(stored: StoredGrant): RefreshGrant | undefined {
 
 /** End every access and refresh token issued from one sign-in. */
 async function revokeGrant(grantId: string): Promise<void> {
+  const inFlight = refreshing.get(grantId);
+  if (inFlight) {
+    inFlight.revoked = true;
+  }
   refreshGrants.deleteMany(
     refreshGrants.entries().filter(([, grant]) => grant.grantId === grantId).map(([key]) => key)
   );
@@ -921,7 +937,23 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
           oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
           return;
         }
-        const failure = await testCredentials(grant.system, grant.config);
+        const flight = refreshing.get(grant.grantId) ?? { count: 0, revoked: false };
+        flight.count++;
+        refreshing.set(grant.grantId, flight);
+        let failure: CredentialFailure | null;
+        try {
+          failure = await testCredentials(grant.system, grant.config);
+        } finally {
+          if (--flight.count === 0) {
+            refreshing.delete(grant.grantId);
+          }
+        }
+        // The sign-on takes seconds. A revocation during it must not be undone by new tokens.
+        if (flight.revoked) {
+          log.warn({ user: grant.config.username, system: grant.system }, 'OAuth refresh refused: grant revoked during the check');
+          oauthError(res, 400, 'invalid_grant', 'The refresh token is invalid or expired');
+          return;
+        }
         if (failure !== null) {
           if (failure.transient) {
             // The IBM i was not reached, so the credentials were never judged: keep the grant
