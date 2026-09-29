@@ -37,7 +37,14 @@ That callback also redirects once more before it reaches Cursor. Browsers check 
 
 ## Why a Bot and not just a chat
 
-The answer itself would look the same in claude.ai. The difference is what a Bot does next. It keeps working on its own computer while your laptop is closed, and it can run a routine on a schedule. "Every Monday at 8, post the late order line counts in this thread" is a one-line request, and the counts come from the same query each week.
+The answer itself would look the same in claude.ai. The difference is what a Bot does next. It keeps working on its own computer while your laptop is closed, and it can run a routine on a schedule.
+
+<figure class="shot wide">
+  <a href="/images/blog/grok-bot-routine.png"><img src="/images/blog/grok-bot-routine.png" width="1111" height="632" alt="Grok Bot chat. The request: Now make this a routine every Monday at 8:00 AM. The Bot creates a routine named Monday late open order lines and confirms that every Monday at 8:00 AM it will post the late open order line counts for 1 to 7, 8 to 30 and over 30 days. The side panel lists the routine as switched on." /></a>
+  <figcaption>One more message turns the question into a weekly routine.</figcaption>
+</figure>
+
+I asked it to make this a routine every Monday at 8:00 AM. It named the routine, listed it in the Bot's details, and confirmed it will post the same three groups each week.
 
 That makes it a good fit for the small, recurring checks that nobody has turned into a report yet.
 
