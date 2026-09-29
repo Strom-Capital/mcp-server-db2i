@@ -200,6 +200,53 @@ describe('TokenManager', () => {
     });
   });
 
+  describe('expired session sweep', () => {
+    // The sweep runs from a timer the singleton starts once, and shutdown() in
+    // afterEach stops it, so these tests call the sweep directly.
+    function sweep(): Promise<void> {
+      return (tokenManager as unknown as { cleanupExpiredSessions(): Promise<void> }).cleanupExpiredSessions();
+    }
+
+    it('removes expired tokens nobody presents and releases their resources', async () => {
+      vi.useFakeTimers();
+      try {
+        const cleanup = vi.fn();
+        tokenManager.setCleanupCallback(cleanup);
+        const expired = tokenManager.createSession(mockConfig, 60);
+        const live = tokenManager.createSession(mockConfig, 3600);
+
+        vi.setSystemTime(Date.now() + 61_000);
+        await sweep();
+
+        expect(cleanup).toHaveBeenCalledTimes(1);
+        expect(cleanup).toHaveBeenCalledWith(expired.token, expect.objectContaining({ token: expired.token }));
+        expect(tokenManager.getSession(expired.token)).toBeUndefined();
+        expect(tokenManager.getSession(live.token)).toBeDefined();
+        expect(tokenManager.getStats().totalSessions).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps sweeping when the cleanup callback fails for one token', async () => {
+      vi.useFakeTimers();
+      try {
+        const cleanup = vi.fn().mockRejectedValueOnce(new Error('pool close failed'));
+        tokenManager.setCleanupCallback(cleanup);
+        tokenManager.createSession(mockConfig, 60);
+        tokenManager.createSession(mockConfig, 60);
+
+        vi.setSystemTime(Date.now() + 61_000);
+        await expect(sweep()).resolves.toBeUndefined();
+
+        expect(cleanup).toHaveBeenCalledTimes(2);
+        expect(tokenManager.getStats().totalSessions).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe('canCreateSession', () => {
     it('should return true when under limit', () => {
       expect(tokenManager.canCreateSession()).toBe(true);

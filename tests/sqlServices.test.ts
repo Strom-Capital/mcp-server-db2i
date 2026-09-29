@@ -178,6 +178,93 @@ describe('SQL service tools', () => {
       expect(query).toHaveBeenCalledTimes(1);
       expect(query.mock.calls[0]?.[0]).toContain('PARSE_STATEMENT');
     });
+
+    it('should report a qualified column on a table outside the allowlist and not look it up', async () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
+      query.mockResolvedValue({
+        rows: [
+          parsedRow({ NAME_TYPE: 'COLUMN', SCHEMA: 'OTHERLIB', NAME: 'ORDERS', COLUMN_NAME: 'ORDERNO' }),
+        ],
+      });
+
+      const result = await validateQueryTool({ sql: 'SELECT OTHERLIB.ORDERS.ORDERNO FROM MYLIB.ORDERS' });
+
+      expect(result.valid).toBe(false);
+      expect(result.violations).toEqual([
+        'Table OTHERLIB.ORDERS is not in the allowed schemas (MYLIB).',
+      ]);
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should check qualified columns once each and report the missing ones by table', async () => {
+      query.mockImplementation(async (sql: string) => {
+        if (sql.includes('PARSE_STATEMENT')) {
+          return {
+            rows: [
+              parsedRow({ NAME_TYPE: 'TABLE', SCHEMA: 'MYLIB', NAME: 'ORDERS' }),
+              // Column rows name the table without a schema; it comes from the table list
+              parsedRow({ NAME_TYPE: 'COLUMN', NAME: 'ORDERS', COLUMN_NAME: 'ORDERNO' }),
+              parsedRow({ NAME_TYPE: 'COLUMN', NAME: 'ORDERS', COLUMN_NAME: 'ORDERNO' }),
+              parsedRow({ NAME_TYPE: 'COLUMN', NAME: 'ORDERS', COLUMN_NAME: 'NOSUCHCOL' }),
+            ],
+          };
+        }
+        if (sql.includes('SYSTABLES')) {
+          return { rows: [{ TABLE_SCHEMA: 'MYLIB', TABLE_NAME: 'ORDERS' }] };
+        }
+        if (sql.includes('SYSCOLUMNS')) {
+          return { rows: [{ TABLE_SCHEMA: 'MYLIB', TABLE_NAME: 'ORDERS', COLUMN_NAME: 'ORDERNO' }] };
+        }
+        return { rows: [] };
+      });
+
+      const result = await validateQueryTool({
+        sql: 'SELECT ORDERS.ORDERNO, ORDERS.NOSUCHCOL FROM MYLIB.ORDERS WHERE ORDERS.ORDERNO = 1001',
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.missingColumns).toEqual(['MYLIB.ORDERS.NOSUCHCOL']);
+      const columnLookup = query.mock.calls.find(([sql]) => sql.includes('SYSCOLUMNS'));
+      expect(columnLookup?.[1]).toEqual(['MYLIB', 'ORDERS', 'ORDERNO', 'MYLIB', 'ORDERS', 'NOSUCHCOL']);
+    });
+
+    it('should report an unqualified column when the statement names no table', async () => {
+      query.mockResolvedValue({
+        rows: [parsedRow({ NAME_TYPE: 'COLUMN', COLUMN_NAME: 'ORDERNO' })],
+      });
+
+      const result = await validateQueryTool({ sql: 'SELECT ORDERNO FROM SYSIBM.SYSDUMMY1' });
+
+      expect(result.valid).toBe(false);
+      expect(result.violations).toEqual(['Column ORDERNO could not be checked because the statement names no table.']);
+      expect(result.missingColumns).toEqual([]);
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should accept an unqualified column found on one of the named tables', async () => {
+      query.mockImplementation(async (sql: string) => {
+        if (sql.includes('PARSE_STATEMENT')) {
+          return {
+            rows: [
+              parsedRow({ NAME_TYPE: 'TABLE', SCHEMA: 'MYLIB', NAME: 'ORDERS' }),
+              parsedRow({ NAME_TYPE: 'COLUMN', COLUMN_NAME: 'ORDERNO' }),
+            ],
+          };
+        }
+        if (sql.includes('SYSTABLES')) {
+          return { rows: [{ TABLE_SCHEMA: 'MYLIB', TABLE_NAME: 'ORDERS' }] };
+        }
+        if (sql.includes('SYSCOLUMNS')) {
+          return { rows: [{ COLUMN_NAME: 'ORDERNO' }] };
+        }
+        return { rows: [] };
+      });
+
+      const result = await validateQueryTool({ sql: 'SELECT ORDERNO FROM MYLIB.ORDERS' });
+
+      expect(result.valid).toBe(true);
+      expect(result.missingColumns).toEqual([]);
+    });
   });
 
   describe('get_object_ddl', () => {
