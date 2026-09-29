@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.1.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.0.1...v3.1.0) (2026-09-29)
+
+
+### Features
+
+* **http:** close session pools that sit idle (MCP_POOL_IDLE_TIMEOUT) ([d69aa94](https://github.com/Strom-Capital/mcp-server-db2i/commit/d69aa9420c18fd0726b11cd25c5749a3d1df86fe))
+
+
+### Bug Fixes
+
+* **http:** keep one pool per OAuth sign-in across token refreshes ([#217](https://github.com/Strom-Capital/mcp-server-db2i/issues/217)) ([4a9baf9](https://github.com/Strom-Capital/mcp-server-db2i/commit/4a9baf9e4faca1dd3ecba73c0253f59a525ccbee))
+* **oauth:** do not undo a revocation that lands during a token refresh ([#218](https://github.com/Strom-Capital/mcp-server-db2i/issues/218)) ([f44a092](https://github.com/Strom-Capital/mcp-server-db2i/commit/f44a0925dd2bb19304265d3a7069e5b9e0e7113e))
+
+
+### Dependencies
+
+* bump hono from 4.13.8 to 4.13.9 in the production group ([#224](https://github.com/Strom-Capital/mcp-server-db2i/issues/224)) ([15f6f32](https://github.com/Strom-Capital/mcp-server-db2i/commit/15f6f32515e1fa50b65f980b1c325d1f9bba4397))
+
 ## [3.0.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.0.0...v3.0.1) (2026-09-29)
 
 
