@@ -57,4 +57,4 @@ OAuth is off unless you turn it on. Existing token and `/auth` setups keep worki
 
 ## What next?
 
-If you set this up behind a proxy I haven't tried, tell me how it went. Setup notes from real deployments make the docs better than anything I can write alone.
+If you set this up behind a proxy I haven't tried, a pull request that adds your setup to the docs is welcome. Notes from real deployments make the docs better than anything I can write alone.

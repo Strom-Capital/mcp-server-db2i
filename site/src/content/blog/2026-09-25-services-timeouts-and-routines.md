@@ -59,4 +59,4 @@ If you rely on JT400 or Mapepire and want timeouts to cancel on the IBM i, check
 
 ## What next?
 
-Job logs and spool files are the most requested next step, and IBM i services already cover a lot of that. Tell me which questions you'd want answered first.
+Job logs and spool files are the most requested next step, and IBM i services already cover a lot of that.

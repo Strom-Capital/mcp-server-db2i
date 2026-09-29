@@ -46,4 +46,4 @@ It also runs as a Docker container. The README covers client setup for Claude De
 
 ## What next?
 
-This is a first release, and I'd rather build what people actually need than guess. If you try it, tell me what worked and what didn't. Issues and pull requests are welcome on GitHub.
+This is a first release, and I'd rather build what people actually need than guess. Bug reports, feature requests and pull requests are welcome on GitHub.

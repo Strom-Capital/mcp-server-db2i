@@ -71,7 +71,3 @@ npx mcp-server-db2i@latest
 ```
 
 If you use ODBC and set a `CCSID` in `DB2I_ODBC_OPTIONS` on purpose, yours still wins. Otherwise text now arrives as UTF-8, which is what you want.
-
-## What next?
-
-Exports open the door to "every Monday, send me this list". Would scheduled exports be useful to you, or is on demand enough? Tell me in the [issues](https://github.com/Strom-Capital/mcp-server-db2i/issues).
