@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.0.0...v3.0.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* point npx instructions at mcp-server-db2i@latest ([#205](https://github.com/Strom-Capital/mcp-server-db2i/issues/205)) ([fdc00be](https://github.com/Strom-Capital/mcp-server-db2i/commit/fdc00befec591e8162f27c4b99d3db60dd554676))
+* return hosted OAuth clients to their callback from a page, not a form redirect ([#209](https://github.com/Strom-Capital/mcp-server-db2i/issues/209)) ([4976dac](https://github.com/Strom-Capital/mcp-server-db2i/commit/4976dac6bcb17254191c6142ec97b3acc5b25d5c))
+
 ## [3.0.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v2.12.0...v3.0.0) (2026-09-27)
 
 
