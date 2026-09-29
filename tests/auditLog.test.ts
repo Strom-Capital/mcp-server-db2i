@@ -179,6 +179,45 @@ describe('tool call audit', () => {
     expect(lines[2]?.rowCount).toBeUndefined();
   });
 
+  it('records a handler that throws, and still throws', async () => {
+    const file = path.join(tempDir(), 'audit.log');
+    process.env.MCP_AUDIT_LOG = file;
+    initAuditLog();
+
+    const handler = withToolHandler(
+      async () => {
+        throw new Error('connection reset');
+      },
+      'Query failed',
+      undefined,
+      { tool: 'execute_query', audit: () => ({ sql: 'SELECT ORDERNO FROM MYLIB.ORDERS' }) },
+    );
+
+    await expect(handler({})).rejects.toThrow('connection reset');
+    const [line] = readLines(file);
+    expect(line?.tool).toBe('execute_query');
+    expect(line?.outcome).toBe('error');
+    expect(line?.error).toBe('connection reset');
+    expect(line?.durationMs).toEqual(expect.any(Number));
+  });
+
+  it('records a call to a system that does not exist without running the handler', async () => {
+    const file = path.join(tempDir(), 'audit.log');
+    process.env.MCP_AUDIT_LOG = file;
+    initAuditLog();
+
+    const run = vi.fn(async () => ({ success: true }));
+    const response = await withToolHandler(run, 'Query failed', undefined, { tool: 'list_schemas' })({
+      system: 'nosuchsystem',
+    });
+
+    expect(run).not.toHaveBeenCalled();
+    expect(response.isError).toBe(true);
+    const [line] = readLines(file);
+    expect(line?.outcome).toBe('error');
+    expect(line?.system).toBe('nosuchsystem');
+  });
+
   it('records a YAML tool statement and its bound values', async () => {
     const file = path.join(tempDir(), 'audit.log');
     process.env.MCP_AUDIT_LOG = file;

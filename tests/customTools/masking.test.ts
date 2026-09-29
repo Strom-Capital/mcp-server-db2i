@@ -68,6 +68,27 @@ describe('checkMaskedColumns', () => {
     const kinds = tokenizeSql(sql).filter((token) => token.text.includes('EMAIL') || token.upper === 'EMAIL');
     expect(kinds.every((token) => token.kind === 'string' || token.kind === 'comment')).toBe(true);
   });
+
+  it('treats a quoted column name like the plain name', () => {
+    const plain = checkMaskedColumns('SELECT "EMAIL", C."PHONE" FROM MYLIB.CUSTOMERS C', masked);
+    expect(plain.violations).toEqual([]);
+    expect(plain.selected.sort()).toEqual(['EMAIL', 'PHONE']);
+
+    for (const sql of [
+      'SELECT "EMAIL" AS E FROM MYLIB.CUSTOMERS',
+      'SELECT CUSTNO FROM MYLIB.CUSTOMERS WHERE "EMAIL" = ?',
+      'SELECT UPPER("EMAIL") FROM MYLIB.CUSTOMERS',
+      'SELECT "email" AS E FROM MYLIB.CUSTOMERS',
+    ]) {
+      expect(checkMaskedColumns(sql, masked).violations.join(' '), sql).toMatch(/Masked column EMAIL must be a plain selected column/);
+    }
+  });
+
+  it('reads a doubled quote inside a quoted name as one quote', () => {
+    const tokens = tokenizeSql('SELECT "A""B", "EMAIL" FROM MYLIB.CUSTOMERS');
+    const delims = tokens.filter((token) => token.kind === 'delim').map((token) => token.text);
+    expect(delims).toEqual(['A"B', 'EMAIL']);
+  });
 });
 
 describe('maskRows', () => {
@@ -185,6 +206,21 @@ describe('execute_query masking', () => {
     });
 
     const result = await executeQueryTool({ sql: 'SELECT EMAIL FROM MYLIB.CUSTOMERS' });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual([{ EMAIL: '****' }]);
+  });
+
+  it('masks a column selected by its quoted name', async () => {
+    loadMasking();
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes('PARSE_STATEMENT')) {
+        return { rows: [parsedRow({ NAME_TYPE: 'TABLE', SCHEMA: 'MYLIB', NAME: 'CUSTOMERS' })] };
+      }
+      return { rows: [{ EMAIL: 'ada@example.com' }] };
+    });
+
+    const result = await executeQueryTool({ sql: 'SELECT "EMAIL" FROM MYLIB.CUSTOMERS' });
 
     expect(result.success).toBe(true);
     expect(result.data).toEqual([{ EMAIL: '****' }]);
