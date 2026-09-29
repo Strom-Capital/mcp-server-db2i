@@ -28,7 +28,7 @@ vi.mock('../../src/utils/logger.js', () => ({
   })),
 }));
 
-import { getTokenManager, TokenManager } from '../../src/auth/tokenManager.js';
+import { getTokenManager, sessionPoolKey, TokenManager } from '../../src/auth/tokenManager.js';
 import type { DB2iConfig } from '../../src/config.js';
 
 describe('TokenManager', () => {
@@ -95,7 +95,7 @@ describe('TokenManager', () => {
         vi.advanceTimersByTime(61_000);
 
         expect(tokenManager.validateToken(token).valid).toBe(false);
-        expect(cleanup).toHaveBeenCalledWith(token);
+        expect(cleanup).toHaveBeenCalledWith(token, expect.objectContaining({ token }));
       } finally {
         vi.useRealTimers();
       }
@@ -154,6 +154,36 @@ describe('TokenManager', () => {
     it('should return false for non-existent token', async () => {
       const revoked = await tokenManager.revokeToken('non-existent');
       expect(revoked).toBe(false);
+    });
+  });
+
+  describe('grants', () => {
+    it('knows a grant while any of its tokens is held', async () => {
+      const first = tokenManager.createSession(mockConfig, undefined, 'default', 'client', 'grant-a');
+      const second = tokenManager.createSession(mockConfig, undefined, 'default', 'client', 'grant-a');
+      tokenManager.createSession(mockConfig, undefined, 'default', 'client', 'grant-b');
+
+      await tokenManager.revokeToken(first.token);
+      expect(tokenManager.hasGrant('grant-a')).toBe(true);
+      await tokenManager.revokeToken(second.token);
+      expect(tokenManager.hasGrant('grant-a')).toBe(false);
+      expect(tokenManager.hasGrant('grant-b')).toBe(true);
+    });
+
+    it('tells the cleanup callback which grant a revoked token came from', async () => {
+      const cleanup = vi.fn();
+      tokenManager.setCleanupCallback(cleanup);
+      const { token } = tokenManager.createSession(mockConfig, undefined, 'default', 'client', 'grant-a');
+
+      await tokenManager.revokeGrant('grant-a');
+      expect(cleanup).toHaveBeenCalledWith(token, expect.objectContaining({ grantId: 'grant-a' }));
+    });
+
+    it('shares one pool key across a grant and keeps other tokens apart', () => {
+      expect(sessionPoolKey('tok-1', { grantId: 'g' })).toBe(sessionPoolKey('tok-2', { grantId: 'g' }));
+      expect(sessionPoolKey('tok-1', { grantId: 'g' })).not.toBe(sessionPoolKey('tok-1', { grantId: 'h' }));
+      expect(sessionPoolKey('tok-1', {})).toBe('tok-1');
+      expect(sessionPoolKey('tok-1', undefined)).toBe('tok-1');
     });
   });
 

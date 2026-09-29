@@ -26,10 +26,10 @@ vi.mock('node-jt400', async () => {
 });
 
 import { createHttpApp } from '../src/transports/http.js';
-import { getTokenManager } from '../src/auth/tokenManager.js';
+import { getTokenManager, sessionPoolKey } from '../src/auth/tokenManager.js';
+import { closeAllSessionPools, executeQuery, getSessionPoolCount, hasSessionPool } from '../src/db/connection.js';
 import { isRedirectUriAllowed, resetOAuthState } from '../src/auth/oauth.js';
 import { isTransientConnectionError } from '../src/auth/login.js';
-import { getSessionPoolCount } from '../src/db/connection.js';
 import { getOAuthConfig } from '../src/config.js';
 import { resetSystems } from '../src/systems.js';
 import { withExecute } from './helpers/jt400Fake.js';
@@ -744,6 +744,141 @@ describe('OAuth authorization server', () => {
     expect((await revokeAs(clientId, tokens.refresh_token)).status).toBe(200);
     const refresh = await postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId });
     expect(refresh.status).toBe(400);
+  });
+
+  describe('connection pools', () => {
+    beforeEach(async () => {
+      await closeAllSessionPools();
+      const { pool } = await import('node-jt400');
+      vi.mocked(pool).mockClear();
+    });
+
+    /** Pools the jt400 driver was asked to create. */
+    async function poolsCreated(): Promise<number> {
+      const { pool } = await import('node-jt400');
+      return vi.mocked(pool).mock.calls.length;
+    }
+
+    /** The pool key a token's queries run on. */
+    function keyOf(token: string): string {
+      return sessionPoolKey(token, getTokenManager().getSession(token));
+    }
+
+    /** Run a query the way a tool call with this token would. */
+    async function queryAs(token: string): Promise<void> {
+      const session = getTokenManager().getSession(token);
+      expect(session).toBeDefined();
+      await executeQuery('VALUES 1', [], { poolKey: keyOf(token), system: session!.system, config: session!.config });
+    }
+
+    /** Expire an access token the way the clock would. */
+    function expire(token: string): void {
+      const session = getTokenManager().getSession(token);
+      expect(session).toBeDefined();
+      session!.expiresAt = new Date(0);
+      expect(getTokenManager().validateToken(token).valid).toBe(false);
+    }
+
+    it('hands the sign-in check pool to the grant, and a refresh keeps it', async () => {
+      const { clientId, code, verifier } = await signIn();
+      const first = await exchange(clientId, code, verifier);
+      const key = keyOf(first.access_token);
+      expect(key).not.toBe(first.access_token);
+      expect(hasSessionPool(key)).toBe(true);
+      expect(getSessionPoolCount()).toBe(1);
+
+      await queryAs(first.access_token);
+      expect(await poolsCreated()).toBe(1);
+
+      const refreshed = await postToken({ grant_type: 'refresh_token', refresh_token: first.refresh_token, client_id: clientId });
+      expect(refreshed.status).toBe(200);
+      const second = (await refreshed.json()) as { access_token: string; refresh_token: string };
+      expect(keyOf(second.access_token)).toBe(key);
+      // The refresh still signs on to prove the password, then closes that pool and keeps the warm one
+      expect(await poolsCreated()).toBe(2);
+      const { pool } = await import('node-jt400');
+      await vi.waitFor(() => expect(vi.mocked(pool).mock.results[1].value.close).toHaveBeenCalled());
+      expect(getSessionPoolCount()).toBe(1);
+
+      await queryAs(second.access_token);
+      expect(await poolsCreated()).toBe(2);
+
+      // The old token expiring leaves the pool to the new one
+      expire(first.access_token);
+      await Promise.resolve();
+      expect(hasSessionPool(key)).toBe(true);
+
+      expect((await revoke(clientId, second.refresh_token)).status).toBe(200);
+      expect(hasSessionPool(key)).toBe(false);
+      expect(getSessionPoolCount()).toBe(0);
+    });
+
+    it('closes the grant pool with its last token and gives the next refresh the check pool', async () => {
+      const { clientId, code, verifier } = await signIn();
+      const first = await exchange(clientId, code, verifier);
+      const key = keyOf(first.access_token);
+
+      expire(first.access_token);
+      await vi.waitFor(() => expect(hasSessionPool(key)).toBe(false));
+
+      const refreshed = await postToken({ grant_type: 'refresh_token', refresh_token: first.refresh_token, client_id: clientId });
+      expect(refreshed.status).toBe(200);
+      const second = (await refreshed.json()) as { access_token: string };
+      expect(hasSessionPool(key)).toBe(true);
+      await queryAs(second.access_token);
+      expect(await poolsCreated()).toBe(2);
+    });
+
+    it('closes the grant pool when a refresh finds the password changed', async () => {
+      const { clientId, code, verifier } = await signIn();
+      const tokens = await exchange(clientId, code, verifier);
+      const key = keyOf(tokens.access_token);
+
+      await failNextConnection('password expired');
+      const res = await postToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId });
+      expect(res.status).toBe(400);
+      await vi.waitFor(() => expect(getSessionPoolCount()).toBe(0));
+      expect(hasSessionPool(key)).toBe(false);
+    });
+
+    it('never shares a pool between sign-ins', async () => {
+      const a = await signIn();
+      const b = await signIn({ username: 'OTHER', password: 'otherpass', system: 'test' });
+      const c = await signIn();
+      const keys = [
+        keyOf((await exchange(a.clientId, a.code, a.verifier)).access_token),
+        keyOf((await exchange(b.clientId, b.code, b.verifier)).access_token),
+        keyOf((await exchange(c.clientId, c.code, c.verifier)).access_token),
+      ];
+      expect(new Set(keys).size).toBe(3);
+      expect(getSessionPoolCount()).toBe(3);
+    });
+
+    it('closes the check pool when the code exchange is refused', async () => {
+      const { clientId, code } = await signIn();
+      expect(getSessionPoolCount()).toBe(1);
+      const res = await postToken({ grant_type: 'authorization_code', code, code_verifier: 'x'.repeat(43), client_id: clientId, redirect_uri: CLAUDE_CALLBACK });
+      expect(res.status).toBe(400);
+      await vi.waitFor(() => expect(getSessionPoolCount()).toBe(0));
+    });
+
+    it('hands the POST /auth check pool to its token', async () => {
+      const res = await fetch(`${baseUrl}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'CALLER', password: 'callerpass', system: 'test' }),
+      });
+      expect(res.status).toBe(201);
+      const { access_token: token } = (await res.json()) as { access_token: string };
+      expect(keyOf(token)).toBe(token);
+      expect(hasSessionPool(token)).toBe(true);
+      expect(getSessionPoolCount()).toBe(1);
+      await queryAs(token);
+      expect(await poolsCreated()).toBe(1);
+
+      await getTokenManager().revokeToken(token);
+      expect(hasSessionPool(token)).toBe(false);
+    });
   });
 
   describe('with MCP_OAUTH_STATE_FILE', () => {

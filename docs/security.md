@@ -123,7 +123,7 @@ The server includes built-in rate limiting to protect the IBM i database from ex
 
 - **Default**: 100 requests per 15-minute window
 - **Scope**: Per server instance (for stdio transport, this means per-client since each MCP client spawns its own server process)
-- **HTTP transport**: Rate limiting applies per authenticated token
+- **HTTP transport**: Rate limiting applies per authenticated token. Tokens refreshed from one OAuth sign-in share one budget, so a refresh does not reset it
 
 When the rate limit is exceeded, queries return an error with `waitTimeSeconds` indicating when to retry:
 
@@ -250,7 +250,7 @@ Every request is checked against an allowlist of `Host` values before it is rout
 
 Browser requests with an `Origin` header must be same-origin or listed in `MCP_CORS_ORIGINS`. Others get 403. A listed origin is echoed in `Access-Control-Allow-Origin` with `Vary: Origin`, and `MCP_CORS_ORIGINS='*'` answers with a literal `*`. The server never sends `Access-Control-Allow-Credentials`, because tokens travel in the `Authorization` header rather than in cookies.
 
-See [HTTP Transport](http-transport.md) for the request shapes. Protocol sessions (`Mcp-Session-Id`) are deprecated; pools stay isolated by auth token in the default stateless mode.
+See [HTTP Transport](http-transport.md) for the request shapes. Protocol sessions (`Mcp-Session-Id`) are deprecated; pools stay isolated by auth token in the default stateless mode. Tokens refreshed from one OAuth sign-in share that sign-in's pool, which is always one user profile with one password; sign-ins never share a pool, even for the same user.
 
 ### OAuth Authorization Server
 

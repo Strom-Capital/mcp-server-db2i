@@ -343,7 +343,9 @@ HTTP serves two protocol eras from the same `/mcp` endpoint:
 - **2026-07-28** (current). No `initialize` handshake and no `Mcp-Session-Id`. Each request carries a `_meta` envelope (`io.modelcontextprotocol/protocolVersion`, client info, capabilities) plus `MCP-Protocol-Version`, `Mcp-Method`, and (for named calls) `Mcp-Name`. `server/discover` replaces `initialize`.
 - **2025-era** (through 2025-11-25). Stateless by default: each `initialize` / `tools/call` is its own request. `GET` and `DELETE /mcp` answer `405`.
 
-Database connection pools are keyed by the auth token (or one shared pool in `token` / `none` mode), so dropping protocol sessions does not mix users' IBM i credentials.
+Database connection pools are keyed by the auth token (or one shared pool in `token` / `none` mode), so dropping protocol sessions does not mix users' IBM i credentials. The access tokens from one OAuth sign-in share a pool, so a refreshed token keeps the connections that are already open. The pool closes when the last of those tokens expires or the sign-in is revoked.
+
+The test connection that checks a sign-in, a `POST /auth` login or a refresh is not thrown away. It becomes the token's pool, so the first query does not connect again. This matters most with `mapepire`, where each new connection starts an SSH session and a JVM on the IBM i. On a refresh, the test connection is closed instead if the sign-in's pool is still open.
 
 ## Session Modes
 
@@ -353,7 +355,7 @@ Each HTTP request builds a fresh MCP server on the caller's existing database po
 
 ### Stateful (deprecated)
 
-Set `MCP_SESSION_MODE=stateful` only when a 2025-era client requires `Mcp-Session-Id`, `GET /mcp`, or `DELETE /mcp`. The process logs a deprecation warning. 2026-07-28 requests on the same endpoint stay stateless. Database pools are still keyed by the auth token, not by that session id.
+Set `MCP_SESSION_MODE=stateful` only when a 2025-era client requires `Mcp-Session-Id`, `GET /mcp`, or `DELETE /mcp`. The process logs a deprecation warning. 2026-07-28 requests on the same endpoint stay stateless. Database pools are still keyed by the auth token (or its OAuth sign-in), not by that session id.
 
 ## TLS Configuration
 

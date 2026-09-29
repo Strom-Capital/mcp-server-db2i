@@ -116,6 +116,25 @@ function registerOwner(poolKey: string, label: string): void {
 }
 
 /**
+ * Give the pools one session key owns to another key, keeping their open
+ * connections. Used to hand a credential check's pool to the token or OAuth
+ * grant it proved. Nothing moves when `to` already has pools: the caller
+ * then closes `from`, so pools of two keys are never merged.
+ *
+ * @returns true when the pools moved
+ */
+export function moveSessionPool(from: string, to: string): boolean {
+  const owner = owners.get(from);
+  if (!owner || owners.has(to) || from === STDIO_POOL_KEY || to === STDIO_POOL_KEY) {
+    return false;
+  }
+  owners.delete(from);
+  owners.set(to, owner);
+  log.info({ from: shortId(from), sessionId: shortId(to) }, 'Session connection pool handed over');
+  return true;
+}
+
+/**
  * Close every pool a session key owns, on every system.
  */
 export async function closeSessionPool(sessionId: string): Promise<void> {

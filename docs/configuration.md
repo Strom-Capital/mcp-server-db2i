@@ -344,7 +344,7 @@ Requirements on the IBM i:
 - A home directory for the user, which must exist and be writable.
 - Java 8 or later. mapepire-js uses `/QOpenSys/QIBM/ProdData/JavaVM/jdk80/64bit/bin/java` by default. Set `javaPath` to use another JDK.
 
-Each Mapepire job is a JVM on the IBM i. Starting one takes a few seconds, and the first start takes longer because of the upload. The pool starts jobs when queries need them, up to `maxJobs`, and closes each one after `idleTimeout` without queries. The SSH session closes with the last job, and the next query opens it again. Over HTTP with `MCP_AUTH_MODE=required`, every `/auth` login starts a job to check the credentials, so a login takes several seconds.
+Each Mapepire job is a JVM on the IBM i. Starting one takes a few seconds, and the first start takes longer because of the upload. The pool starts jobs when queries need them, up to `maxJobs`, and closes each one after `idleTimeout` without queries. The SSH session closes with the last job, and the next query opens it again. Over HTTP with `MCP_AUTH_MODE=required`, every `/auth` login and OAuth sign-in or refresh starts a job to check the credentials, so it takes several seconds. That job then serves the token's first queries, so they do not wait for another one.
 
 The JDBC connection runs on the IBM i with the JT400 driver, so `DB2I_JDBC_OPTIONS` applies as it does for `jt400`. That includes the read-only default (`access=read only`) and `libraries`. The session is encrypted by SSH, so `secure=true` is not needed.
 
