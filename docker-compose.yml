@@ -56,6 +56,7 @@ services:
       - MCP_SESSION_MODE=${MCP_SESSION_MODE:-stateless}
       - MCP_TOKEN_EXPIRY=${MCP_TOKEN_EXPIRY:-3600}
       - MCP_MAX_SESSIONS=${MCP_MAX_SESSIONS:-100}
+      - MCP_POOL_IDLE_TIMEOUT=${MCP_POOL_IDLE_TIMEOUT:-600}
       
       # HTTP authentication mode
       # required (default): Full /auth flow with per-user credentials

@@ -46,6 +46,7 @@ MCP_TRANSPORT=stdio
 | `MCP_TLS_KEY_PATH` | - | Path to TLS private key (required if TLS enabled) |
 | `MCP_TOKEN_EXPIRY` | `3600` | Token lifetime in seconds (for `required` mode) |
 | `MCP_MAX_SESSIONS` | `100` | Maximum concurrent sessions |
+| `MCP_POOL_IDLE_TIMEOUT` | `600` | Seconds an HTTP session's connections may sit unused before they close. The next query reconnects. `0` turns it off |
 | `MCP_CORS_ORIGINS` | - | CORS allowed origins (comma-separated, `*` for all) |
 | `DB2I_HOSTNAME` | - | IBM i hostname (fallback for auth requests) |
 | `DB2I_SCHEMA` | - | Default schema (fallback for auth requests) |

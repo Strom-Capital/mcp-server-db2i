@@ -38,7 +38,12 @@ import { getSessionManager } from './sessionManager.js';
 import { GLOBAL_SESSION_KEY, isSessionOwnedByCaller, resolveCallerSessionKey } from './sessionAuth.js';
 import { createServer as createMcpServer, SERVER_NAME, SERVER_VERSION, type SessionContext } from '../server.js';
 import { getOpenApiSpec } from '../openapi.js';
-import { initializeSessionPool, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
+import {
+  initializeSessionPool,
+  closeSessionPool,
+  closeAllSessionPools,
+  setSessionPoolIdleTimeout,
+} from '../db/connection.js';
 import { authAllowedDbHosts, verifyLogin } from '../auth/login.js';
 
 const log = createChildLogger({ component: 'http-transport' });
@@ -350,6 +355,10 @@ export function createHttpApp(): Express {
     }
   );
   const mcpNodeHandler = toNodeHandler(mcpHttpHandler);
+
+  // Close the connections of sessions that ran nothing for MCP_POOL_IDLE_TIMEOUT.
+  // The next query reconnects, so a session that stays signed in holds no idle job.
+  setSessionPoolIdleTimeout(httpConfig.poolIdleTimeout * 1000);
 
   // Behind a proxy, MCP_TRUST_PROXY lets req.ip, and so the rate limits, see the client address
   app.set('trust proxy', httpConfig.trustProxy);

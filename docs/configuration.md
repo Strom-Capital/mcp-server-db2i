@@ -61,6 +61,7 @@ DB2I_PASSWORD=your-password
 | `MCP_SESSION_MODE` | `stateless` | `stateless` (default). `stateful` is deprecated and only keeps `Mcp-Session-Id` for 2025-era clients |
 | `MCP_TOKEN_EXPIRY` | `3600` | Token lifetime in seconds (for `required` auth mode) |
 | `MCP_MAX_SESSIONS` | `100` | Maximum concurrent sessions |
+| `MCP_POOL_IDLE_TIMEOUT` | `600` | Seconds an HTTP session's connections may sit unused before they close. The next query reconnects. `0` turns it off |
 
 Over stdio, the server exits when its client goes away: when stdin closes, or when writing to stdout fails. It closes its connection pools first, the same as on `SIGINT`, `SIGTERM`, or `SIGHUP`. Shutdown takes at most 5 seconds. A pool that is still waiting on a running statement after that is logged and left behind, and the process exits with code 1. In `both` mode, a closed stdin closes only the stdio connection pools, and the HTTP transport keeps serving.
 
@@ -225,6 +226,7 @@ MCP_HTTP_HOST=127.0.0.1
 MCP_SESSION_MODE=stateless
 MCP_TOKEN_EXPIRY=3600
 MCP_MAX_SESSIONS=100
+MCP_POOL_IDLE_TIMEOUT=600
 
 # HTTP Authentication (choose one mode)
 MCP_AUTH_MODE=required
@@ -344,7 +346,7 @@ Requirements on the IBM i:
 - A home directory for the user, which must exist and be writable.
 - Java 8 or later. mapepire-js uses `/QOpenSys/QIBM/ProdData/JavaVM/jdk80/64bit/bin/java` by default. Set `javaPath` to use another JDK.
 
-Each Mapepire job is a JVM on the IBM i. Starting one takes a few seconds, and the first start takes longer because of the upload. The pool starts jobs when queries need them, up to `maxJobs`, and closes each one after `idleTimeout` without queries. The SSH session closes with the last job, and the next query opens it again. Over HTTP with `MCP_AUTH_MODE=required`, every `/auth` login starts a job to check the credentials, so a login takes several seconds.
+Each Mapepire job is a JVM on the IBM i. Starting one takes a few seconds, and the first start takes longer because of the upload. The pool starts jobs when queries need them, up to `maxJobs`, and closes each one after `idleTimeout` without queries. The SSH session closes with the last job, and the next query opens it again. Over HTTP, `MCP_POOL_IDLE_TIMEOUT` also closes a session's whole pool after 10 minutes without queries, on every driver. Over HTTP with `MCP_AUTH_MODE=required`, every `/auth` login starts a job to check the credentials, so a login takes several seconds.
 
 The JDBC connection runs on the IBM i with the JT400 driver, so `DB2I_JDBC_OPTIONS` applies as it does for `jt400`. That includes the read-only default (`access=read only`) and `libraries`. The session is encrypted by SSH, so `secure=true` is not needed.
 

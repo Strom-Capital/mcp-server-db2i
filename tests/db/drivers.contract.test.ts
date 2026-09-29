@@ -573,6 +573,64 @@ describe.each(probes)('driver contract: $name', (probe) => {
     expect(pools[0].close).toHaveBeenCalledTimes(1);
     expect(pools[1].close).toHaveBeenCalledTimes(1);
   });
+  describe('MCP_POOL_IDLE_TIMEOUT', () => {
+    afterEach(() => {
+      connection.setSessionPoolIdleTimeout(0);
+    });
+
+    it('closes idle session connections, keeps the session, and reconnects on its next query', async () => {
+      connection.setSessionPoolIdleTimeout(1_000);
+      connection.initializePool(baseConfig(probe.name));
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      connection.initializeSessionPool('session-a');
+      const a = target('session-a', 'default', baseConfig(probe.name));
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], a);
+      await connection.executeProcedure("CALL QSYS2.GENERATE_SQL('T', 'MYLIB', 'TABLE')", [], a);
+      const [stdio, query, procedure] = probe.pools();
+
+      await connection.closeIdleSessionPools(Date.now() + 500);
+      expect(query.close).not.toHaveBeenCalled();
+
+      await connection.closeIdleSessionPools(Date.now() + 2_000);
+      expect(query.close).toHaveBeenCalledTimes(1);
+      expect(procedure.close).toHaveBeenCalledTimes(1);
+      expect(stdio.close).not.toHaveBeenCalled();
+      expect(connection.hasSessionPool('session-a')).toBe(true);
+
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], a);
+      expect(probe.pools()).toHaveLength(4);
+      expect(probe.pools()[3].close).not.toHaveBeenCalled();
+    });
+
+    it('never closes a pool under a running statement', async () => {
+      connection.setSessionPoolIdleTimeout(1_000);
+      connection.initializeSessionPool('session-a');
+      const a = target('session-a', 'default', baseConfig(probe.name));
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], a);
+      const [pool] = probe.pools();
+
+      created.hangNext = true;
+      const running = connection.executeQuery('SELECT 2 FROM SYSIBM.SYSDUMMY1', [], a);
+      await vi.waitFor(() => expect(created.hanging).toHaveLength(1));
+      await connection.closeIdleSessionPools(Date.now() + 60_000);
+      expect(pool.close).not.toHaveBeenCalled();
+
+      finishHanging();
+      await running;
+      await connection.closeIdleSessionPools(Date.now() + 60_000);
+      expect(pool.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes nothing when set to 0', async () => {
+      connection.setSessionPoolIdleTimeout(0);
+      connection.initializeSessionPool('session-a');
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1', [], target('session-a', 'default', baseConfig(probe.name)));
+
+      await connection.closeIdleSessionPools(Date.now() + 86_400_000);
+      expect(probe.pools()[0].close).not.toHaveBeenCalled();
+    });
+  });
+
   describe('statement time limit', () => {
     // queryTimeout is in whole seconds, so these tests wait about a second each.
     const limited = (): DB2iConfig => ({ ...baseConfig(probe.name), queryTimeout: 1 });

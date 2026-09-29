@@ -184,6 +184,18 @@ describe('HTTP Configuration', () => {
       expect(config.port).toBe(8080);
     });
 
+    it('closes idle session pools after 10 minutes by default, and accepts 0 to turn it off', async () => {
+      delete process.env.MCP_POOL_IDLE_TIMEOUT;
+      const { getHttpConfig } = await import('../src/config.js');
+      expect(getHttpConfig().poolIdleTimeout).toBe(600);
+
+      process.env.MCP_POOL_IDLE_TIMEOUT = '0';
+      expect(getHttpConfig().poolIdleTimeout).toBe(0);
+      process.env.MCP_POOL_IDLE_TIMEOUT = '-1';
+      expect(() => getHttpConfig()).toThrow('MCP_POOL_IDLE_TIMEOUT must be at least 0');
+      delete process.env.MCP_POOL_IDLE_TIMEOUT;
+    });
+
     it('should respect custom host', async () => {
       process.env.MCP_HTTP_HOST = '127.0.0.1';
 
