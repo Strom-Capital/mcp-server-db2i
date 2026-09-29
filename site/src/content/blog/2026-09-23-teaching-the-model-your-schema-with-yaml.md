@@ -74,4 +74,4 @@ npx mcp-server-db2i@latest
 
 ## What next?
 
-If you write a tool pack for a particular ERP and can share it without internal names, I'd like to see it. Open an issue.
+If you write a tool pack for a particular ERP and can share it without internal names, I'd like to see it. Open a pull request that adds it to `examples/erp-tools`.

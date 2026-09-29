@@ -87,4 +87,4 @@ Two more details:
 
 ## What next?
 
-If you run this on another cloud or behind a different proxy, how did you limit who can reach the sign-in page? Tell me in the [issues](https://github.com/Strom-Capital/mcp-server-db2i/issues), and I will add what works to the docs.
+If you run this on another cloud or behind a different proxy, a pull request that adds your setup to the docs is welcome, especially how you limit who can reach the sign-in page.
