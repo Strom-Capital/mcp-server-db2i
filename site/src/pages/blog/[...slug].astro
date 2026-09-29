@@ -58,7 +58,9 @@ const { Content } = await render(post);
   h1 { font-size: clamp(2.2rem, 5vw, 3.8rem); max-width: 20ch; margin: 0; }
   .post-head .lead { margin: var(--space-5) 0 0; }
   .original { font: 13px/1.5 var(--font-mono); color: var(--muted); border-left: 2px solid var(--accent); padding-left: var(--space-3); max-width: 68ch; }
-  .prose { font-size: 1.1rem; line-height: 1.7; max-width: 68ch; }
+  .prose { font-size: 1.1rem; line-height: 1.7; }
+  /* Text keeps its measure; a wide figure (a diagram) uses the whole column */
+  .prose > :global(*:not(.wide)) { max-width: 68ch; }
   .prose :global(h2) { font-size: 1.75rem; letter-spacing: -0.025em; margin: var(--space-7) 0 var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); }
   .prose :global(h3) { font-size: 1.15rem; margin: var(--space-6) 0 var(--space-3); }
   .prose :global(a) { text-decoration-color: var(--accent); }
@@ -69,6 +71,7 @@ const { Content } = await render(post);
   .prose :global(td) { border-bottom: 1px solid var(--line); padding: 10px 12px 10px 0; text-align: left; vertical-align: top; }
   .prose :global(.shot) { margin: var(--space-6) 0; }
   .prose :global(.shot img) { width: 100%; max-width: 420px; height: auto; border: 1px solid var(--line); border-radius: var(--radius-code); }
+  .prose :global(.shot.wide img) { max-width: 100%; border: 0; border-radius: 0; }
   .prose :global(.shot figcaption) { margin-top: var(--space-2); font: 12px/1.5 var(--font-mono); color: var(--muted); }
   .prose :global(blockquote) { margin: var(--space-5) 0; padding-left: var(--space-4); border-left: 2px solid var(--line-strong); color: var(--muted); }
   .after { margin-top: var(--space-8); padding-top: var(--space-5); border-top: 1px solid var(--line-strong); max-width: 68ch; }
