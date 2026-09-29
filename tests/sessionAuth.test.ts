@@ -19,6 +19,14 @@ describe('resolveCallerSessionKey', () => {
     expect(resolveCallerSessionKey('required', 'user-token')).toBe('user-token');
   });
 
+  it('returns the OAuth grant key for a token from a sign-in', () => {
+    const key = resolveCallerSessionKey('required', 'user-token', { grantId: 'grant-1' });
+    expect(key).not.toBe('user-token');
+    expect(resolveCallerSessionKey('required', 'refreshed-token', { grantId: 'grant-1' })).toBe(key);
+    expect(resolveCallerSessionKey('required', 'user-token', { grantId: 'grant-2' })).not.toBe(key);
+    expect(resolveCallerSessionKey('none', 'user-token', { grantId: 'grant-1' })).toBe(GLOBAL_SESSION_KEY);
+  });
+
   it('returns empty string when required mode has no token', () => {
     expect(resolveCallerSessionKey('required')).toBe('');
   });

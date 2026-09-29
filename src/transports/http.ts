@@ -39,7 +39,7 @@ import { GLOBAL_SESSION_KEY, isSessionOwnedByCaller, resolveCallerSessionKey } f
 import { createServer as createMcpServer, SERVER_NAME, SERVER_VERSION, type SessionContext } from '../server.js';
 import { getOpenApiSpec } from '../openapi.js';
 import { initializeSessionPool, closeSessionPool, closeAllSessionPools } from '../db/connection.js';
-import { authAllowedDbHosts, verifyLogin } from '../auth/login.js';
+import { authAllowedDbHosts, closeCheckPool, handOverPool, verifyLogin } from '../auth/login.js';
 
 const log = createChildLogger({ component: 'http-transport' });
 
@@ -147,7 +147,8 @@ function sessionNotFoundBody(): { jsonrpc: '2.0'; error: { code: number; message
 
 /**
  * Build a per-request MCP server bound to the caller's database pool.
- * Pools stay keyed by auth token (or the shared "global" key), not by MCP session id.
+ * Pools stay keyed by auth token or OAuth grant (or the shared "global" key),
+ * not by MCP session id.
  */
 function createHttpMcpServer(request?: globalThis.Request): ReturnType<typeof createMcpServer> {
   const httpConfig = getHttpConfig();
@@ -162,7 +163,7 @@ function createHttpMcpServer(request?: globalThis.Request): ReturnType<typeof cr
       throw new Error('Token session not found');
     }
     context = {
-      sessionId: resolveCallerSessionKey(httpConfig.authMode, token),
+      sessionId: resolveCallerSessionKey(httpConfig.authMode, token, validation.session),
       binding: { system: validation.session.system, config: validation.session.config },
     };
   }
@@ -189,7 +190,7 @@ async function handleStatefulLegacyRequest(req: Request, res: Response): Promise
       return;
     }
 
-    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
+    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken, authReq.tokenSession);
     const sessionManager = getSessionManager();
     const mcpSession = sessionManager.getSession(sessionId);
 
@@ -215,7 +216,7 @@ async function handleStatefulLegacyRequest(req: Request, res: Response): Promise
       return;
     }
 
-    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
+    const sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken, authReq.tokenSession);
     const sessionManager = getSessionManager();
     const mcpSession = sessionManager.getSession(sessionId);
 
@@ -264,7 +265,7 @@ async function handleStatefulLegacyRequest(req: Request, res: Response): Promise
         return;
       }
       binding = { system: authReq.tokenSession.system, config: authReq.tokenSession.config };
-      sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken);
+      sessionKey = resolveCallerSessionKey(httpConfig.authMode, authReq.authToken, authReq.tokenSession);
     }
 
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
@@ -350,6 +351,22 @@ export function createHttpApp(): Express {
     }
   );
   const mcpNodeHandler = toNodeHandler(mcpHttpHandler);
+
+  // Close pools when tokens expire or are revoked, in stateful and stateless modes.
+  // Pools are reused across requests for the same key: the token, or for OAuth
+  // the grant, which every refreshed token of one sign-in shares. A grant's pool
+  // closes with its last token, so a refresh keeps it and revoking the grant ends it.
+  if (httpConfig.authMode === 'required') {
+    const tokenManager = getTokenManager();
+    tokenManager.setCleanupCallback(async (token, session) => {
+      if (session.grantId && tokenManager.hasGrant(session.grantId)) {
+        return;
+      }
+      const sessionKey = resolveCallerSessionKey(httpConfig.authMode, token, session);
+      await getSessionManager().closeSessionsByToken(sessionKey);
+      await closeSessionPool(sessionKey);
+    });
+  }
 
   // Behind a proxy, MCP_TRUST_PROXY lets req.ip, and so the rate limits, see the client address
   app.set('trust proxy', httpConfig.trustProxy);
@@ -496,6 +513,7 @@ export function createHttpApp(): Express {
 
   // Authentication endpoint (only active in 'required' auth mode)
   app.post('/auth', authRateLimitMiddleware, async (req: Request, res: Response) => {
+    let pool: string | undefined;
     try {
       // Check if /auth endpoint is needed for current auth mode
       if (httpConfig.authMode !== 'required') {
@@ -531,6 +549,8 @@ export function createHttpApp(): Express {
         return;
       }
       const { system, config: dbConfig } = login;
+      // Set until a token takes the pool; any other way out closes it
+      pool = login.pool;
 
       // Create token session
       const tokenManager = getTokenManager();
@@ -554,6 +574,9 @@ export function createHttpApp(): Express {
         token = result.token;
         expiresAt = result.expiresAt;
         expiresIn = result.expiresIn;
+        pool = undefined;
+        // The login's test pool becomes the token's, so its first query is already connected
+        void handOverPool(login.pool, token);
       } catch (err) {
         // Check if this is a max sessions error (race condition)
         if (err instanceof Error && err.message.includes('Maximum concurrent sessions')) {
@@ -585,6 +608,10 @@ export function createHttpApp(): Express {
         error: 'server_error',
         error_description: 'An unexpected error occurred',
       });
+    } finally {
+      if (pool) {
+        await closeCheckPool(pool);
+      }
     }
   });
 
@@ -648,19 +675,6 @@ export async function startHttpServer(): Promise<http.Server | https.Server> {
   }
 
   const app = createHttpApp();
-
-  // Register cleanup callback to close session pools when tokens expire or are revoked.
-  // This handles cleanup for both stateful and stateless modes in 'required' auth:
-  // - sessionKey = authToken, so pools are keyed by token
-  // - Pools are intentionally reused across requests for the same token (efficiency)
-  // - When token expires/revokes, this callback closes the associated pool
-  if (httpConfig.authMode === 'required') {
-    const tokenManager = getTokenManager();
-    tokenManager.setCleanupCallback(async (token: string) => {
-      await getSessionManager().closeSessionsByToken(token);
-      await closeSessionPool(token);
-    });
-  }
 
   let server: http.Server | https.Server;
 
