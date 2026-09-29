@@ -191,6 +191,17 @@ describe('OAuth authorization server', () => {
     }) as never);
   }
 
+  /**
+   * The callback a successful sign-in returns to. A hosted client gets a page that
+   * navigates with Refresh, since form-action would block a redirect chain.
+   */
+  function returnUrl(res: globalThis.Response): URL {
+    expect(res.status).toBe(200);
+    const refresh = res.headers.get('refresh') ?? '';
+    expect(refresh).toMatch(/^0; url=/);
+    return new URL(refresh.slice('0; url='.length));
+  }
+
   /** Register, sign in, and return the code plus what the token request needs. */
   async function signIn(
     fields: Record<string, string> = { username: 'CALLER', password: 'callerpass', system: 'test' },
@@ -202,8 +213,7 @@ describe('OAuth authorization server', () => {
     const page = await fetch(authorizeUrl(clientId, challenge));
     expect(page.status).toBe(200);
     const res = await postLogin(hiddenRequest(await page.text()), fields);
-    expect(res.status).toBe(303);
-    const location = new URL(res.headers.get('location') as string);
+    const location = returnUrl(res);
     expect(`${location.origin}${location.pathname}`).toBe(CLAUDE_CALLBACK);
     expect(location.searchParams.get('state')).toBe('st-123');
     expect(location.searchParams.get('iss')).toBe(PUBLIC_URL);
@@ -408,7 +418,11 @@ describe('OAuth authorization server', () => {
       body: new URLSearchParams({ request: hiddenRequest(await page.text()), username: 'CALLER', password: 'callerpass', system: 'test' }),
       redirect: 'manual',
     });
-    expect(res.status).toBe(303);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('refresh')).toContain(CLAUDE_CALLBACK);
+    const html = await res.text();
+    expect(html).toContain('Returning to <strong>claude.ai</strong>');
+    expect(html).toContain(`<a href="${CLAUDE_CALLBACK}?code=`);
   });
 
   it('does not let a successful sign-in reset earlier failures', async () => {
@@ -418,7 +432,7 @@ describe('OAuth authorization server', () => {
     for (let i = 0; i < 4; i++) {
       expect((await postLogin(request, { username: 'VICTIM', password: 'wrong', system: 'prod' })).status).toBe(401);
     }
-    expect((await postLogin(request, { username: 'CALLER', password: 'callerpass', system: 'prod' })).status).toBe(303);
+    expect((await postLogin(request, { username: 'CALLER', password: 'callerpass', system: 'prod' })).status).toBe(200);
     expect((await postLogin(request, { username: 'VICTIM', password: 'wrong', system: 'prod' })).status).toBe(401);
     expect((await postLogin(request, { username: 'VICTIM', password: 'wrong', system: 'prod' })).status).toBe(429);
   });
@@ -471,6 +485,17 @@ describe('OAuth authorization server', () => {
     });
     expect(res.status).not.toBe(401);
     expect(res.headers.get('www-authenticate')).toBeNull();
+  });
+
+  it('redirects a loopback client straight to its callback', async () => {
+    const LOOPBACK_CALLBACK = 'http://127.0.0.1:33418/callback';
+    const client = await register({ redirect_uris: [LOOPBACK_CALLBACK] });
+    const page = await fetch(authorizeUrl(client.client_id as string, pkce().challenge, { redirect_uri: LOOPBACK_CALLBACK }));
+    const res = await postLogin(hiddenRequest(await page.text()), { username: 'CALLER', password: 'callerpass', system: 'test' });
+    expect(res.status).toBe(303);
+    const location = new URL(res.headers.get('location') as string);
+    expect(`${location.origin}${location.pathname}`).toBe(LOOPBACK_CALLBACK);
+    expect(location.searchParams.get('code')).toBeTruthy();
   });
 
   it('signs Cursor in through its cursor:// callback', async () => {

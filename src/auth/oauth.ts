@@ -278,15 +278,20 @@ function oauthError(res: Response, status: number, error: string, description: s
   res.status(status).json({ error, error_description: description });
 }
 
-function redirectWith(res: Response, status: 302 | 303, redirectUri: string, params: Record<string, string | undefined>): void {
+/** The redirect URI with the given query parameters added. */
+function callbackUrl(redirectUri: string, params: Record<string, string | undefined>): string {
   const url = new URL(redirectUri);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) {
       url.searchParams.set(key, value);
     }
   }
+  return url.toString();
+}
+
+function redirectWith(res: Response, status: 302 | 303, redirectUri: string, params: Record<string, string | undefined>): void {
   noStore(res);
-  res.redirect(status, url.toString());
+  res.redirect(status, callbackUrl(redirectUri, params));
 }
 
 function escapeHtml(value: string): string {
@@ -368,6 +373,25 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
         `<style>${PAGE_STYLE}</style></head>` +
         `<body><main><div class="brand">${LOGO_SVG}</div>${body}</main></body></html>`
     );
+}
+
+/**
+ * Send a signed-in user on to a hosted client's callback with a page instead of a
+ * redirect. Browsers check form-action on every redirect after the form post, and
+ * a client may redirect its callback again (www.cursor.com -> cursor.com, then
+ * into its app), so the chain would be blocked. A Refresh navigation is not a
+ * form submission, so form-action does not apply to it.
+ */
+function renderReturn(res: Response, url: string): void {
+  res.setHeader('Refresh', `0; url=${url}`);
+  sendPage(
+    res,
+    200,
+    'Signed in',
+    `<h1>Signed in</h1>` +
+      `<p>Returning to <strong>${escapeHtml(new URL(url).host)}</strong>.</p>` +
+      `<p><a href="${escapeHtml(url)}">Continue</a> if nothing happens.</p>`
+  );
 }
 
 function renderError(res: Response, status: number, message: string): void {
@@ -809,7 +833,13 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       });
 
       log.info({ user: login.config.username, system: login.system, client: client.name }, 'OAuth sign-in succeeded');
-      redirectWith(res, 303, pending.redirectUri, { code, state: pending.state, iss: issuer });
+      const params = { code, state: pending.state, iss: issuer };
+      const target = new URL(pending.redirectUri);
+      if (isWebRedirect(target) && !isLoopbackHost(target.hostname)) {
+        renderReturn(res, callbackUrl(pending.redirectUri, params));
+      } else {
+        redirectWith(res, 303, pending.redirectUri, params);
+      }
     }
   );
 
