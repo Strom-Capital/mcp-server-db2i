@@ -59,7 +59,3 @@ npx mcp-server-db2i@latest
 ```
 
 The sign-in page change is in 3.0.1. Nothing else changes for existing clients.
-
-## What next?
-
-Which recurring question would you hand to a Bot first? Tell me in the [issues](https://github.com/Strom-Capital/mcp-server-db2i/issues).
