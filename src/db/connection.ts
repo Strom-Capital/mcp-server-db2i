@@ -40,9 +40,17 @@ interface PoolSlot {
 interface Owner {
   label: string;
   systems: Map<string, { query: PoolSlot; procedure?: PoolSlot }>;
+  /** Statements and open cursors running on the owner's pools. */
+  active: number;
+  /** When the owner last started or finished using a pool. */
+  lastUsed: number;
 }
 
 const owners = new Map<string, Owner>();
+
+// MCP_POOL_IDLE_TIMEOUT in milliseconds, 0 when off, and the timer that applies it
+let idleTimeoutMs = 0;
+let idleSweeper: NodeJS.Timeout | undefined;
 
 // Pools whose close() has started and not finished, for the shutdown deadline log
 const closingPools = new Set<string>();
@@ -111,21 +119,110 @@ export function initializeSessionPool(sessionId: string): void {
 
 function registerOwner(poolKey: string, label: string): void {
   if (!owners.has(poolKey)) {
-    owners.set(poolKey, { label, systems: new Map() });
+    owners.set(poolKey, { label, systems: new Map(), active: 0, lastUsed: Date.now() });
   }
+}
+
+/**
+ * Close the connections of HTTP session keys that ran nothing for `ms`
+ * (MCP_POOL_IDLE_TIMEOUT). The keys stay registered, and their next query
+ * opens a new pool. Without this, odbc and jt400 pools keep a connection until
+ * the token that owns them ends. The stdio pools are left alone.
+ *
+ * @param ms - Idle time in milliseconds before a key's pools close, 0 to turn it off
+ */
+export function setSessionPoolIdleTimeout(ms: number): void {
+  idleTimeoutMs = ms;
+  clearInterval(idleSweeper);
+  idleSweeper = undefined;
+  if (ms > 0) {
+    idleSweeper = setInterval(() => {
+      void closeIdleSessionPools();
+    }, Math.min(ms, 60_000));
+    idleSweeper.unref();
+  }
+}
+
+/**
+ * Close the pools of every HTTP session key idle past the timeout. Run by the
+ * timer setSessionPoolIdleTimeout starts; exported for tests.
+ *
+ * @param now - Current time
+ */
+export async function closeIdleSessionPools(now = Date.now()): Promise<void> {
+  if (idleTimeoutMs <= 0) {
+    return;
+  }
+  const closing: Promise<void>[] = [];
+  for (const [key, owner] of owners) {
+    if (key === STDIO_POOL_KEY || owner.active > 0 || now - owner.lastUsed < idleTimeoutMs) {
+      continue;
+    }
+    // Detach every open pool before the first await, so a query that arrives
+    // while they close opens a new pool rather than using a closing one
+    const open = [...owner.systems.entries()].flatMap(([system, pair]) =>
+      [pair.procedure, pair.query]
+        .filter((slot): slot is PoolSlot => slot?.pool !== undefined)
+        .map((slot) => {
+          const detached = { ...slot };
+          slot.pool = undefined;
+          return { system, slot: detached };
+        })
+    );
+    if (open.length === 0) {
+      continue;
+    }
+    log.info(
+      { sessionId: shortId(key), idleSeconds: Math.round((now - owner.lastUsed) / 1000) },
+      'Closing idle session connection pools'
+    );
+    closing.push(...open.map(({ system, slot }) => closeSlot(slot, system, key)));
+  }
+  await Promise.all(closing);
+}
+
+/** Whether any of an owner's pools has been created and not closed. */
+function hasOpenPool(owner: Owner): boolean {
+  return [...owner.systems.values()].some((pair) => pair.query.pool !== undefined || pair.procedure?.pool !== undefined);
+}
+
+/**
+ * Count a statement or cursor as use of its owner's pools until the returned
+ * function is called, so the idle timeout never closes a pool under it.
+ */
+function markActive(target: DbTarget): () => void {
+  const owner = owners.get(target.poolKey);
+  if (!owner) {
+    return () => undefined;
+  }
+  owner.active++;
+  owner.lastUsed = Date.now();
+  let done = false;
+  return () => {
+    if (!done) {
+      done = true;
+      owner.active--;
+      owner.lastUsed = Date.now();
+    }
+  };
 }
 
 /**
  * Give the pools one session key owns to another key, keeping their open
  * connections. Used to hand a credential check's pool to the token or OAuth
- * grant it proved. Nothing moves when `to` already has pools: the caller
- * then closes `from`, so pools of two keys are never merged.
+ * grant it proved. Nothing moves when `to` already has an open pool or a
+ * statement running: the caller then closes `from`, so pools of two keys are
+ * never merged. A `to` whose pools the idle timeout closed is replaced.
  *
  * @returns true when the pools moved
  */
 export function moveSessionPool(from: string, to: string): boolean {
   const owner = owners.get(from);
-  if (!owner || owners.has(to) || from === STDIO_POOL_KEY || to === STDIO_POOL_KEY) {
+  if (!owner || from === STDIO_POOL_KEY || to === STDIO_POOL_KEY) {
+    return false;
+  }
+  const existing = owners.get(to);
+  if (existing && (existing.active > 0 || hasOpenPool(existing))) {
     return false;
   }
   owners.delete(from);
@@ -331,6 +428,7 @@ async function run(
   const slot = getSlot(resolved, procedure);
   const kind = procedure ? 'Procedure' : 'Query';
   let db: DbPool | undefined;
+  const release = markActive(resolved);
 
   try {
     log.debug(
@@ -365,6 +463,8 @@ async function run(
     }
     const { message, details } = await explainSqlError(error, db, resolved.system);
     throw new DatabaseQueryError(`Database query failed: ${message}`, details, { cause: error });
+  } finally {
+    release();
   }
 }
 
@@ -389,6 +489,8 @@ export async function openQueryCursor(
   const slot = getSlot(resolved, false);
   let db: DbPool | undefined;
   let warmUp: NodeJS.Timeout | undefined;
+  // The cursor holds a connection until it is closed, so it counts as use until then
+  const release = markActive(resolved);
 
   const explain = async (error: unknown, pool: DbPool | undefined): Promise<Error> => {
     log.debug({ err: error, sql: sql.substring(0, 200) }, 'Cursor query failed');
@@ -428,11 +530,16 @@ export async function openQueryCursor(
       },
       async close() {
         clearTimeout(warmUp);
-        await cursor.close();
+        try {
+          await cursor.close();
+        } finally {
+          release();
+        }
       },
     };
   } catch (error) {
     clearTimeout(warmUp);
+    release();
     throw await explain(error, db);
   }
 }
@@ -444,11 +551,16 @@ export async function openQueryCursor(
  */
 async function cancelSql(jobName: string, target: DbTarget): Promise<void> {
   const slot = getSlot(target, true);
-  const db = await acquire(slot, target);
-  await db.query('CALL QSYS2.CANCEL_SQL(?)', [jobName], {
-    timeoutMs: CANCEL_CALL_TIMEOUT_MS,
-    noResultSet: true,
-  });
+  const release = markActive(target);
+  try {
+    const db = await acquire(slot, target);
+    await db.query('CALL QSYS2.CANCEL_SQL(?)', [jobName], {
+      timeoutMs: CANCEL_CALL_TIMEOUT_MS,
+      noResultSet: true,
+    });
+  } finally {
+    release();
+  }
   log.debug({ job: jobName, ...logContext(target) }, 'Statement cancelled with QSYS2.CANCEL_SQL');
 }
 

@@ -263,6 +263,30 @@ describe('openQueryCursor', () => {
     ).rejects.toThrow(/^Database query failed: \[42S02\]/);
     await connection.closeGlobalPool();
   });
+
+  it('keeps an idle session pool open while a cursor is open', async () => {
+    const odbc = await import('odbc');
+    const connection = await import('../../src/db/connection.js');
+    connection.setSessionPoolIdleTimeout(1_000);
+    connection.initializeSessionPool('session-a');
+    const target = { poolKey: 'session-a', system: 'default', config: config('odbc'), allowedSchemas: undefined, defaultSchema: 'MYLIB' };
+    const poolsBefore = vi.mocked(odbc.pool).mock.calls.length;
+
+    const cursor = await connection.openQueryCursor('SELECT ORDERNO FROM MYLIB.ORDERS', [], target, { fetchSize: 100, timeoutMs: 0 });
+    await connection.closeIdleSessionPools(Date.now() + 60_000);
+    // Still the same pool: the open cursor kept it
+    await connection.executeQuery('VALUES 1', [], target);
+    expect(vi.mocked(odbc.pool).mock.calls.length - poolsBefore).toBe(1);
+    expect(await drain(cursor)).toEqual([[1001]]);
+    await cursor.close();
+
+    await connection.closeIdleSessionPools(Date.now() + 60_000);
+    await connection.executeQuery('VALUES 1', [], target);
+    expect(vi.mocked(odbc.pool).mock.calls.length - poolsBefore).toBe(2);
+
+    connection.setSessionPoolIdleTimeout(0);
+    await connection.closeSessionPool('session-a');
+  });
 });
 
 describe('jt400 cursor', () => {

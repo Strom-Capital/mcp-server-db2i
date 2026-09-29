@@ -23,6 +23,7 @@
  * - MCP_TLS_KEY_PATH: Path to TLS private key
  * - MCP_TOKEN_EXPIRY: Token lifetime in seconds (default: 3600)
  * - MCP_MAX_SESSIONS: Maximum concurrent sessions (default: 100)
+ * - MCP_POOL_IDLE_TIMEOUT: Seconds before an unused HTTP session's connections close (default: 600, 0 = never)
  * - MCP_CORS_ORIGINS: CORS allowed origins (comma-separated, '*' for all)
  * - MCP_ALLOWED_HOSTS: Extra Host header names, added to loopback (comma-separated)
  * - MCP_ALLOW_UNAUTHENTICATED_HTTP: Allow MCP_AUTH_MODE=none on a non-loopback bind
@@ -1330,6 +1331,8 @@ export interface HttpConfig {
   tokenExpiry: number;
   /** Maximum concurrent sessions (default: 100) */
   maxSessions: number;
+  /** Seconds an HTTP session's pools may sit unused before their connections close. 0 = never. */
+  poolIdleTimeout: number;
   /** CORS allowed origins (comma-separated, '*' for all, empty for none) */
   corsOrigins: string[];
   /** Host header names that may reach this server. Always includes loopback. */
@@ -1762,6 +1765,7 @@ export function getHttpConfig(): HttpConfig {
     tls: getTlsConfig(),
     tokenExpiry: readIntEnv('MCP_TOKEN_EXPIRY', 3600),
     maxSessions: readIntEnv('MCP_MAX_SESSIONS', 100),
+    poolIdleTimeout: readIntEnvInRange('MCP_POOL_IDLE_TIMEOUT', 600, 0, 86_400),
     corsOrigins: getCorsOrigins(),
     // Export download links point at MCP_PUBLIC_URL too, so its host must pass the Host check
     allowedHosts: getAllowedHosts(host, oauth?.publicUrl ?? getExportConfig()?.publicUrl),
