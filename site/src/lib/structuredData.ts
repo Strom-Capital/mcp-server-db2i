@@ -51,7 +51,7 @@ export function homeJsonLd(site: URL): JsonLd {
         codeRepository: links.github,
         downloadUrl: links.npm,
         softwareHelp: links.docs,
-        sameAs: [links.github, links.npm],
+        sameAs: [links.github, links.npm, links.youtube],
         author: { '@id': `${home}#organization` },
       },
     ],
