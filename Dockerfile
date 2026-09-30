@@ -11,8 +11,9 @@
 #   docker build -t mcp-server-db2i .                        # odbc image
 #   docker build --target jt400 -t mcp-server-db2i:jt400 .   # jt400 image
 #
-# IBM publishes the ODBC driver for amd64, i386 and ppc64el only. On an arm64
-# host add --platform linux/amd64, or build the jt400 target, which runs natively.
+# IBM publishes the ODBC driver for amd64 and ppc64el (its apt repository also
+# carries older i386 builds), with no arm64 build. On an arm64 host add
+# --platform linux/amd64, or build the jt400 target, which runs natively.
 #
 # Note: ENV placeholders below are intentionally empty - they're overridden at runtime
 # via -e flags, --env-file, or Docker secrets. The BuildKit warning is suppressed above.
@@ -146,8 +147,8 @@ USER mcpuser
 # ODBC runtime: unixODBC plus the IBM i Access ODBC Driver from IBM's apt
 # repository (https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/installation.html).
 # Default target, kept last so `docker build .` builds it. No Java.
-# IBM publishes the driver for amd64, i386 and ppc64el only, so on an arm64
-# host build with: docker build --platform linux/amd64 .
+# IBM publishes no arm64 build of the driver, so on an arm64 host build with:
+# docker build --platform linux/amd64 .
 FROM runtime-base AS odbc
 
 ARG TARGETARCH

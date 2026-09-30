@@ -18,8 +18,9 @@ import type { DB2iConfig } from '../config.js';
  * 
  * Optional fields (fall back to environment variables):
  * - host: IBM i hostname (falls back to DB2I_HOSTNAME)
- * - port: Connection port (falls back to DB2I_PORT, default: 446)
- * - database: Database name (falls back to DB2I_DATABASE, default: *LOCAL)
+ * - port: Accepted for compatibility. No driver uses it: odbc and jt400 connect
+ *   to the database host server ports, and mapepire uses sshPort
+ * - database: Accepted for compatibility. No driver uses it
  * - schema: Default schema (falls back to DB2I_SCHEMA)
  * - duration: Token lifetime in seconds (falls back to MCP_TOKEN_EXPIRY, default: 3600)
  * - system: Profile from DB2I_PROFILES (default: the first). Replaces host, port, and database.
@@ -31,9 +32,9 @@ export interface AuthRequest {
   password: string;
   /** IBM i hostname (optional, falls back to DB2I_HOSTNAME) */
   host?: string;
-  /** Connection port (optional, falls back to DB2I_PORT) */
+  /** Accepted for compatibility (optional). No driver uses it */
   port?: number;
-  /** Database name (optional, falls back to DB2I_DATABASE) */
+  /** Accepted for compatibility (optional). No driver uses it */
   database?: string;
   /** Default schema (optional, falls back to DB2I_SCHEMA) */
   schema?: string;
