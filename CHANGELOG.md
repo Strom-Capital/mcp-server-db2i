@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.3.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.2.0...v3.3.0) (2026-09-30)
+
+
+### Features
+
+* add optional intent, client, error category and sign-in events to the audit log ([#234](https://github.com/Strom-Capital/mcp-server-db2i/issues/234)) ([fa3ba9c](https://github.com/Strom-Capital/mcp-server-db2i/commit/fa3ba9c8d158b5703c124442a2d642a3f27da2d3))
+* let annotations declare row filters and warn when a query leaves them out ([#239](https://github.com/Strom-Capital/mcp-server-db2i/issues/239)) ([6fab2a3](https://github.com/Strom-Capital/mcp-server-db2i/commit/6fab2a31b16ada3e14eee7bebaa17cd1e74631f8)), closes [#236](https://github.com/Strom-Capital/mcp-server-db2i/issues/236)
+* say when query results stop at the row limit ([#238](https://github.com/Strom-Capital/mcp-server-db2i/issues/238)) ([9756058](https://github.com/Strom-Capital/mcp-server-db2i/commit/9756058499e5ad06e6f614bc990461e5e7668740)), closes [#237](https://github.com/Strom-Capital/mcp-server-db2i/issues/237)
+
 ## [3.2.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.1.0...v3.2.0) (2026-09-30)
 
 

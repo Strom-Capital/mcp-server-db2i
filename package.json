@@ -1,7 +1,7 @@
 {
   "name": "mcp-server-db2i",
   "mcpName": "io.github.Strom-Capital/mcp-server-db2i",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Read-only MCP server that lets AI assistants query IBM Db2 for i, with per-user sign-in, a library allowlist and an audit log",
   "type": "module",
   "main": "dist/index.js",
