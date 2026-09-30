@@ -73,9 +73,16 @@ Templates look like `CALL MYLIB.GET_ORDER(ORDERNO => ?)`, `SELECT MYLIB.ORDER_TO
 
 Results are sorted by `mti_used`, then `times_advised`. Advice the optimizer kept building a temporary index for is the strongest candidate for a permanent one. `since` keeps only advisor rows last given on or after that date or timestamp, also in the system's local time. The tool only reads the advice. Review it before creating an index, because the advisor does not check whether an existing index or keyed logical file already covers the keys.
 
+### Row limit
+
+`execute_query` returns at most `limit` rows (default `QUERY_DEFAULT_LIMIT`, never above `QUERY_MAX_LIMIT`), and a business SQL tool at most its `maxRows`. The result has `limitApplied` and `truncated`. The server asks Db2 for one row more than the limit, so `truncated: true` means more rows match than were returned, and `truncated: false` means the result is complete. A `FETCH FIRST` in the statement that is smaller than the limit is kept, and reaching it is not reported as truncation.
+
 ### Warnings
 
-A successful `execute_query` or business SQL tool result can carry `warnings`, which the agent should pass on to the user. Today the only one is from the `odbc` driver: it names `DECIMAL` and `NUMERIC` columns whose values have more than 15 digits and were rounded. See [Values that differ by driver](configuration.md#values-that-differ-by-driver).
+A successful `execute_query` or business SQL tool result can carry `warnings`, which the agent should pass on to the user:
+
+- A result cut at the row limit (`truncated: true`) says so and suggests narrowing the filter or aggregating.
+- With the `odbc` driver, `DECIMAL` and `NUMERIC` columns whose values have more than 15 digits and were rounded. See [Values that differ by driver](configuration.md#values-that-differ-by-driver).
 
 ### Query exports
 

@@ -183,6 +183,20 @@ describe('tool call audit', () => {
     expect(lines[2]?.rowCount).toBeUndefined();
   });
 
+  it('marks a result cut at a limit', async () => {
+    const file = path.join(tempDir(), 'audit.log');
+    process.env.MCP_AUDIT_LOG = file;
+    initAuditLog();
+    const audit = { tool: 'execute_query', audit: () => ({ sql: 'SELECT ORDERNO FROM MYLIB.ORDERS', params: [] }) };
+
+    await withToolHandler(async () => ({ success: true, rowCount: 2, truncated: true }), 'Query failed', undefined, audit)({});
+    await withToolHandler(async () => ({ success: true, rowCount: 2, truncated: false }), 'Query failed', undefined, audit)({});
+    await withToolHandler(async () => ({ success: true, rowCount: 5, truncated: 'rows' }), 'Query failed', undefined, audit)({});
+
+    const lines = readLines(file);
+    expect(lines.map((line) => line.truncated)).toEqual([true, undefined, true]);
+  });
+
   it('records a handler that throws, and still throws', async () => {
     const file = path.join(tempDir(), 'audit.log');
     process.env.MCP_AUDIT_LOG = file;

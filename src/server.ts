@@ -178,6 +178,7 @@ const queryOutputSchema = z.object({
   data: z.array(z.unknown()).optional(),
   rowCount: z.number().int().optional(),
   limitApplied: z.number().int().optional(),
+  truncated: z.boolean().optional().describe('True when the result stopped at limitApplied and more rows match'),
   warnings: z.array(z.string()).optional().describe('Tell the user these, such as columns the driver rounded'),
 });
 
@@ -659,6 +660,8 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       outcome: 'success',
       durationMs,
       rowCount: rowCountOf(result),
+      // true for a cut query result or listing, 'rows' or 'bytes' for an export
+      ...(result.truncated ? { truncated: true } : {}),
       ...(typeof result.bytes === 'number' ? { bytes: result.bytes } : {}),
     });
     return {
@@ -701,7 +704,8 @@ type AuditFacts = Pick<AuditCall, 'sql' | 'params' | 'args' | 'intent' | 'client
 /** How the call ended. */
 type AuditOutcome = Pick<
   AuditCall,
-  'outcome' | 'error' | 'errorKind' | 'durationMs' | 'rowCount' | 'bytes' | 'sqlstate' | 'sqlcode' | 'violations'
+  | 'outcome' | 'error' | 'errorKind' | 'durationMs' | 'rowCount' | 'truncated' | 'bytes' | 'sqlstate' | 'sqlcode'
+  | 'violations'
 >;
 
 /**

@@ -134,7 +134,7 @@ describe('Custom ERP tools', () => {
 
     const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('MYLIB.ORDERHDR');
-    expect(sql).toContain('FETCH FIRST 50 ROWS ONLY');
+    expect(sql).toContain('FETCH FIRST 51 ROWS ONLY');
     expect(params).toContain('1001');
   });
 

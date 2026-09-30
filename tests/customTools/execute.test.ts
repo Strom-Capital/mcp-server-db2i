@@ -57,7 +57,8 @@ describe('executeCustomTool', () => {
     expect(result.limitApplied).toBe(25);
     expect(executeQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = vi.mocked(executeQuery).mock.calls[0];
-    expect(sql).toContain('FETCH FIRST 25 ROWS ONLY');
+    // One row past maxRows tells a full result from a cut one
+    expect(sql).toContain('FETCH FIRST 26 ROWS ONLY');
     expect(params).toEqual(['1001', 'O', null, 'O']);
     expect(parseStatement).not.toHaveBeenCalled();
   });
@@ -134,13 +135,32 @@ describe('executeCustomTool', () => {
     expect(executeQuery).not.toHaveBeenCalled();
   });
 
+  it('reports a result cut at maxRows', async () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({ ORDERNO: 1001 + index }));
+    vi.mocked(executeQuery).mockResolvedValueOnce({ rows } as Awaited<ReturnType<typeof executeQuery>>);
+
+    const result = await executeCustomTool(tool, { customer: '1001' });
+
+    expect(result.success).toBe(true);
+    expect(result.rowCount).toBe(25);
+    expect(result.truncated).toBe(true);
+    expect(result.warnings).toEqual([expect.stringContaining('stopped at 25 rows')]);
+  });
+
+  it('does not report truncation when every row fits', async () => {
+    const result = await executeCustomTool(tool, { customer: '1001' });
+
+    expect(result.truncated).toBe(false);
+    expect(result.warnings).toBeUndefined();
+  });
+
   it('caps maxRows at QUERY_MAX_LIMIT', async () => {
     process.env.QUERY_MAX_LIMIT = '10';
     const result = await executeCustomTool(tool, { customer: '1001', include_closed: true });
 
     expect(result.limitApplied).toBe(10);
     const [sql, params] = vi.mocked(executeQuery).mock.calls[0];
-    expect(sql).toContain('FETCH FIRST 10 ROWS ONLY');
+    expect(sql).toContain('FETCH FIRST 11 ROWS ONLY');
     expect(params).toEqual(['1001', 'O', 1, 'O']);
   });
 

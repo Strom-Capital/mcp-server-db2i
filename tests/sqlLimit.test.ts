@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { applySqlRowLimit } from '../src/tools/sqlLimit.js';
+import { applySqlRowLimit, rowLimitWarning, takeRowsWithinLimit } from '../src/tools/sqlLimit.js';
 
 describe('applySqlRowLimit', () => {
   it('appends FETCH FIRST when no trailing limit exists', () => {
@@ -71,5 +71,22 @@ describe('applySqlRowLimit', () => {
     expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS LIMIT 5000 OFFSET 20', 100)).toBe(
       'SELECT * FROM MYLIB.ORDERS LIMIT 100 OFFSET 20'
     );
+  });
+});
+
+describe('takeRowsWithinLimit', () => {
+  it('cuts the probe row and reports truncation', () => {
+    expect(takeRowsWithinLimit([1, 2, 3], 2)).toEqual({ rows: [1, 2], truncated: true });
+  });
+
+  it('does not report truncation when every row fits', () => {
+    expect(takeRowsWithinLimit([1, 2], 2)).toEqual({ rows: [1, 2], truncated: false });
+    expect(takeRowsWithinLimit([], 2)).toEqual({ rows: [], truncated: false });
+  });
+});
+
+describe('rowLimitWarning', () => {
+  it('names the limit', () => {
+    expect(rowLimitWarning(200)).toContain('stopped at 200 rows');
   });
 });

@@ -348,7 +348,52 @@ describe('MCP Server Integration', () => {
       });
 
       const [sql] = mockQuery.mock.calls[0] as [string];
-      expect(sql).toContain('FETCH FIRST 5 ROWS ONLY');
+      // One row past the limit tells a full result from a cut one
+      expect(sql).toContain('FETCH FIRST 6 ROWS ONLY');
+    });
+
+    it('reports a result cut at the limit', async () => {
+      mockQuery.mockResolvedValueOnce([{ ORDERNO: 1001 }, { ORDERNO: 1002 }, { ORDERNO: 1003 }]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT ORDERNO FROM MYLIB.ORDERS', limit: 2 },
+      });
+
+      expect(result.structuredContent).toMatchObject({
+        success: true,
+        data: [{ ORDERNO: 1001 }, { ORDERNO: 1002 }],
+        rowCount: 2,
+        limitApplied: 2,
+        truncated: true,
+      });
+      const { warnings } = result.structuredContent as { warnings: string[] };
+      expect(warnings).toEqual([expect.stringContaining('stopped at 2 rows')]);
+    });
+
+    it('does not report truncation when every row fits', async () => {
+      mockQuery.mockResolvedValueOnce([{ ORDERNO: 1001 }, { ORDERNO: 1002 }]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT ORDERNO FROM MYLIB.ORDERS', limit: 2 },
+      });
+
+      expect(result.structuredContent).toMatchObject({ success: true, rowCount: 2, truncated: false });
+      expect((result.structuredContent as { warnings?: string[] }).warnings).toBeUndefined();
+    });
+
+    it('keeps a smaller FETCH FIRST from the query and does not report truncation', async () => {
+      mockQuery.mockResolvedValueOnce([{ ORDERNO: 1001 }, { ORDERNO: 1002 }]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT ORDERNO FROM MYLIB.ORDERS FETCH FIRST 2 ROWS ONLY', limit: 10 },
+      });
+
+      const [sql] = mockQuery.mock.calls[0] as [string];
+      expect(sql).toContain('FETCH FIRST 2 ROWS ONLY');
+      expect(result.structuredContent).toMatchObject({ success: true, rowCount: 2, truncated: false });
     });
   });
 
@@ -503,7 +548,7 @@ describe('MCP Server Integration', () => {
 
       // Check that the query was modified to include FETCH FIRST
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('FETCH FIRST 50 ROWS ONLY'),
+        expect.stringContaining('FETCH FIRST 51 ROWS ONLY'),
         expect.any(Array)
       );
     });
@@ -520,7 +565,7 @@ describe('MCP Server Integration', () => {
       });
 
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('FETCH FIRST 25 ROWS ONLY'),
+        expect.stringContaining('FETCH FIRST 26 ROWS ONLY'),
         expect.any(Array)
       );
     });
@@ -537,7 +582,7 @@ describe('MCP Server Integration', () => {
       });
 
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('FETCH FIRST 100 ROWS ONLY'),
+        expect.stringContaining('FETCH FIRST 101 ROWS ONLY'),
         expect.any(Array)
       );
       expect(mockQuery).not.toHaveBeenCalledWith(
