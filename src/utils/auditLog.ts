@@ -47,6 +47,8 @@ export interface AuditCall {
   /** Short hash of the session key, so calls can be grouped without logging the key. */
   session?: string;
   rowCount?: number;
+  /** The result stopped at a row or size limit and more rows matched. */
+  truncated?: boolean;
   /** Size of the file an export wrote. */
   bytes?: number;
   durationMs?: number;
@@ -194,6 +196,9 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
   }
   if (entry.rowCount !== undefined) {
     line.rowCount = entry.rowCount;
+  }
+  if (entry.truncated) {
+    line.truncated = true;
   }
   if (entry.bytes !== undefined) {
     line.bytes = entry.bytes;

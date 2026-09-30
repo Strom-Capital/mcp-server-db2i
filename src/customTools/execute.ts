@@ -13,7 +13,7 @@ import {
 } from '../db/sqlServices.js';
 import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
 import { allowedSchemasFor, type DbTarget } from '../systems.js';
-import { applySqlRowLimit } from '../tools/sqlLimit.js';
+import { applySqlRowLimit, rowLimitWarning, takeRowsWithinLimit } from '../tools/sqlLimit.js';
 import { createChildLogger } from '../utils/logger.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import type { StoredTool } from './loader.js';
@@ -57,6 +57,8 @@ export interface CustomToolQueryResult extends SqlErrorDetails {
   violations?: string[];
   errorKind?: AuditErrorKind;
   limitApplied?: number;
+  /** True when the row cap left rows out. */
+  truncated?: boolean;
   warnings?: string[];
   [key: string]: unknown;
 }
@@ -102,24 +104,29 @@ export async function executeCustomTool(
   }
 
   const effectiveLimit = applyQueryLimit(tool.maxRows, getQueryLimitConfig());
-  const limitedSql = applySqlRowLimit(tool.sql, effectiveLimit);
+  // One row past the cap tells a full result from a cut one
+  const limitedSql = applySqlRowLimit(tool.sql, effectiveLimit + 1);
 
   try {
     const result = await executeQuery(limitedSql, values, options.target);
-    const limited = result.rows.slice(0, effectiveLimit);
+    const { rows: limited, truncated } = takeRowsWithinLimit(result.rows, effectiveLimit);
     const maskRules = new Map(Object.entries(tool.maskedColumns));
     const masked = maskRows(limited, maskRules);
     if (!masked.ok) {
       return { success: false, error: masked.error, errorKind: 'masking' };
     }
-    const warnings = roundedColumnsWarnings(result.roundedColumns, new Set(maskRules.keys()));
-    log.info({ tool: tool.name, rowCount: masked.rows.length, effectiveLimit }, 'Custom tool executed');
+    const warnings = [
+      ...(truncated ? [rowLimitWarning(effectiveLimit)] : []),
+      ...(roundedColumnsWarnings(result.roundedColumns, new Set(maskRules.keys())) ?? []),
+    ];
+    log.info({ tool: tool.name, rowCount: masked.rows.length, effectiveLimit, truncated }, 'Custom tool executed');
     return {
       success: true,
       data: masked.rows,
       rowCount: masked.rows.length,
       limitApplied: effectiveLimit,
-      ...(warnings ? { warnings } : {}),
+      truncated,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';

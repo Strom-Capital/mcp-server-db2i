@@ -53,7 +53,7 @@ annotations:
 | `description` | yes | What the tool returns, and how to choose arguments |
 | `toolset` | no | snake_case group. `MCP_TOOLS_ENABLED=toolset:sales` registers only that group. |
 | `parameters` | no | Named arguments. Every parameter must appear as `:name` in the SQL, and every `:name` must be declared. |
-| `maxRows` | no | Row cap for this tool. The server also applies `QUERY_MAX_LIMIT`, and uses the smaller of the two. When `maxRows` is omitted, `QUERY_DEFAULT_LIMIT` is used. |
+| `maxRows` | no | Row cap for this tool. The server also applies `QUERY_MAX_LIMIT`, and uses the smaller of the two. When `maxRows` is omitted, `QUERY_DEFAULT_LIMIT` is used. A result that stops at the cap has `truncated: true` and a warning. |
 | `system` | no | Profile from `DB2I_PROFILES` the tool always runs on. See [Running on one system](#running-on-one-system). |
 | `sql` | yes | One read-only statement. It must start with `SELECT` or `WITH`. |
 

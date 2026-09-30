@@ -20,7 +20,7 @@ import {
   maskRows,
   type MaskRule,
 } from '../customTools/masking.js';
-import { applySqlRowLimit } from './sqlLimit.js';
+import { applySqlRowLimit, rowLimitWarning, takeRowsWithinLimit } from './sqlLimit.js';
 
 const log = createChildLogger({ component: 'query-tool' });
 
@@ -156,6 +156,8 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   violations?: string[];
   errorKind?: AuditErrorKind;
   limitApplied?: number;
+  /** True when the row limit left rows out. */
+  truncated?: boolean;
   warnings?: string[];
 } & SqlErrorDetails> {
   const { sql, params = [], target, defaultSchema } = input;
@@ -174,23 +176,28 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   }
 
   try {
-    const limitedSql = applySqlRowLimit(sql, effectiveLimit);
+    // One row past the limit tells a full result from a cut one
+    const limitedSql = applySqlRowLimit(sql, effectiveLimit + 1);
     const result = await executeQuery(limitedSql, params as unknown[], target);
-    const limited = result.rows.slice(0, effectiveLimit);
+    const { rows: limited, truncated } = takeRowsWithinLimit(result.rows, effectiveLimit);
     const masked = maskRows(limited, prepared.maskRules);
     if (!masked.ok) {
       return { success: false, error: masked.error, errorKind: 'masking' };
     }
     const rows = masked.rows;
-    const warnings = roundedColumnsWarnings(result.roundedColumns, new Set(prepared.maskRules.keys()));
+    const warnings = [
+      ...(truncated ? [rowLimitWarning(effectiveLimit)] : []),
+      ...(roundedColumnsWarnings(result.roundedColumns, new Set(prepared.maskRules.keys())) ?? []),
+    ];
 
-    log.info({ rowCount: rows.length, effectiveLimit }, 'Query executed successfully');
+    log.info({ rowCount: rows.length, effectiveLimit, truncated }, 'Query executed successfully');
     return {
       success: true,
       data: rows,
       rowCount: rows.length,
       limitApplied: effectiveLimit,
-      ...(warnings ? { warnings } : {}),
+      truncated,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';

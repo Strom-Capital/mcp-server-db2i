@@ -48,6 +48,20 @@ export function applySqlRowLimit(sql: string, effectiveLimit: number): string {
   return `${statement}${separator}FETCH FIRST ${effectiveLimit} ROWS ONLY`;
 }
 
+/**
+ * Cut rows fetched with applySqlRowLimit(sql, limit + 1) down to the limit.
+ * The extra row only comes back when the limit left rows out, so its presence
+ * sets `truncated`. A query's own smaller FETCH FIRST never reports truncation.
+ */
+export function takeRowsWithinLimit<T>(rows: T[], limit: number): { rows: T[]; truncated: boolean } {
+  return { rows: rows.slice(0, limit), truncated: rows.length > limit };
+}
+
+/** Warning added to a result that stopped at the row limit. */
+export function rowLimitWarning(limit: number): string {
+  return `Result stopped at ${limit} rows and more rows match. Narrow the filter or aggregate, or tell the user the list is incomplete.`;
+}
+
 function withoutSemicolon(sql: string): string {
   return sql.endsWith(';') ? sql.slice(0, -1).trimEnd() : sql;
 }
