@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.4.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.3.0...v3.4.0) (2026-09-30)
+
+
+### Features
+
+* hint to check columns with describe_table when Db2 reports an unknown column ([#248](https://github.com/Strom-Capital/mcp-server-db2i/issues/248)) ([64908b8](https://github.com/Strom-Capital/mcp-server-db2i/commit/64908b8097d4ce277939694c5a44b42184cdb20a)), closes [#247](https://github.com/Strom-Capital/mcp-server-db2i/issues/247)
+* let companies brand and translate the OAuth sign-in page ([#240](https://github.com/Strom-Capital/mcp-server-db2i/issues/240)) ([7571b7d](https://github.com/Strom-Capital/mcp-server-db2i/commit/7571b7dd1c83afe14d7ac820c3f732e043d678bb))
+* suggest entity names when get_business_context matches nothing ([#246](https://github.com/Strom-Capital/mcp-server-db2i/issues/246)) ([ee49618](https://github.com/Strom-Capital/mcp-server-db2i/commit/ee4961899394155ad0441af9ce093d02146628de)), closes [#245](https://github.com/Strom-Capital/mcp-server-db2i/issues/245)
+
+
+### Bug Fixes
+
+* let a variable sign-in page font render medium weight ([#242](https://github.com/Strom-Capital/mcp-server-db2i/issues/242)) ([6c97ad6](https://github.com/Strom-Capital/mcp-server-db2i/commit/6c97ad6a8119f02e8e329ce47517c40e62a60909))
+* name every parser's failure when the schema allowlist cannot parse a query ([#244](https://github.com/Strom-Capital/mcp-server-db2i/issues/244)) ([b9f5662](https://github.com/Strom-Capital/mcp-server-db2i/commit/b9f5662390f42f5b649d49aff55501f11e526be9))
+
 ## [3.3.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.2.0...v3.3.0) (2026-09-30)
 
 
