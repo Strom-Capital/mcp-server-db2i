@@ -195,6 +195,26 @@ describe('MCP Server Integration', () => {
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
+    it('should run a table function from an allowed library and refuse one from another', async () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'TESTLIB,QSYS2';
+      mockQuery.mockResolvedValueOnce([{ JOB_NAME: '123456/QUSER/QZDASOINIT', JOB_STATUS: 'RUN' }]);
+
+      const allowed = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: "SELECT JOB_NAME, JOB_STATUS FROM TABLE(QSYS2.ACTIVE_JOB_INFO(DETAILED_INFO => 'NONE')) X" },
+      }) as CallToolResult;
+      expect(allowed.isError).toBeFalsy();
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+
+      const refused = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT * FROM TABLE(OTHERLIB.JOBS()) X' },
+      }) as CallToolResult;
+      expect(refused.isError).toBe(true);
+      expect((refused.content[0] as { type: 'text'; text: string }).text).toContain('OTHERLIB.JOBS');
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
     it.each([
       ['list_tables', {}],
       ['describe_table', { table: 'ORDERHDR' }],

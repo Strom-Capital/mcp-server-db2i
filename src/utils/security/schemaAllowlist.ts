@@ -10,6 +10,11 @@
  * path (the library list under system naming), which is not known here, and
  * that is how built-ins such as UPPER and COALESCE are found. Clients cannot
  * change the path because SET statements are rejected by the SQL validator.
+ *
+ * A table function qualified with its library, `TABLE(SCHEMA.NAME(args))`, is
+ * checked as a table named SCHEMA.NAME when its arguments hold no parentheses. Then they cannot hold a
+ * subquery or another call, so dropping them hides nothing. Other forms stay
+ * unparseable and are rejected.
  */
 
 import nodeSqlParser from 'node-sql-parser';
@@ -33,7 +38,9 @@ export interface SchemaCheckResult {
 const PARSE_DIALECTS = ['db2', 'mysql'] as const;
 
 const UNPARSEABLE_CAUSES =
-  'Common causes while a schema allowlist is set: system naming (LIB/FILE), TABLE(...) functions, ' +
+  'Common causes while a schema allowlist is set: system naming (LIB/FILE), a TABLE(...) function that is ' +
+  'not qualified with its library or whose arguments hold a subquery or another call ' +
+  '(TABLE(QSYS2.ACTIVE_JOB_INFO(DETAILED_INFO => \'NONE\')) works), ' +
   'or Db2 syntax the checker does not support yet. Try SQL naming (LIB.FILE) or a simpler expression.';
 
 /** Characters of the parsed text shown after the position the parser stopped at */
@@ -196,13 +203,97 @@ function normalizeDb2Registers(code: string): string {
 }
 
 /**
+ * Copy of sql with the contents of string literals, quoted identifiers and
+ * comments blanked to spaces, the same length, so a pattern can find code
+ * positions without matching text inside them. Quote characters are kept.
+ */
+function maskLiterals(sql: string): string {
+  let out = '';
+  let i = 0;
+
+  while (i < sql.length) {
+    const ch = sql[i];
+    let end: number;
+
+    if (ch === "'" || ch === '"') {
+      end = i + 1;
+      let closed = false;
+      while (end < sql.length) {
+        if (sql[end] === ch) {
+          if (sql[end + 1] === ch) {
+            end += 2;
+            continue;
+          }
+          end++;
+          closed = true;
+          break;
+        }
+        end++;
+      }
+      const inner = end - i - (closed ? 2 : 1);
+      out += ch + ' '.repeat(inner) + (closed ? ch : '');
+    } else if (ch === '-' && sql[i + 1] === '-') {
+      const newline = sql.indexOf('\n', i);
+      end = newline === -1 ? sql.length : newline;
+      out += ' '.repeat(end - i);
+    } else if (ch === '/' && sql[i + 1] === '*') {
+      const close = sql.indexOf('*/', i + 2);
+      end = close === -1 ? sql.length : close + 2;
+      out += ' '.repeat(end - i);
+    } else {
+      out += ch;
+      i++;
+      continue;
+    }
+
+    i = end;
+  }
+
+  return out;
+}
+
+const NAME_PART = '(?:"[^"]*"|[A-Za-z_$#@][\\w$#@]*)';
+
+/**
+ * `TABLE ( schema.name ( args ) )` where args hold no parentheses. Group 1 is
+ * the qualified function name. An unqualified table function resolves through
+ * the SQL path at run time, not the default schema, so it is not matched and
+ * stays rejected. Matched against the masked copy, so literals and quoted
+ * identifiers cannot contribute parentheses or the TABLE keyword.
+ */
+const TABLE_FUNCTION_RE = new RegExp(
+  `\\bTABLE\\s*\\(\\s*(${NAME_PART}\\s*\\.\\s*${NAME_PART})\\s*\\([^()]*\\)\\s*\\)`,
+  'gid'
+);
+
+/**
+ * Replace each simple table function call with its name, so the parser reads
+ * it as a table reference and the allowlist checks its library.
+ */
+function normalizeTableFunctions(sql: string): string {
+  const masked = maskLiterals(sql);
+  let out = '';
+  let last = 0;
+  for (const match of masked.matchAll(TABLE_FUNCTION_RE)) {
+    const [callStart, callEnd] = match.indices?.[0] ?? [0, 0];
+    const [nameStart, nameEnd] = match.indices?.[1] ?? [0, 0];
+    const name = sql.slice(nameStart, nameEnd).replace(/\s*\.\s*/, '.');
+    out += sql.slice(last, callStart) + name;
+    last = callEnd;
+  }
+  return out + sql.slice(last);
+}
+
+/**
  * Build the copy of the SQL that is parsed for the check. It is never run.
  * `?` markers become NULL because the Db2 dialect rejects them.
  * Exported for tests.
  */
 export function normalizeForParsing(sql: string): string {
-  return rewriteCode(stripTrailingRowLimit(sql), (code) =>
-    normalizeDb2Registers(normalizeDb2Types(code.replace(/\?/g, 'NULL')))
+  return normalizeTableFunctions(
+    rewriteCode(stripTrailingRowLimit(sql), (code) =>
+      normalizeDb2Registers(normalizeDb2Types(code.replace(/\?/g, 'NULL')))
+    )
   );
 }
 

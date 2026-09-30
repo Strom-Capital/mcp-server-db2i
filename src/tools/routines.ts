@@ -49,9 +49,10 @@ function messageOf(error: unknown): string {
 /**
  * Whether execute_query can run the routine, and the template to use.
  * execute_query runs SELECT only. With a schema allowlist set, statements
- * are parsed, and the parser reads neither TABLE(...) nor named arguments,
- * so a scalar function gets positional markers. Its template reads
- * SYSIBM.SYSDUMMY1, so SYSIBM must then be in the list too.
+ * are parsed, and the parser does not read named arguments in a scalar
+ * call, so a scalar function gets positional markers. Its template reads
+ * SYSIBM.SYSDUMMY1, so SYSIBM must then be in the list too. A table
+ * function's template, TABLE(SCHEMA.NAME(PARM => ?)), passes the check.
  */
 function describeCall(routine: RoutineDetail, allowed: string[] | undefined): DescribedRoutine {
   const allowlistSet = allowed !== undefined;
@@ -65,8 +66,6 @@ function describeCall(routine: RoutineDetail, allowed: string[] | undefined): De
     described.note = 'Procedures are run with CALL, which execute_query does not accept.';
   } else if (routine.sql_data_access === 'MODIFIES SQL DATA') {
     described.note = 'The function modifies SQL data. execute_query is read-only and does not run it.';
-  } else if (routine.type === 'TABLE FUNCTION' && allowlistSet) {
-    described.note = 'TABLE(...) is not accepted by execute_query while QUERY_ALLOWED_SCHEMAS is set.';
   } else if (routine.type === 'SCALAR FUNCTION' && allowed && !isSchemaAllowed('SYSIBM', allowed)) {
     described.note = 'The template reads SYSIBM.SYSDUMMY1, and SYSIBM is not in QUERY_ALLOWED_SCHEMAS.';
   } else {

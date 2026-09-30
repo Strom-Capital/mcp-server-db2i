@@ -76,10 +76,57 @@ describe('checkQuerySchemas', () => {
     expect(result.violations[0]).toContain('could not be parsed');
   });
 
-  it('should reject TABLE() table functions while the allowlist is active', () => {
-    const result = check('SELECT * FROM TABLE(QSYS2.ACTIVE_JOB_INFO()) X');
-    expect(result.ok).toBe(false);
-    expect(result.violations[0]).toContain('could not be parsed');
+  describe('TABLE() table functions', () => {
+    const withQsys2 = (sql: string) =>
+      checkQuerySchemas(sql, { allowed: ['MYLIB', 'QSYS2'], defaultSchema: 'MYLIB' });
+
+    it('should check a qualified table function as a table in its library', () => {
+      const sql = "SELECT * FROM TABLE(QSYS2.ACTIVE_JOB_INFO(DETAILED_INFO => 'NONE')) X";
+
+      expect(withQsys2(sql)).toEqual({ ok: true, violations: [] });
+      expect(check(sql).violations).toEqual([
+        'Table QSYS2.ACTIVE_JOB_INFO is not in the allowed schemas (MYLIB).',
+      ]);
+    });
+
+    it('should accept spacing, quoted names, markers and a join', () => {
+      expect(withQsys2(
+        "SELECT * FROM TABLE ( QSYS2 . OBJECT_STATISTICS ( 'QSYS' , '*LIB' ) ) AS X JOIN MYLIB.ORDERS O ON 1 = 1"
+      ).ok).toBe(true);
+      expect(withQsys2('SELECT * FROM TABLE("QSYS2"."SYSTEM_STATUS"(RESET_STATISTICS => ?)) X').ok).toBe(true);
+    });
+
+    it('should reject a table function from a library outside the allowlist', () => {
+      expect(withQsys2('SELECT * FROM TABLE(OTHERLIB.F()) X').violations).toEqual([
+        'Table OTHERLIB.F is not in the allowed schemas (MYLIB, QSYS2).',
+      ]);
+    });
+
+    it('should keep rejecting forms whose arguments could hide a library', () => {
+      for (const sql of [
+        'SELECT * FROM TABLE(MYLIB.F((SELECT A FROM OTHERLIB.T))) X',
+        'SELECT * FROM TABLE(MYLIB.F(OTHERLIB.G(1))) X',
+        'SELECT * FROM TABLE(QSYS2.ACTIVE_JOB_INFO()) X, TABLE(MYLIB.F(UPPER(1))) Y',
+      ]) {
+        const result = withQsys2(sql);
+        expect(result.ok, sql).toBe(false);
+        expect(result.violations[0]).toContain('could not be parsed');
+      }
+    });
+
+    it('should reject an unqualified table function, which resolves through the SQL path', () => {
+      const [message] = withQsys2('SELECT * FROM TABLE(ACTIVE_JOB_INFO()) X').violations;
+      expect(message).toContain('could not be parsed');
+      expect(message).toContain('not qualified with its library');
+    });
+
+    it('should not be fooled by literals and comments', () => {
+      expect(withQsys2(
+        "SELECT 'TABLE(OTHERLIB.F())' AS S FROM TABLE(QSYS2.F('a)b', 'c(d')) X -- TABLE(OTHERLIB.G())"
+      ).ok).toBe(true);
+      expect(withQsys2("SELECT * FROM TABLE(MYLIB.F('x')) X WHERE 'TABLE(' = 'y' AND 1 IN (SELECT 1 FROM OTHERLIB.T)")
+        .violations).toEqual(['Table OTHERLIB.T is not in the allowed schemas (MYLIB, QSYS2).']);
+    });
   });
 
   it('should not allow catalog schemas unless they are listed', () => {

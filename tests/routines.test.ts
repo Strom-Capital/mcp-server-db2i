@@ -12,6 +12,7 @@ vi.mock('../src/db/connection.js', () => ({
 import { executeQuery } from '../src/db/connection.js';
 import { callTemplate, MAX_OVERLOADS, sqlIdentifier } from '../src/db/routines.js';
 import { describeRoutineTool, listRoutinesTool } from '../src/tools/routines.js';
+import { checkQuerySchemas } from '../src/utils/security/schemaAllowlist.js';
 
 const query = vi.mocked(executeQuery);
 
@@ -367,16 +368,18 @@ describe('routines', () => {
       expect(result.data?.[0].note).toContain('SYSIBM');
     });
 
-    it('should not offer a table function to execute_query while the allowlist is set', async () => {
+    it('should offer a table function to execute_query while the allowlist is set', async () => {
       process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
       query
         .mockResolvedValueOnce({ rows: [routineRow({ ROUTINE_TYPE: 'FUNCTION', FUNCTION_TYPE: 'T' })] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [parmRow()] });
 
       const result = await describeRoutineTool({ schema: 'MYLIB', name: 'GET_ORDER' });
+      const routine = result.data?.[0];
 
-      expect(result.data?.[0].callable_with_execute_query).toBe(false);
-      expect(result.data?.[0].note).toContain('QUERY_ALLOWED_SCHEMAS');
+      expect(routine?.call_template).toBe('SELECT * FROM TABLE(MYLIB.GET_ORDER(ORDERNO => ?)) X');
+      expect(routine?.callable_with_execute_query).toBe(true);
+      expect(checkQuerySchemas(routine?.call_template ?? '', { allowed: ['MYLIB'] }).ok).toBe(true);
     });
 
     it('should flag a function that modifies SQL data', async () => {
