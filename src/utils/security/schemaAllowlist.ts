@@ -53,10 +53,15 @@ interface ParsedQuery {
   ast: unknown;
 }
 
+/** Where one grammar stopped, or why it gave up when it has no position */
 interface ParseFailure {
   line?: number;
   near?: string;
+  reason?: string;
 }
+
+/** node-sql-parser throws this, without a position, for an alias that is a keyword in its grammar */
+const RESERVED_ALIAS = /"([^"]+)" is a reserved word, can not as alias clause/;
 
 /**
  * Apply rewrite to the SQL outside string literals, quoted identifiers and
@@ -302,29 +307,47 @@ export function normalizeForParsing(sql: string): string {
 function describeParseError(sql: string, error: unknown): ParseFailure {
   const start = (error as { location?: { start?: { line?: unknown; offset?: unknown } } } | null)
     ?.location?.start;
-  if (typeof start?.line !== 'number' || typeof start.offset !== 'number') {
-    return {};
+  if (typeof start?.line === 'number' && typeof start.offset === 'number') {
+    const near = sql
+      .slice(start.offset, start.offset + ERROR_SNIPPET_LENGTH)
+      .replace(/\s+/g, ' ')
+      .trim();
+    return { line: start.line, near: near || undefined };
   }
-  const near = sql
-    .slice(start.offset, start.offset + ERROR_SNIPPET_LENGTH)
-    .replace(/\s+/g, ' ')
-    .trim();
-  return { line: start.line, near: near || undefined };
+  const reserved = error instanceof Error ? RESERVED_ALIAS.exec(error.message) : null;
+  if (reserved) {
+    return { reason: `alias "${reserved[1]}" is a reserved word to the checker, so rename it` };
+  }
+  return {};
 }
 
-function unparseableMessage(failure: ParseFailure): string {
-  let position = '';
-  if (failure.line !== undefined) {
-    position = failure.near
-      ? ` (near line ${failure.line}: "${failure.near}")`
-      : ` (at the end of line ${failure.line})`;
+function describeFailure(failure: ParseFailure): string | undefined {
+  if (failure.reason) {
+    return failure.reason;
   }
+  if (failure.line === undefined) {
+    return undefined;
+  }
+  return failure.near
+    ? `near line ${failure.line}: "${failure.near}"`
+    : `at the end of line ${failure.line}`;
+}
+
+/**
+ * Explain an unparseable query. Every grammar must fail for a query to be
+ * rejected, and each can stop at a different problem, so name them all.
+ */
+function unparseableMessage(failures: ParseFailure[]): string {
+  const details = [
+    ...new Set(failures.map(describeFailure).filter((detail): detail is string => detail !== undefined)),
+  ];
+  const position = details.length > 0 ? ` (${details.join('; ')})` : '';
   return `The query could not be parsed, so its libraries could not be checked${position}. ${UNPARSEABLE_CAUSES}`;
 }
 
-function parseQuery(sql: string): ParsedQuery | ParseFailure {
+function parseQuery(sql: string): ParsedQuery | { failures: ParseFailure[] } {
   const parser = new Parser();
-  let failure: ParseFailure | undefined;
+  const failures: ParseFailure[] = [];
 
   for (const database of PARSE_DIALECTS) {
     try {
@@ -332,12 +355,12 @@ function parseQuery(sql: string): ParsedQuery | ParseFailure {
       const tables = parser.tableList(sql, { database });
       return { ast, tables };
     } catch (error) {
-      // The other dialect may accept what this one rejects. Report the first.
-      failure ??= describeParseError(sql, error);
+      // The other dialect may accept what this one rejects.
+      failures.push(describeParseError(sql, error));
     }
   }
 
-  return failure ?? {};
+  return { failures };
 }
 
 function collectCteNames(node: unknown, names: Set<string>): void {
@@ -443,7 +466,7 @@ function schemaOf(entry: string): { schema: string | undefined; table: string } 
 export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): SchemaCheckResult {
   const parsed = parseQuery(normalizeForParsing(sql));
   if (!('ast' in parsed)) {
-    return { ok: false, violations: [unparseableMessage(parsed)], unparseable: true };
+    return { ok: false, violations: [unparseableMessage(parsed.failures)], unparseable: true };
   }
 
   const cteNames = new Set<string>();

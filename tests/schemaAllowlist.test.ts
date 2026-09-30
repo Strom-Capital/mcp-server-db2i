@@ -152,6 +152,33 @@ describe('checkQuerySchemas', () => {
     expect(message).toContain('Db2 syntax the checker does not support yet');
   });
 
+  it('should name what each grammar rejected when they stop at different problems', () => {
+    // The db2 grammar has no window frames; the mysql one reserves LINES.
+    const [message] = check(
+      'WITH C AS (\n' +
+      '  SELECT ORDERNO, SUM(QTY) OVER (PARTITION BY ITEMNO ORDER BY ORDERNO ROWS UNBOUNDED PRECEDING) AS CUM\n' +
+      '  FROM MYLIB.ORDERS\n' +
+      ')\n' +
+      'SELECT COUNT(*) AS LINES FROM C'
+    ).violations;
+    expect(message).toContain('(near line 2: "ROWS UNBOUNDED PRECEDING)"; ');
+    expect(message).toContain('alias "LINES" is a reserved word to the checker, so rename it)');
+    expect(check(
+      'WITH C AS (SELECT ORDERNO, SUM(QTY) OVER (PARTITION BY ITEMNO ORDER BY ORDERNO ROWS UNBOUNDED PRECEDING) AS CUM ' +
+      'FROM MYLIB.ORDERS) SELECT COUNT(*) AS NLINES FROM C'
+    ).ok).toBe(true);
+  });
+
+  it('should name the reserved alias even when it is the only failure reported', () => {
+    const [message] = check('SELECT ORDERNO AS KEY FROM MYLIB.ORDERS').violations;
+    expect(message).toContain('alias "KEY" is a reserved word to the checker, so rename it');
+  });
+
+  it('should give one position when both grammars stop at the same place', () => {
+    const [message] = check('SELECT * FROM MYLIB/ORDERS').violations;
+    expect(message.match(/near line/g)).toHaveLength(1);
+  });
+
   describe('Db2 for i cast syntax', () => {
     it.each([
       'SELECT CAST(NOTE AS VARCHAR(60) CCSID 1208) FROM MYLIB.ORDERHDR',
