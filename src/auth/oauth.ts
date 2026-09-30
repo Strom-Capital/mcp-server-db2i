@@ -486,6 +486,8 @@ interface SignInForm {
   username: string;
   password: string;
   system?: string;
+  /** Caller's IP address, for the audit log. */
+  ip?: string;
 }
 
 /** Render the sign-in page again for a form post, with an error and the entered user profile. */
@@ -814,6 +816,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
         username: (body.username ?? '').trim(),
         password: body.password ?? '',
         system: body.system?.trim() || undefined,
+        ip: req.ip,
       };
       res.locals.signIn = form;
       const onRateLimited: LoginRateLimitedHandler = (retryAfter) =>
@@ -827,9 +830,9 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       next();
     },
     limits.login,
-    async (req: Request, res: Response) => {
-      const { pending, client, username, password, system } = res.locals.signIn as SignInForm;
-      const signInEvent = { event: 'sign_in', method: 'oauth', identity: username, client: client.name, ip: req.ip } as const;
+    async (_req: Request, res: Response) => {
+      const { pending, client, username, password, system, ip } = res.locals.signIn as SignInForm;
+      const signInEvent = { event: 'sign_in', method: 'oauth', identity: username, client: client.name, ip } as const;
       const retry = (status: number, error: string): void => renderSignIn(res, res.locals.signIn as SignInForm, status, error);
 
       let login: Awaited<ReturnType<typeof verifyLogin>>;
