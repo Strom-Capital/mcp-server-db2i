@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Hero from '../components/Hero.astro';
-import PromoVideo from '../components/PromoVideo.astro';
+import SiteVideo from '../components/SiteVideo.astro';
 import FeatureGrid from '../components/FeatureGrid.astro';
 import Architecture from '../components/Architecture.astro';
 import Install from '../components/Install.astro';
@@ -19,7 +19,12 @@ const latest = (await getPosts()).slice(0, 3);
   jsonLd={homeJsonLd(Astro.site!)}
 >
   <Hero />
-  <PromoVideo />
+  <SiteVideo
+    name="promo"
+    title="The whole idea in under a minute."
+    lead="One question from plain language to rows, what is enforced on every query, and how it connects to your IBM i. With sound and captions."
+    description="Promo video: asking an IBM i a question in plain language with the Db2 for i MCP Server"
+  />
   <FeatureGrid />
   <Architecture />
   <Install />
