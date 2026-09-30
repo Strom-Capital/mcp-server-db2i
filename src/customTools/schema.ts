@@ -121,6 +121,12 @@ const relationSchema = z.strictObject({
 
 export type RelationDef = z.infer<typeof relationSchema>;
 
+const filterSchema = z.strictObject({
+  sql: z.string().trim().min(1),
+  columns: z.array(z.string().regex(SQL_NAME, 'Filter column must be an unquoted SQL name')).min(1, 'List the columns the filter uses'),
+  reason: z.string().trim().min(1).optional(),
+});
+
 const annotationSchema = z.strictObject({
   entity: z.string().regex(TOOL_NAME, 'Entity name must be snake_case').optional(),
   description: z.string().min(1).optional(),
@@ -129,6 +135,8 @@ const annotationSchema = z.strictObject({
     z.string().min(1),
   ).optional(),
   relations: z.array(relationSchema).optional(),
+  /** Row filters most queries on the table need, such as leaving out deleted rows. */
+  filters: z.array(filterSchema).optional(),
 });
 
 export type AnnotationDef = z.infer<typeof annotationSchema>;

@@ -28,7 +28,7 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 | `get_journal_info` | List journal, images, and primary key per table, and flag tables a replication tool cannot read |
 | `index_advice` | List the indexes the query optimizer asked for in a library, merged and ranked by temporary index use |
 | `profile_table` | Row count, last change, and per-column distinct and null counts from stored statistics or a scan |
-| `get_business_context` | List business descriptions and relations loaded from YAML |
+| `get_business_context` | List business descriptions, row filters and relations loaded from YAML |
 | `search_ibmi_services` | Find IBM i services by keyword or category, with the release that added each one and an example query |
 
 > **Note:** `list_indexes` and `get_table_constraints` query the `QSYS2` SQL catalog views and only return SQL-defined objects. Legacy DDS Logical Files and Physical File constraints are not included.
@@ -82,6 +82,7 @@ Results are sorted by `mti_used`, then `times_advised`. Advice the optimizer kep
 A successful `execute_query` or business SQL tool result can carry `warnings`, which the agent should pass on to the user:
 
 - A result cut at the row limit (`truncated: true`) says so and suggests narrowing the filter or aggregating.
+- A query that reads an annotated table without using its row filter, such as the flag for deleted rows. The table is also listed in `skippedFilters`. See [Row filters](custom-tools.md#row-filters).
 - With the `odbc` driver, `DECIMAL` and `NUMERIC` columns whose values have more than 15 digits and were rounded. See [Values that differ by driver](configuration.md#values-that-differ-by-driver).
 
 ### Query exports

@@ -42,8 +42,17 @@ export interface StoredRelation {
   description?: string;
 }
 
+export interface StoredFilter {
+  sql: string;
+  /** Uppercased columns the filter uses. */
+  columns: string[];
+  reason?: string;
+}
+
 export interface StoredAnnotation {
   table: string;
+  /** Row filters most queries need. Listed first so a reader sees them before the columns. */
+  filters?: StoredFilter[];
   entity?: string;
   description?: string;
   columns: Record<string, string>;
@@ -441,8 +450,15 @@ function storeAnnotation(table: string, annotation: AnnotationDef): StoredAnnota
     };
   });
 
+  const filters = (annotation.filters ?? []).map((filter) => ({
+    sql: filter.sql,
+    columns: [...new Set(filter.columns.map((column) => column.toUpperCase()))],
+    ...(filter.reason ? { reason: filter.reason } : {}),
+  }));
+
   return {
     table: table.toUpperCase(),
+    ...(filters.length > 0 ? { filters } : {}),
     ...(annotation.entity ? { entity: annotation.entity } : {}),
     ...(annotation.description ? { description: annotation.description } : {}),
     columns,

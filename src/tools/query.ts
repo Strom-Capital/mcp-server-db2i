@@ -13,6 +13,7 @@ import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '
 import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import { getCustomTools } from '../customTools/registry.js';
+import { checkRowFilters, type FilterCheck } from '../customTools/filters.js';
 import {
   checkMaskedColumns,
   columnsForTables,
@@ -37,18 +38,20 @@ export interface ExecuteQueryInput {
   defaultSchema?: string;
 }
 
-/** A statement that passed every read-only check, with the masks to apply. */
+/** A statement that passed every read-only check, with the masks to apply and the row filters it leaves out. */
 export type PreparedReadQuery =
-  | { ok: true; maskRules: Map<string, MaskRule> }
+  | { ok: true; maskRules: Map<string, MaskRule>; filters: FilterCheck }
   | ({ ok: false; error: string; violations?: string[]; errorKind?: AuditErrorKind } & SqlErrorDetails);
 
 /**
  * Run the checks execute_query applies before a statement reaches the IBM i:
  * the read-only validator, the schema allowlist, the PARSE_STATEMENT check,
  * and the column masking decision. Any tool that runs caller SQL uses this.
+ * With the parse check on, it also finds annotated row filters the statement
+ * leaves out; those only warn.
  *
  * @param input - SQL, the caller's target, and the schema unqualified names resolve to
- * @returns The mask rules for the selected columns, or why the statement was rejected
+ * @returns The mask rules for the selected columns and the unused row filters, or why the statement was rejected
  */
 export async function prepareReadQuery(input: {
   sql: string;
@@ -93,6 +96,7 @@ export async function prepareReadQuery(input: {
   }
 
   let maskRules: Map<string, MaskRule> | undefined;
+  let filters: FilterCheck = { tables: [], warnings: [] };
   if (isQueryParseCheckEnabled()) {
     try {
       const parsed = await parseStatement(sql, target);
@@ -125,6 +129,10 @@ export async function prepareReadQuery(input: {
         };
       }
       maskRules = decided.rules;
+      filters = checkRowFilters(parsed, getCustomTools().annotations, defaultSchema);
+      if (filters.tables.length > 0) {
+        log.info({ tables: filters.tables }, 'Query leaves out annotated row filters');
+      }
     } catch (error) {
       if (isParseStatementMissing(error)) {
         log.warn('Query rejected: QSYS2.PARSE_STATEMENT is not available');
@@ -140,7 +148,7 @@ export async function prepareReadQuery(input: {
     }
   }
 
-  return { ok: true, maskRules: maskRules ?? new Map() };
+  return { ok: true, maskRules: maskRules ?? new Map(), filters };
 }
 
 /**
@@ -158,6 +166,8 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   limitApplied?: number;
   /** True when the row limit left rows out. */
   truncated?: boolean;
+  /** Annotated tables whose row filter the statement leaves out. The warnings say which filter. */
+  skippedFilters?: string[];
   warnings?: string[];
 } & SqlErrorDetails> {
   const { sql, params = [], target, defaultSchema } = input;
@@ -187,6 +197,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
     const rows = masked.rows;
     const warnings = [
       ...(truncated ? [rowLimitWarning(effectiveLimit)] : []),
+      ...prepared.filters.warnings,
       ...(roundedColumnsWarnings(result.roundedColumns, new Set(prepared.maskRules.keys())) ?? []),
     ];
 
@@ -197,6 +208,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
       rowCount: rows.length,
       limitApplied: effectiveLimit,
       truncated,
+      ...(prepared.filters.tables.length > 0 ? { skippedFilters: prepared.filters.tables } : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   } catch (error) {

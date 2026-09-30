@@ -64,6 +64,8 @@ export interface StatementInspection {
   missingColumns: string[];
   missingRoutines: string[];
   violations: string[];
+  /** The PARSE_STATEMENT rows, for checks that read more than names. Empty when not parsed. */
+  names: ParsedName[];
 }
 
 export interface InspectOptions {
@@ -139,6 +141,31 @@ export async function parseStatement(sql: string, target?: DbTarget): Promise<Pa
   }));
 }
 
+/**
+ * Column names of a table, both SQL and system names, uppercased. Null when the
+ * table is not in the catalog or the user cannot see it.
+ */
+export async function tableColumnNames(schema: string, table: string, target?: DbTarget): Promise<Set<string> | null> {
+  const result = await executeQuery(
+    `SELECT COLUMN_NAME, SYSTEM_COLUMN_NAME FROM QSYS2.SYSCOLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+    [schema.trim().toUpperCase(), table.trim().toUpperCase()],
+    target
+  );
+  if (result.rows.length === 0) {
+    return null;
+  }
+  const names = new Set<string>();
+  for (const row of result.rows) {
+    for (const value of [row.COLUMN_NAME, row.SYSTEM_COLUMN_NAME]) {
+      const name = cell(value);
+      if (name) {
+        names.add(name.toUpperCase());
+      }
+    }
+  }
+  return names;
+}
+
 export async function hasRoutine(schema: string, name: string, target?: DbTarget): Promise<boolean> {
   const routineSchema = schema.trim().toUpperCase();
   const routineName = name.trim().toUpperCase();
@@ -206,6 +233,7 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
       missingColumns: [],
       missingRoutines: [],
       violations: ['The statement could not be parsed.'],
+      names: [],
     };
   }
 
@@ -367,6 +395,7 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
     missingColumns,
     missingRoutines,
     violations,
+    names: parsed,
   };
 }
 

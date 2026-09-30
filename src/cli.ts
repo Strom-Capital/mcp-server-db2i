@@ -12,6 +12,7 @@ import {
   validateCustomToolFiles,
   type FileValidationResult,
   type LoadCustomToolsOptions,
+  type StoredAnnotation,
   type StoredTool,
 } from './customTools/loader.js';
 import { closeGlobalPool, initializePool } from './db/connection.js';
@@ -20,6 +21,7 @@ import {
   isParseStatementMissing,
   parseStatement,
   PARSE_STATEMENT_REQUIREMENT,
+  tableColumnNames,
 } from './db/sqlServices.js';
 
 const USAGE = `Usage: mcp-server-db2i [validate-tools [--connect] <path...>]
@@ -27,6 +29,7 @@ const USAGE = `Usage: mcp-server-db2i [validate-tools [--connect] <path...>]
   (no arguments)             Start the MCP server (stdio unless MCP_TRANSPORT is set)
   validate-tools <path...>   Check YAML tool files and exit
   --connect                   Also parse each statement with QSYS2.PARSE_STATEMENT
+                              and check that annotation filter columns exist
   -h, --help                 Show this help
   -v, --version              Show the version
 
@@ -155,7 +158,7 @@ export async function runValidateTools(options: {
   let failed = reportFiles(results, stdout, stderr);
 
   if (options.connect && !failed) {
-    const connectFailed = await checkOnServer(loaded.tools, stderr);
+    const connectFailed = await checkOnServer(loaded.tools, loaded.annotations, stderr);
     failed = failed || connectFailed;
   }
 
@@ -165,7 +168,7 @@ export async function runValidateTools(options: {
     ? `${fileCount} files checked, all passed.`
     : staticFailures > 0
       ? `${fileCount} files checked, ${staticFailures} failed.`
-      : `${fileCount} files checked, PARSE_STATEMENT check failed.`;
+      : `${fileCount} files checked, the checks on the IBM i failed.`;
   stdout.write(`${summary}\n`);
   return failed ? 1 : 0;
 }
@@ -190,17 +193,24 @@ function reportFiles(
 }
 
 /**
- * Run each statement through QSYS2.PARSE_STATEMENT on the tool's system.
+ * Run each statement through QSYS2.PARSE_STATEMENT on the tool's system, and
+ * check that annotation filter columns exist on the default system.
  * A missing function stops the command and names the host.
  */
-async function checkOnServer(tools: StoredTool[], stderr: NodeJS.WritableStream): Promise<boolean> {
+async function checkOnServer(
+  tools: StoredTool[],
+  annotations: StoredAnnotation[],
+  stderr: NodeJS.WritableStream,
+): Promise<boolean> {
   const targets: DbTarget[] = [];
+  let annotationTarget: DbTarget;
   try {
     const fallback = defaultSystem();
     initializePool(fallback.config, fallback.name);
     for (const tool of tools) {
       targets.push(resolveTarget(STDIO_POOL_KEY, tool.system));
     }
+    annotationTarget = resolveTarget(STDIO_POOL_KEY);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not load database configuration';
     stderr.write(`FAIL ${message}\n`);
@@ -231,8 +241,43 @@ async function checkOnServer(tools: StoredTool[], stderr: NodeJS.WritableStream)
         stderr.write(`FAIL ${tool.source}: tool ${tool.name}: ${message}\n`);
       }
     }
-    return failed;
+    const filterFailed = await checkFilterColumns(annotations, annotationTarget, stderr);
+    return failed || filterFailed;
   } finally {
     await closeGlobalPool();
   }
+}
+
+/** Each annotation filter column must be a column of its table. */
+async function checkFilterColumns(
+  annotations: StoredAnnotation[],
+  target: DbTarget,
+  stderr: NodeJS.WritableStream,
+): Promise<boolean> {
+  let failed = false;
+  for (const annotation of annotations) {
+    const wanted = [...new Set((annotation.filters ?? []).flatMap((filter) => filter.columns))];
+    if (wanted.length === 0) {
+      continue;
+    }
+    const [schema, table] = annotation.table.split('.');
+    try {
+      const columns = await tableColumnNames(schema, table, target);
+      if (!columns) {
+        failed = true;
+        stderr.write(`FAIL annotation ${annotation.table}: table not found, so its filters cannot be checked\n`);
+        continue;
+      }
+      const missing = wanted.filter((column) => !columns.has(column));
+      if (missing.length > 0) {
+        failed = true;
+        stderr.write(`FAIL annotation ${annotation.table}: filter column ${missing.join(', ')} is not a column of the table\n`);
+      }
+    } catch (error) {
+      failed = true;
+      const message = error instanceof Error ? error.message : 'Unknown error occurred';
+      stderr.write(`FAIL annotation ${annotation.table}: ${message}\n`);
+    }
+  }
+  return failed;
 }

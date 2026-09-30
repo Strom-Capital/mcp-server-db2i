@@ -173,6 +173,10 @@ annotations:
   MYLIB.ORDERHDR:
     entity: sales_order
     description: Sales order header. Rows with STATFLG D are deleted. ORDERDAT is a number in YYYYMMDD form, not a DATE.
+    filters:
+      - sql: "TRIM(STATFLG) <> 'D'"
+        columns: [STATFLG]
+        reason: D rows are deleted orders
     columns:
       ORDERNO: Order number
       CUSTNO: Customer number, joins CUSTOMERS.CUSTNO

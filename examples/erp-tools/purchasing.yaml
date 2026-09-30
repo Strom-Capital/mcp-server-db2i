@@ -133,6 +133,10 @@ annotations:
   MYLIB.POHDR:
     entity: purchase_order
     description: Purchase order header. ORDERDAT is YYYYMMDD. STATFLG D is deleted.
+    filters:
+      - sql: "TRIM(STATFLG) <> 'D'"
+        columns: [STATFLG]
+        reason: D rows are deleted purchase orders
     columns:
       PONO: Purchase order number
       VENDNO: Vendor number, joins VENDORS.VENDNO

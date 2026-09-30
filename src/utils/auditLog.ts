@@ -49,6 +49,8 @@ export interface AuditCall {
   rowCount?: number;
   /** The result stopped at a row or size limit and more rows matched. */
   truncated?: boolean;
+  /** Annotated tables whose row filter the statement left out (execute_query, export_query, validate_query). */
+  skippedFilters?: string[];
   /** Size of the file an export wrote. */
   bytes?: number;
   durationMs?: number;
@@ -199,6 +201,9 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
   }
   if (entry.truncated) {
     line.truncated = true;
+  }
+  if (entry.skippedFilters && entry.skippedFilters.length > 0) {
+    line.skippedFilters = entry.skippedFilters;
   }
   if (entry.bytes !== undefined) {
     line.bytes = entry.bytes;

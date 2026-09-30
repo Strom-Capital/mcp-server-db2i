@@ -63,6 +63,8 @@ export type ExportQueryResult = SqlErrorDetails & {
   truncated?: false | 'rows' | 'bytes';
   columns?: Array<{ name: string; kind: ColumnKind }>;
   sample?: Record<string, unknown>[];
+  /** Annotated tables whose row filter the statement leaves out. The warnings say which filter. */
+  skippedFilters?: string[];
   /** Things the user should know about the file, such as rounded columns. */
   warnings?: string[];
   /** stdio: the file on this host. */
@@ -329,7 +331,10 @@ export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQu
       sample,
       expiresAt: new Date(entry.expiresAt).toISOString(),
     };
-    const warnings: string[] = [];
+    const warnings: string[] = [...prepared.filters.warnings];
+    if (prepared.filters.tables.length > 0) {
+      result.skippedFilters = prepared.filters.tables;
+    }
     if (rounded.size > 0) {
       warnings.push(
         `${columnList(names, rounded)} had values with 15 or more significant digits. The ODBC driver reads DECIMAL and ` +
