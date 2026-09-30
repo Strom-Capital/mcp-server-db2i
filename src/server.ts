@@ -48,7 +48,7 @@ import { getCustomTools, type StoredTool } from './customTools/registry.js';
 import type { LoadedCustomTools } from './customTools/loader.js';
 import { getSessionManager } from './transports/sessionManager.js';
 import { inputSchemaFor } from './customTools/schema.js';
-import { buildServerInstructions } from './instructions.js';
+import { buildServerInstructions, businessContextHint } from './instructions.js';
 import { registerPrompts } from './prompts.js';
 import { registerResources } from './resources.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
@@ -701,6 +701,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
   const loadedTools = getCustomTools();
   const enabledTools = new Set(getEnabledTools(loadedTools.tools));
   const instructions = buildServerInstructions(loadedTools, enabledTools);
+  const contextHint = businessContextHint(loadedTools, enabledTools);
 
   const server = new McpServer(
     {
@@ -718,7 +719,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'execute_query',
       {
         title: 'Execute SQL Query',
-        description: 'Execute a read-only SQL SELECT query against the IBM Db2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
+        description: 'Execute a read-only SQL SELECT query against the IBM Db2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.' + contextHint,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
@@ -773,7 +774,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
             ? 'The result has a download link: give it to the user as is, and do not open it yourself, because each download counts against a small limit. It expires after a few minutes. '
             : 'The result has the file path on this machine: tell the user where the file is. ') +
           'The result also has the row count, the columns, and a few sample rows so you can check the export. ' +
-          'Same checks as execute_query; masked columns are masked in the file.',
+          'Same checks as execute_query; masked columns are masked in the file.' + contextHint,
         annotations: { ...READ_ONLY_ANNOTATIONS, idempotentHint: false },
         inputSchema: z.object({
           ...system,

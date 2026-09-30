@@ -126,6 +126,8 @@ When custom files are loaded, the server puts a short built-in part first:
 
 A server without `MCP_CUSTOM_TOOLS` sends no instructions.
 
+Some clients do not pass server instructions to the model. So when annotations are loaded and `get_business_context` is enabled, the descriptions of `execute_query` and `export_query` also end with a sentence that asks the model to read a table's business context before querying it. Tool descriptions reach the model in every client.
+
 Instructions are read when a session starts. With `MCP_CUSTOM_TOOLS_WATCH`, a change reaches new HTTP sessions; a running session and a stdio server keep the text they started with. Clients decide what to do with server instructions. Claude Code adds them to the model's context. Check your client if the rules do not seem to reach the model.
 
 ### Masking

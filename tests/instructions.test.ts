@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LoadedCustomTools, StoredTool } from '../src/customTools/loader.js';
-import { buildServerInstructions } from '../src/instructions.js';
+import { buildServerInstructions, businessContextHint } from '../src/instructions.js';
 
 const TOOL = { name: 'search_sales_orders' } as StoredTool;
 
@@ -35,5 +35,18 @@ describe('buildServerInstructions', () => {
 
     expect(text.indexOf('get_business_context')).toBeLessThan(text.indexOf('First rule.'));
     expect(text.indexOf('First rule.')).toBeLessThan(text.indexOf('Second rule.'));
+  });
+});
+
+describe('businessContextHint', () => {
+  const annotated = loaded({ annotations: [{ table: 'MYLIB.ORDERHDR', columns: {}, relations: [] }] });
+
+  it('names get_business_context when annotations are loaded and the tool is enabled', () => {
+    expect(businessContextHint(annotated, new Set(['get_business_context']))).toMatch(/^ .*get_business_context/);
+  });
+
+  it('is empty without annotations or without the tool', () => {
+    expect(businessContextHint(loaded(), new Set(['get_business_context']))).toBe('');
+    expect(businessContextHint(annotated, new Set(['execute_query']))).toBe('');
   });
 });

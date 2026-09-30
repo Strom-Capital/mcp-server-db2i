@@ -217,17 +217,25 @@ describe('Custom ERP tools', () => {
   });
 
   describe('server instructions', () => {
-    async function instructionsFor(): Promise<string | undefined> {
+    async function connectOther(): Promise<{ instructions?: string; queryDescription?: string }> {
       const [otherClientTransport, otherServerTransport] = InMemoryTransport.createLinkedPair();
       const otherServer = createServer();
       await otherServer.connect(otherServerTransport);
       const otherClient = new Client({ name: 'instructions-test', version: '1.0.0' });
       await otherClient.connect(otherClientTransport);
       const instructions = otherClient.getInstructions();
+      const { tools } = await otherClient.listTools();
       await otherClient.close();
       await otherClientTransport.close();
       await otherServerTransport.close();
-      return instructions;
+      return {
+        instructions,
+        queryDescription: tools.find((tool) => tool.name === 'execute_query')?.description,
+      };
+    }
+
+    async function instructionsFor(): Promise<string | undefined> {
+      return (await connectOther()).instructions;
     }
 
     it('sends the built-in part and the file text', () => {
@@ -251,6 +259,22 @@ describe('Custom ERP tools', () => {
       resetCustomTools();
 
       expect(await instructionsFor()).toBeUndefined();
+    });
+
+    it('points execute_query at get_business_context', async () => {
+      const { tools } = await client.listTools();
+
+      expect(tools.find((tool) => tool.name === 'execute_query')?.description)
+        .toContain('call get_business_context');
+    });
+
+    it('keeps the plain execute_query description without annotations or the tool', async () => {
+      process.env.MCP_TOOLS_DISABLED = 'get_business_context';
+      expect((await connectOther()).queryDescription).not.toContain('get_business_context');
+
+      delete process.env.MCP_TOOLS_DISABLED;
+      resetCustomTools();
+      expect((await connectOther()).queryDescription).not.toContain('get_business_context');
     });
   });
 
