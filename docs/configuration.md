@@ -604,11 +604,12 @@ When the list is set:
 - Every table reference must be in the list. An unqualified name counts as the effective default schema (the session schema, or `DB2I_SCHEMA`).
 - Every schema-qualified function call must be in the list too, so `OUTSIDELIB.F(ORDERNO)` is rejected unless `OUTSIDELIB` is listed. Unqualified functions are not checked: they resolve through the SQL path (the job's library list under the default system naming), which is how built-ins such as `UPPER` and `COALESCE` are found. Clients cannot change the path, because `SET` statements are rejected. Keep libraries outside the list off the user profile's library list.
 - Catalog libraries such as `QSYS2` and `SYSIBM` are not included automatically. Add them if clients should query the catalog.
-- A query the server cannot parse is rejected. That includes system naming (`LIB/FILE`) and `TABLE(...)` table functions.
+- A table function qualified with its library, such as `TABLE(QSYS2.ACTIVE_JOB_INFO(DETAILED_INFO => 'NONE'))`, is checked like a table in that library. Its arguments must be plain values, markers or named arguments; a subquery or another call inside them, and an unqualified table function, are rejected. See [Security](security.md#schema-allowlist).
+- A query the server cannot parse is rejected. That includes system naming (`LIB/FILE`).
 - Names defined in a `WITH` clause are not treated as tables.
 - `search_tables` and `search_columns` search only the libraries in the list. Without a list, they skip system libraries (`Q*` and `SYS*`) unless `include_system` is true.
 - `get_journal_info`, `index_advice`, `profile_table`, `list_routines`, and `describe_routine` reject a library outside the list. They read `QSYS2` catalog views themselves, so `QSYS2` does not have to be in the list for them.
-- `search_ibmi_services` reads only the service catalog `QSYS2.SERVICES_INFO`, so the list does not apply to it. Running one of its examples with `execute_query` still needs the service's schema in the list, and examples that call `TABLE(...)` table functions are rejected while the list is set.
+- `search_ibmi_services` reads only the service catalog `QSYS2.SERVICES_INFO`, so the list does not apply to it. Running one of its examples with `execute_query` still needs the service's schema in the list, usually `QSYS2` or `SYSTOOLS`.
 - `list_tables`, `describe_table`, `list_views`, `list_indexes`, and `get_table_constraints` reject a library outside the list before querying. `list_schemas` returns only the libraries in the list. Keys and indexes of an allowed table are still reported when they reference another library.
 
 A view or alias inside an allowed library can still read other libraries. Give the IBM i user profile access only to the libraries in the list. See [Security](security.md#schema-allowlist).

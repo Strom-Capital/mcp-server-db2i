@@ -1210,7 +1210,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'search_ibmi_services',
       {
         title: 'Search IBM i Services',
-        description: 'Find IBM i SQL services (views, table functions, procedures, and more in QSYS2 and SYSTOOLS) in the catalog QSYS2.SERVICES_INFO, with the release that added each one and an example query. Call it before writing SQL that uses an IBM i service, instead of guessing names and parameters. With no query and no category, it lists the categories with a count each. This tool only reads the catalog. Running an example with execute_query still needs the IBM i authority the service documents and, when QUERY_ALLOWED_SCHEMAS is set, the service\'s schema in that list; while the list is set, examples that call TABLE(...) table functions are rejected.',
+        description: 'Find IBM i SQL services (views, table functions, procedures, and more in QSYS2 and SYSTOOLS) in the catalog QSYS2.SERVICES_INFO, with the release that added each one and an example query. Call it before writing SQL that uses an IBM i service, instead of guessing names and parameters. With no query and no category, it lists the categories with a count each. This tool only reads the catalog. Running an example with execute_query still needs the IBM i authority the service documents and, when QUERY_ALLOWED_SCHEMAS is set, the service\'s schema in that list. Table functions must be qualified, as in TABLE(QSYS2.ACTIVE_JOB_INFO(DETAILED_INFO => \'NONE\')), with plain values as arguments.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
