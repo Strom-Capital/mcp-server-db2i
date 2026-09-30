@@ -1,0 +1,8 @@
+# Rules sent to clients as server instructions at the start of every session.
+# A file without tools sends its text to every session, even one where the business
+# tools are turned off. Keep it to the rules a query must never miss; table detail
+# belongs in annotations.
+version: 1
+instructions: |
+  MYLIB.ORDERHDR: always filter TRIM(STATFLG) <> 'D'. D rows are deleted orders.
+  STATUS 60 is invoiced.

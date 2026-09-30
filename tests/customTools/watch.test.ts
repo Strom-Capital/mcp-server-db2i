@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 
 vi.mock('../../src/db/connection.js', () => ({
   executeQuery: vi.fn(),
@@ -143,6 +144,39 @@ profiles:
 
     expect(reloadCustomTools()).toBe(true);
     expect(resourcesChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe('execute_query description on reload', () => {
+  it('adds and removes the business context sentence as annotations come and go', async () => {
+    const dir = tempDir();
+    const file = path.join(dir, 'tools.yaml');
+    writeFileSync(file, toolYaml('search_sales_orders', 'Open sales orders'));
+    process.env.MCP_CUSTOM_TOOLS = dir;
+    expect(reloadCustomTools()).toBe(true);
+
+    const server = createServer();
+    releases.push(pinStdioServer(server));
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'reload-test', version: '1.0.0' });
+    await client.connect(clientTransport);
+    const queryDescription = async (): Promise<string | undefined> =>
+      (await client.listTools()).tools.find((tool) => tool.name === 'execute_query')?.description;
+
+    try {
+      expect(await queryDescription()).not.toContain('get_business_context');
+
+      writeFileSync(file, `${toolYaml('search_sales_orders', 'Open sales orders')}annotations:\n  MYLIB.ORDERHDR:\n    description: Order headers\n`);
+      expect(reloadCustomTools()).toBe(true);
+      expect(await queryDescription()).toContain('call get_business_context');
+
+      writeFileSync(file, toolYaml('search_sales_orders', 'Open sales orders'));
+      expect(reloadCustomTools()).toBe(true);
+      expect(await queryDescription()).not.toContain('get_business_context');
+    } finally {
+      await client.close();
+    }
   });
 });
 

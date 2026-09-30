@@ -37,9 +37,10 @@ vi.mock('../../src/utils/rateLimiter.js', async (importOriginal) => {
 
 import { TOOL_NAMES } from '../../src/config.js';
 import { loadCustomTools } from '../../src/customTools/loader.js';
-import { resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
+import { getCustomTools, resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
+import type { DB2iConfig } from '../../src/config.js';
 import { initializePool } from '../../src/db/connection.js';
-import { createServer } from '../../src/server.js';
+import { createServer, type SessionContext } from '../../src/server.js';
 
 function textOf(result: CallToolResult): string {
   return (result.content[0] as { type: 'text'; text: string }).text;
@@ -217,9 +218,9 @@ describe('Custom ERP tools', () => {
   });
 
   describe('server instructions', () => {
-    async function connectOther(): Promise<{ instructions?: string; queryDescription?: string }> {
+    async function connectOther(session?: SessionContext): Promise<{ instructions?: string; queryDescription?: string }> {
       const [otherClientTransport, otherServerTransport] = InMemoryTransport.createLinkedPair();
-      const otherServer = createServer();
+      const otherServer = createServer(session);
       await otherServer.connect(otherServerTransport);
       const otherClient = new Client({ name: 'instructions-test', version: '1.0.0' });
       await otherClient.connect(otherClientTransport);
@@ -234,10 +235,6 @@ describe('Custom ERP tools', () => {
       };
     }
 
-    async function instructionsFor(): Promise<string | undefined> {
-      return (await connectOther()).instructions;
-    }
-
     it('sends the built-in part and the file text', () => {
       const instructions = client.getInstructions() ?? '';
 
@@ -246,19 +243,44 @@ describe('Custom ERP tools', () => {
       expect(instructions).toContain("TRIM(STATFLG) <> 'D'");
     });
 
-    it('leaves out the business context sentence when that tool is disabled', async () => {
+    it('names only the context tools that are registered', async () => {
       process.env.MCP_TOOLS_DISABLED = 'get_business_context';
 
-      const instructions = await instructionsFor();
+      const { instructions } = await connectOther();
 
       expect(instructions).not.toContain('get_business_context');
+      expect(instructions).toContain('with describe_table,');
+      expect(instructions).toContain("TRIM(STATFLG) <> 'D'");
+    });
+
+    it('leaves out the text of a file whose tools are all disabled', async () => {
+      expect(client.getInstructions()).toContain('Use search_sales_orders');
+
+      process.env.MCP_TOOLS_DISABLED = 'toolset:sales';
+      const { instructions } = await connectOther();
+
+      expect(instructions).not.toContain('search_sales_orders');
+      expect(instructions).toContain("TRIM(STATFLG) <> 'D'");
+    });
+
+    it('leaves out the business tool parts in a session bound to another system', async () => {
+      const loaded = getCustomTools();
+      setCustomTools({ ...loaded, tools: loaded.tools.map((tool) => ({ ...tool, system: 'other' })) });
+
+      const { instructions } = await connectOther({
+        sessionId: 'instructions-token',
+        binding: { system: 'default', config: { username: 'test-user' } as DB2iConfig },
+      });
+
+      expect(instructions).not.toContain('Business SQL tools');
+      expect(instructions).not.toContain('search_sales_orders');
       expect(instructions).toContain("TRIM(STATFLG) <> 'D'");
     });
 
     it('sends no instructions without custom files', async () => {
       resetCustomTools();
 
-      expect(await instructionsFor()).toBeUndefined();
+      expect((await connectOther()).instructions).toBeUndefined();
     });
 
     it('points execute_query at get_business_context', async () => {
@@ -268,13 +290,16 @@ describe('Custom ERP tools', () => {
         .toContain('call get_business_context');
     });
 
-    it('keeps the plain execute_query description without annotations or the tool', async () => {
+    it('keeps the plain execute_query description without annotations or a context tool', async () => {
       process.env.MCP_TOOLS_DISABLED = 'get_business_context';
-      expect((await connectOther()).queryDescription).not.toContain('get_business_context');
+      expect((await connectOther()).queryDescription).toContain('call describe_table');
+
+      process.env.MCP_TOOLS_DISABLED = 'get_business_context,describe_table';
+      expect((await connectOther()).queryDescription).not.toContain('Some tables have business rules');
 
       delete process.env.MCP_TOOLS_DISABLED;
       resetCustomTools();
-      expect((await connectOther()).queryDescription).not.toContain('get_business_context');
+      expect((await connectOther()).queryDescription).not.toContain('Some tables have business rules');
     });
   });
 

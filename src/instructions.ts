@@ -6,31 +6,35 @@
 
 import type { LoadedCustomTools } from './customTools/loader.js';
 
+/** Tools that return a table's annotations, in the order the text names them. */
+const CONTEXT_TOOLS = ['get_business_context', 'describe_table'] as const;
+
 /**
  * Instructions for a new session, or undefined when there is nothing to say.
  *
  * A short built-in part points the model at the annotations and business tools,
- * then each file's own `instructions` text follows in file order.
+ * then each file's own `instructions` text follows in file order. A file that
+ * defines business tools adds its text only when one of them is registered.
  *
  * @param loaded - Custom tools, annotations and instructions currently loaded
- * @param enabledTools - Tool names registered for this session
+ * @param registered - Tool names registered for this session, built-in and business
  */
 export function buildServerInstructions(
   loaded: LoadedCustomTools,
-  enabledTools: ReadonlySet<string>,
+  registered: ReadonlySet<string>,
 ): string | undefined {
   const parts: string[] = [];
 
-  if (hasBusinessContext(loaded, enabledTools)) {
+  const readers = contextTools(loaded, registered);
+  if (readers.length > 0) {
     parts.push(
       'Some tables have business annotations: what flags and status codes mean, and which rows to leave out. ' +
-      'Before writing SQL against a table, read its business context with get_business_context or ' +
-      'describe_table, and follow the rules it gives.'
+      `Before writing SQL against a table, read its business context with ${readers.join(' or ')}, ` +
+      'and follow the rules it gives.'
     );
   }
 
-  const businessTools = loaded.tools.filter((tool) => enabledTools.has(tool.name));
-  if (businessTools.length > 0) {
+  if (loaded.tools.some((tool) => registered.has(tool.name))) {
     parts.push(
       'Business SQL tools already apply the business rules. Prefer one when it answers the question, ' +
       'over writing the SQL yourself.'
@@ -38,7 +42,9 @@ export function buildServerInstructions(
   }
 
   for (const entry of loaded.instructions) {
-    parts.push(entry.text);
+    if (entry.tools.length === 0 || entry.tools.some((name) => registered.has(name))) {
+      parts.push(entry.text);
+    }
   }
 
   return parts.length > 0 ? parts.join('\n\n') : undefined;
@@ -50,18 +56,22 @@ export function buildServerInstructions(
  * Tool descriptions reach the model even in clients that ignore server instructions.
  *
  * @param loaded - Custom tools, annotations and instructions currently loaded
- * @param enabledTools - Tool names registered for this session
+ * @param registered - Tool names registered for this session, built-in and business
  */
 export function businessContextHint(
   loaded: LoadedCustomTools,
-  enabledTools: ReadonlySet<string>,
+  registered: ReadonlySet<string>,
 ): string {
-  if (!hasBusinessContext(loaded, enabledTools)) {
+  const [reader] = contextTools(loaded, registered);
+  if (!reader) {
     return '';
   }
-  return ' Some tables have business rules, such as which rows are deleted: call get_business_context for a table before querying it.';
+  return ` Some tables have business rules, such as which rows are deleted: call ${reader} for a table before querying it.`;
 }
 
-function hasBusinessContext(loaded: LoadedCustomTools, enabledTools: ReadonlySet<string>): boolean {
-  return loaded.annotations.length > 0 && enabledTools.has('get_business_context');
+function contextTools(loaded: LoadedCustomTools, registered: ReadonlySet<string>): string[] {
+  if (loaded.annotations.length === 0) {
+    return [];
+  }
+  return CONTEXT_TOOLS.filter((name) => registered.has(name));
 }

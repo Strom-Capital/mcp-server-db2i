@@ -16,9 +16,11 @@ import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { PlaceholderError, rewriteNamedPlaceholders } from './params.js';
 import { checkMaskedColumns, columnsForTables, maskedTablesInSql, type MaskingMap } from './masking.js';
+import { emptyCustomTools } from './registry.js';
 import {
   customToolsFileSchema,
   formatSchemaIssues,
+  MAX_INSTRUCTIONS_LENGTH,
   type AnnotationDef,
   type MaskRule,
   type ParameterDef,
@@ -70,6 +72,8 @@ export interface StoredTool {
 export interface StoredInstructions {
   text: string;
   source: string;
+  /** Business tools defined in the same file. The text is sent only when one of them is registered, or when there are none. */
+  tools: string[];
 }
 
 export interface LoadedCustomTools {
@@ -128,8 +132,6 @@ export function systemLoadOptions(): LoadCustomToolsOptions {
   return { ...systems[0], systems };
 }
 
-const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map(), instructions: [] };
-
 /**
  * Load the files or directories listed in MCP_CUSTOM_TOOLS.
  * An unset or blank value loads nothing.
@@ -137,7 +139,7 @@ const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map(
 export function loadCustomToolsFromEnv(): LoadedCustomTools {
   const paths = customToolInputs();
   if (paths.length === 0) {
-    return EMPTY;
+    return emptyCustomTools();
   }
   const loaded = loadCustomTools(paths, systemLoadOptions());
   assertMaskingSupported(loaded);
@@ -189,9 +191,7 @@ export function loadCustomTools(
 
   for (const file of files) {
     const parsed = readFile(file);
-    if (parsed.instructions) {
-      instructions.push({ text: parsed.instructions, source: displayPath(file) });
-    }
+    const fileTools: string[] = [];
     for (const tool of parsed.tools ?? []) {
       const stored = checkTool(tool, file, options);
       const previous = toolSources.get(stored.name);
@@ -207,6 +207,10 @@ export function loadCustomTools(
       }
       toolSources.set(stored.name, displayPath(file));
       tools.push(stored);
+      fileTools.push(stored.name);
+    }
+    if (parsed.instructions) {
+      instructions.push({ text: parsed.instructions, source: displayPath(file), tools: fileTools });
     }
 
     for (const [table, annotation] of Object.entries(parsed.annotations ?? {})) {
@@ -238,6 +242,14 @@ export function loadCustomTools(
         masking.set(tableKey, tableRules);
       }
     }
+  }
+
+  const instructionsLength = instructions.reduce((sum, entry) => sum + entry.text.length, 0);
+  if (instructionsLength > MAX_INSTRUCTIONS_LENGTH) {
+    throw new CustomToolsError(
+      `instructions in ${instructions.map((entry) => entry.source).join(', ')} add up to ${instructionsLength} characters. ` +
+      `The limit is ${MAX_INSTRUCTIONS_LENGTH} across all files. Put table detail in annotations.`
+    );
   }
 
   for (const tool of tools) {
@@ -301,7 +313,7 @@ export function validateCustomToolFiles(
   }
 
   if (results.some((result) => result.error) || files.length === 0) {
-    return { results, loaded: EMPTY };
+    return { results, loaded: emptyCustomTools() };
   }
 
   try {
@@ -311,7 +323,7 @@ export function validateCustomToolFiles(
       throw error;
     }
     results.push({ path: '', error: error.message, tools: 0, annotations: 0 });
-    return { results, loaded: EMPTY };
+    return { results, loaded: emptyCustomTools() };
   }
 }
 

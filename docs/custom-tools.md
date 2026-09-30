@@ -108,27 +108,29 @@ A relation names the other `SCHEMA.TABLE`, a `join` map of local column to remot
 
 ### Instructions
 
-`instructions` is an optional top-level text, at most 4000 characters. The server sends it to clients as MCP server instructions in the `initialize` result, so the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations.
+`instructions` is an optional top-level text. All files together may hold at most 4000 characters of it. The server sends it to clients as MCP server instructions in the `initialize` result, so the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations.
 
 ```yaml
 version: 1
 instructions: |
   MYLIB.ORDERHDR: always filter TRIM(STATFLG) <> 'D'. D rows are deleted orders.
-  STATUS 60 is invoiced. Use search_sales_orders for order questions.
+  STATUS 60 is invoiced.
 ```
 
 A file may hold only `instructions`. Texts from several files are joined in file order.
 
+A file that also defines tools sends its text only to sessions that have at least one of those tools. `MCP_TOOLS_ENABLED`, `MCP_TOOLS_DISABLED` and a tool's `system:` decide that. So write guidance about a file's tools, such as "use search_sales_orders for order questions", in that file, and put rules that every query must follow in a file without tools. The example pack keeps them in `rules.yaml`.
+
 When custom files are loaded, the server puts a short built-in part first:
 
-- with annotations and `get_business_context` enabled: read a table's business context with `get_business_context` or `describe_table` before writing SQL against it
-- with business tools enabled: prefer a business tool when one answers the question
+- with annotations and `get_business_context` or `describe_table` enabled: read a table's business context with the enabled ones before writing SQL against it
+- with a business tool registered for the session: prefer a business tool when one answers the question
 
 A server without `MCP_CUSTOM_TOOLS` sends no instructions.
 
-Some clients do not pass server instructions to the model. So when annotations are loaded and `get_business_context` is enabled, the descriptions of `execute_query` and `export_query` also end with a sentence that asks the model to read a table's business context before querying it. Tool descriptions reach the model in every client.
+Some clients do not pass server instructions to the model. So when annotations are loaded and `get_business_context` or `describe_table` is enabled, the descriptions of `execute_query` and `export_query` also end with a sentence that asks the model to call that tool for a table before querying it. Tool descriptions reach the model in every client.
 
-Instructions are read when a session starts. With `MCP_CUSTOM_TOOLS_WATCH`, a change reaches new HTTP sessions; a running session and a stdio server keep the text they started with. Clients decide what to do with server instructions. Claude Code adds them to the model's context. Check your client if the rules do not seem to reach the model.
+Instructions are read when a session starts. With `MCP_CUSTOM_TOOLS_WATCH`, a change reaches new HTTP sessions; a running session and a stdio server keep the text they started with. The sentence in the `execute_query` and `export_query` descriptions follows the reload, and the server sends `notifications/tools/list_changed`. Clients decide what to do with server instructions. Claude Code adds them to the model's context. Check your client if the rules do not seem to reach the model.
 
 ### Masking
 

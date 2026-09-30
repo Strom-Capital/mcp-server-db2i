@@ -194,7 +194,7 @@ describe('instructions', () => {
 
     expect(loaded.tools).toEqual([]);
     expect(loaded.instructions).toEqual([
-      { text: "Always filter STATFLG <> 'D'.", source: expect.stringContaining('tools.yaml') },
+      { text: "Always filter STATFLG <> 'D'.", source: expect.stringContaining('tools.yaml'), tools: [] },
     ]);
   });
 
@@ -207,7 +207,21 @@ describe('instructions', () => {
     const loaded = loadCustomTools([dir]);
 
     expect(loaded.instructions.map((entry) => entry.text)).toEqual(['First rule.', 'Second rule.']);
+    expect(loaded.instructions.map((entry) => entry.tools)).toEqual([['search_sales_orders'], []]);
     expect(loaded.tools).toHaveLength(1);
+  });
+
+  it('caps the instructions of all files together', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'db2i-tools-'));
+    dirs.push(dir);
+    writeFileSync(path.join(dir, 'a.yaml'), `version: 1\ninstructions: ${'x'.repeat(2500)}\n`);
+    writeFileSync(path.join(dir, 'b.yaml'), `version: 1\ninstructions: ${'y'.repeat(2500)}\n`);
+
+    expect(() => loadCustomTools([dir])).toThrow(/a\.yaml, .*b\.yaml add up to 5000 characters/);
+
+    const validation = validateCustomToolFiles([dir]);
+    expect(validation.results.at(-1)?.error).toMatch(/limit is 4000 across all files/);
+    expect(validation.loaded.instructions).toEqual([]);
   });
 
   it('rejects blank and overlong instructions', () => {

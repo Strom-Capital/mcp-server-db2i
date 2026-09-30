@@ -161,7 +161,7 @@ const maskingSchema = z.record(
   ),
 );
 
-/** Longest instructions text one file may add. It rides on every session, so keep it to the rules. */
+/** Longest instructions text, counted over all files together. It rides on every session, so keep it to the rules. */
 export const MAX_INSTRUCTIONS_LENGTH = 4000;
 
 export const customToolsFileSchema = z.strictObject({
