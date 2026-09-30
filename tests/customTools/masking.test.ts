@@ -166,6 +166,7 @@ describe('execute_query masking', () => {
   function loadMasking(): void {
     setCustomTools({
       tools: [],
+      instructions: [],
       annotations: [],
       masking: new Map([['MYLIB.CUSTOMERS', new Map([['EMAIL', 'redact']])]]),
     });
@@ -288,6 +289,7 @@ describe('prepareReadQuery', () => {
   it('returns the mask rules for the selected columns and runs nothing but the parse check', async () => {
     setCustomTools({
       tools: [],
+      instructions: [],
       annotations: [],
       masking: new Map([['MYLIB.CUSTOMERS', new Map([['EMAIL', 'redact']])]]),
     });

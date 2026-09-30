@@ -161,8 +161,15 @@ const maskingSchema = z.record(
   ),
 );
 
+/** Longest instructions text, counted over all files together. It rides on every session, so keep it to the rules. */
+export const MAX_INSTRUCTIONS_LENGTH = 4000;
+
 export const customToolsFileSchema = z.strictObject({
   version: z.literal(1),
+  instructions: z.string().trim().min(1).max(
+    MAX_INSTRUCTIONS_LENGTH,
+    `instructions must be at most ${MAX_INSTRUCTIONS_LENGTH} characters. Put table detail in annotations`,
+  ).optional(),
   tools: z.array(toolSchema).optional(),
   annotations: z.record(
     z.string().regex(TABLE_REF, 'Annotation key must be SCHEMA.TABLE'),
@@ -173,10 +180,10 @@ export const customToolsFileSchema = z.strictObject({
   const toolCount = file.tools?.length ?? 0;
   const annotationCount = file.annotations ? Object.keys(file.annotations).length : 0;
   const maskingCount = file.masking ? Object.keys(file.masking).length : 0;
-  if (toolCount === 0 && annotationCount === 0 && maskingCount === 0) {
+  if (toolCount === 0 && annotationCount === 0 && maskingCount === 0 && !file.instructions) {
     ctx.addIssue({
       code: 'custom',
-      message: 'Add at least one tool, annotation, or masking rule',
+      message: 'Add at least one tool, annotation, masking rule, or instructions',
     });
   }
 });

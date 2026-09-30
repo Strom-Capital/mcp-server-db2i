@@ -1,6 +1,10 @@
 # Example sales-order tools. Table and column names are placeholders.
 # ORDERDAT is a number YYYYMMDD. STATUS is a number. STATFLG D is deleted and E is an error.
 version: 1
+# Sent as server instructions only to sessions that have at least one tool from this file.
+# Rules that apply to every query are in rules.yaml.
+instructions: |
+  Use search_sales_orders or list_sales_orders for sales order questions.
 tools:
   - name: list_sales_orders
     title: List sales orders

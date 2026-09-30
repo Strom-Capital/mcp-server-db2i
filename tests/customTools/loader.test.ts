@@ -187,6 +187,61 @@ masking:
   });
 });
 
+describe('instructions', () => {
+  it('loads a file that holds only instructions', () => {
+    const file = writeYaml("version: 1\ninstructions: |\n  Always filter STATFLG <> 'D'.\n");
+    const loaded = loadCustomTools([file]);
+
+    expect(loaded.tools).toEqual([]);
+    expect(loaded.instructions).toEqual([
+      { text: "Always filter STATFLG <> 'D'.", source: expect.stringContaining('tools.yaml'), tools: [] },
+    ]);
+  });
+
+  it('keeps file order across a directory', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'db2i-tools-'));
+    dirs.push(dir);
+    writeFileSync(path.join(dir, 'b.yaml'), 'version: 1\ninstructions: Second rule.\n');
+    writeFileSync(path.join(dir, 'a.yaml'), `${VALID}instructions: First rule.\n`);
+
+    const loaded = loadCustomTools([dir]);
+
+    expect(loaded.instructions.map((entry) => entry.text)).toEqual(['First rule.', 'Second rule.']);
+    expect(loaded.instructions.map((entry) => entry.tools)).toEqual([['search_sales_orders'], []]);
+    expect(loaded.tools).toHaveLength(1);
+  });
+
+  it('caps the instructions of all files together', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'db2i-tools-'));
+    dirs.push(dir);
+    writeFileSync(path.join(dir, 'a.yaml'), `version: 1\ninstructions: ${'x'.repeat(2500)}\n`);
+    writeFileSync(path.join(dir, 'b.yaml'), `version: 1\ninstructions: ${'y'.repeat(2500)}\n`);
+
+    expect(() => loadCustomTools([dir])).toThrow(/a\.yaml, .*b\.yaml add up to 5000 characters/);
+
+    const validation = validateCustomToolFiles([dir]);
+    expect(validation.results.at(-1)?.error).toMatch(/limit is 4000 across all files/);
+    expect(validation.loaded.instructions).toEqual([]);
+  });
+
+  it('rejects blank and overlong instructions', () => {
+    expect(() => loadCustomTools([writeYaml('version: 1\ninstructions: "   "\n')]))
+      .toThrow(CustomToolsError);
+    expect(() => loadCustomTools([writeYaml(`version: 1\ninstructions: ${'x'.repeat(4001)}\n`)]))
+      .toThrow(/at most 4000 characters/);
+  });
+
+  it('marks files with instructions in the validation results', () => {
+    const withText = writeYaml('version: 1\ninstructions: A rule.\n', 'rules.yaml');
+    const without = writeYaml(VALID, 'tools.yaml');
+
+    const validation = validateCustomToolFiles([withText, without]);
+
+    expect(validation.results.map((result) => result.instructions)).toEqual([true, undefined]);
+    expect(validation.loaded.instructions).toHaveLength(1);
+  });
+});
+
 describe('validateCustomToolFiles', () => {
   it('reports every failing file in one run', () => {
     const deleted = VALID.replace(

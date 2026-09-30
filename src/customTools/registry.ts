@@ -4,9 +4,12 @@
 
 import type { LoadedCustomTools, StoredAnnotation, StoredTool } from './loader.js';
 
-const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map() };
+/** A set with nothing loaded. A new object each call, so no caller shares the masking map. */
+export function emptyCustomTools(): LoadedCustomTools {
+  return { tools: [], annotations: [], masking: new Map(), instructions: [] };
+}
 
-let current: LoadedCustomTools = EMPTY;
+let current: LoadedCustomTools = emptyCustomTools();
 
 export type ParseOutcome =
   | { ok: true }
@@ -37,7 +40,7 @@ export function getCustomTools(): LoadedCustomTools {
 }
 
 export function resetCustomTools(): void {
-  setCustomTools(EMPTY);
+  setCustomTools(emptyCustomTools());
 }
 
 export type { StoredAnnotation, StoredTool };

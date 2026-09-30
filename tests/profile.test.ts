@@ -191,6 +191,7 @@ describe('profile_table', () => {
     beforeEach(() => {
       setCustomTools({
         tools: [],
+        instructions: [],
         annotations: [],
         masking: new Map([['MYLIB.CUSTOMERS', new Map([['EMAIL', 'redact' as const]])]]),
       });

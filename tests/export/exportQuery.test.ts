@@ -198,6 +198,7 @@ describe('export_query', () => {
     process.env.QUERY_PARSE_CHECK = 'true';
     setCustomTools({
       tools: [],
+      instructions: [],
       annotations: [],
       masking: new Map([['MYLIB.CUSTOMERS', new Map([['EMAIL', 'redact']])]]),
     });
@@ -223,6 +224,7 @@ describe('export_query', () => {
     process.env.QUERY_PARSE_CHECK = 'true';
     setCustomTools({
       tools: [],
+      instructions: [],
       annotations: [],
       masking: new Map([['MYLIB.CUSTOMERS', new Map([['EMAIL', 'redact']])]]),
     });

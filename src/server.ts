@@ -48,6 +48,7 @@ import { getCustomTools, type StoredTool } from './customTools/registry.js';
 import type { LoadedCustomTools } from './customTools/loader.js';
 import { getSessionManager } from './transports/sessionManager.js';
 import { inputSchemaFor } from './customTools/schema.js';
+import { buildServerInstructions, businessContextHint } from './instructions.js';
 import { registerPrompts } from './prompts.js';
 import { registerResources } from './resources.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
@@ -697,23 +698,31 @@ function argsAudit<T extends Record<string, unknown>>(tool: string): ToolAudit<T
  * @returns Configured McpServer instance ready to connect to a transport
  */
 export function createServer(sessionContext?: SessionContext): McpServer {
-  const server = new McpServer({
-    name: SERVER_NAME,
-    version: SERVER_VERSION,
-    icons: serverIcons(),
-  });
+  const loadedTools = getCustomTools();
+  const enabledTools = new Set(getEnabledTools(loadedTools.tools));
+  const sessionTools = sessionToolNames(loadedTools, enabledTools, sessionContext);
+  const instructions = buildServerInstructions(loadedTools, sessionTools);
+  const contextHint = businessContextHint(loadedTools, sessionTools);
+  const sqlTools: SqlToolDescription[] = [];
+
+  const server = new McpServer(
+    {
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
+      icons: serverIcons(),
+    },
+    instructions ? { instructions } : undefined,
+  );
 
   const system = systemShape(sessionContext);
 
-  const loadedTools = getCustomTools();
-  const enabledTools = new Set(getEnabledTools(loadedTools.tools));
-
   if (enabledTools.has('execute_query')) {
-    server.registerTool(
+    const description = 'Execute a read-only SQL SELECT query against the IBM Db2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.';
+    const registered = server.registerTool(
       'execute_query',
       {
         title: 'Execute SQL Query',
-        description: 'Execute a read-only SQL SELECT query against the IBM Db2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.',
+        description: description + contextHint,
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...system,
@@ -736,6 +745,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         sqlAudit('execute_query'),
       )
     );
+    sqlTools.push({ registered, description });
   }
 
   if (enabledTools.has('export_query') && getExportConfig()) {
@@ -757,18 +767,19 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       sessionContext,
       sqlAudit('export_query'),
     );
-    server.registerTool(
+    const description =
+      'Run a read-only SQL SELECT and write every row to a CSV or Excel (XLSX) file for the user, instead of returning the rows. ' +
+      'Use it when the user asks for a file, a spreadsheet, or more rows than execute_query returns. ' +
+      (delivery === 'link'
+        ? 'The result has a download link: give it to the user as is, and do not open it yourself, because each download counts against a small limit. It expires after a few minutes. '
+        : 'The result has the file path on this machine: tell the user where the file is. ') +
+      'The result also has the row count, the columns, and a few sample rows so you can check the export. ' +
+      'Same checks as execute_query; masked columns are masked in the file.';
+    const registered = server.registerTool(
       'export_query',
       {
         title: 'Export Query to File',
-        description:
-          'Run a read-only SQL SELECT and write every row to a CSV or Excel (XLSX) file for the user, instead of returning the rows. ' +
-          'Use it when the user asks for a file, a spreadsheet, or more rows than execute_query returns. ' +
-          (delivery === 'link'
-            ? 'The result has a download link: give it to the user as is, and do not open it yourself, because each download counts against a small limit. It expires after a few minutes. '
-            : 'The result has the file path on this machine: tell the user where the file is. ') +
-          'The result also has the row count, the columns, and a few sample rows so you can check the export. ' +
-          'Same checks as execute_query; masked columns are masked in the file.',
+        description: description + contextHint,
         annotations: { ...READ_ONLY_ANNOTATIONS, idempotentHint: false },
         inputSchema: z.object({
           ...system,
@@ -796,6 +807,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         return response;
       }
     );
+    sqlTools.push({ registered, description });
   }
 
   if (enabledTools.has('list_schemas')) {
@@ -1320,7 +1332,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
 
   const customRegistrations = new Map<string, LiveCustomTool>();
   for (const tool of loadedTools.tools) {
-    if (!enabledTools.has(tool.name) || !customToolReachable(tool, sessionContext)) {
+    if (!sessionTools.has(tool.name)) {
       continue;
     }
     customRegistrations.set(tool.name, registerCustomTool(server, tool, sessionContext));
@@ -1330,6 +1342,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
     tools: customRegistrations,
     sessionContext,
     listsAnnotatedTables: enabledTools.has('describe_table'),
+    sqlTools,
   });
 
   registerResources(server, enabledTools, sessionContext);
@@ -1349,6 +1362,14 @@ interface LiveCustomTools {
   sessionContext?: SessionContext;
   /** resources/list offers the annotated tables, so a reload changes it. */
   listsAnnotatedTables: boolean;
+  /** Built-in tools that run ad-hoc SQL. Their descriptions end with the business context hint. */
+  sqlTools: SqlToolDescription[];
+}
+
+interface SqlToolDescription {
+  registered: RegisteredTool;
+  /** Description without the business context hint. */
+  description: string;
 }
 
 const liveCustomTools = new WeakMap<McpServer, LiveCustomTools>();
@@ -1399,9 +1420,10 @@ function syncOneServer(
   loaded: LoadedCustomTools,
   enabled: ReadonlySet<string>,
 ): void {
+  const sessionTools = sessionToolNames(loaded, enabled, live.sessionContext);
   const next = new Map(
     loaded.tools
-      .filter((tool) => enabled.has(tool.name) && customToolReachable(tool, live.sessionContext))
+      .filter((tool) => sessionTools.has(tool.name))
       .map((tool) => [tool.name, tool])
   );
 
@@ -1430,6 +1452,32 @@ function syncOneServer(
     });
     current.signature = signature;
   }
+
+  const hint = businessContextHint(loaded, sessionTools);
+  for (const sqlTool of live.sqlTools) {
+    const description = sqlTool.description + hint;
+    if (sqlTool.registered.description !== description) {
+      sqlTool.registered.update({ description });
+    }
+  }
+}
+
+/**
+ * Tool names a session registers: the enabled built-ins, and the enabled
+ * business tools it can reach.
+ */
+function sessionToolNames(
+  loaded: LoadedCustomTools,
+  enabled: ReadonlySet<string>,
+  sessionContext: SessionContext | undefined,
+): Set<string> {
+  const names = new Set(enabled);
+  for (const tool of loaded.tools) {
+    if (!customToolReachable(tool, sessionContext)) {
+      names.delete(tool.name);
+    }
+  }
+  return names;
 }
 
 /**

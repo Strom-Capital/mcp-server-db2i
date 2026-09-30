@@ -136,6 +136,7 @@ describe('catalog search', () => {
     it('adds the YAML column description', async () => {
       setCustomTools({
         tools: [],
+        instructions: [],
         masking: new Map(),
         annotations: [{
           table: 'MYLIB.ORDERS',
@@ -180,6 +181,7 @@ describe('catalog search', () => {
       });
       setCustomTools({
         tools: [],
+        instructions: [],
         masking: new Map(),
         annotations: [{
           table: 'MYLIB.ORDERS',

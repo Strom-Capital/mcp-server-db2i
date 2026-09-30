@@ -182,7 +182,8 @@ function reportFiles(
       const where = result.path ? `${result.path}: ` : '';
       stderr.write(`FAIL ${where}${result.error}\n`);
     } else {
-      stdout.write(`ok  ${result.path} (${result.tools} tools, ${result.annotations} annotations)\n`);
+      const instructions = result.instructions ? ', instructions' : '';
+      stdout.write(`ok  ${result.path} (${result.tools} tools, ${result.annotations} annotations${instructions})\n`);
     }
   }
   return failed;
