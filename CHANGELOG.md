@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.1.0...v3.2.0) (2026-09-30)
+
+
+### Features
+
+* send server instructions built from custom tool files ([#228](https://github.com/Strom-Capital/mcp-server-db2i/issues/228)) ([601f75e](https://github.com/Strom-Capital/mcp-server-db2i/commit/601f75ea88b5b53b13b3b592591efe4b91b17398))
+
 ## [3.1.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.0.1...v3.1.0) (2026-09-29)
 
 
