@@ -360,6 +360,32 @@ Hashing is the default because the statement often contains customer values, and
 
 The audit log also records why the server stopped, as a line such as `{"time":"...","event":"shutdown","reason":"stdin closed"}`. The reason is `SIGINT`, `SIGTERM`, `SIGHUP`, or `stdin closed` (the stdio client went away). A second line with reason `deadline` means shutdown ran past 5 seconds and the process exited while a pool was still closing. Lines with an `event` field have no `tool`.
 
+### Call details and sign-ins
+
+When the audit log is on, each tool call line also records:
+
+- `client`: the MCP client's `name` and `version` from the request metadata, or the HTTP `userAgent` when the client sends none.
+- `session`: a 12-character hash of the session key. It groups calls from one sign-in or token without logging the key, which can be a bearer token.
+- For a failed call, `errorKind` says why: `security_validation`, `allowlist_parse` (the allowlist checker could not read the SQL), `allowlist_denied` (a library outside `QUERY_ALLOWED_SCHEMAS`), `parse_check`, `masking`, `bad_params`, `sql_error`, `not_found`, `unknown_system`, `rate_limited`, `exception` or `other`. `sqlstate`, `sqlcode` and the rule `violations` are added when the call had them.
+
+Sign-ins are recorded as `{"event":"sign_in", ...}` lines: `method` (`oauth` for the sign-in page, `password` for `POST /auth`), the user name as entered, the `system`, the OAuth `client` name, the IP address, the `outcome` (`success`, `failure`, `rate_limited` or `error`) and, for a failure, the `reason`. Passwords are never written. A failed sign-in can carry a mistyped user name, and the reason is the driver's message, which can name the host.
+
+### Intent
+
+`MCP_TOOL_INTENT=true` adds an optional `context` argument to every tool and asks the model, in the server instructions, to fill it in with one sentence on the user's goal. The server removes it before the tool runs, so results do not change, and writes it to the audit line as `intent`. A YAML tool with its own `context` parameter keeps that parameter and gets no intent argument. It is off by default and tool schemas are unchanged while it is off.
+
+The server never sees the user's prompt. The intent is the model's summary of it, which is useful for learning what people ask for, and just as sensitive.
+
+### Before you turn these on
+
+These settings are optional. A default install records none of this, and the server never sends the audit log anywhere. Where the file or stream goes is your decision. Before turning them on, or shipping the log to another system:
+
+- **Treat the log as personal data.** User names, IP addresses, SQL text, bound values and intent text identify people and can contain customer names, order numbers or other business data. The intent is written from what the user typed.
+- **Tell your users** what is recorded and why, and make sure you have a legal basis for it, for example under GDPR.
+- **Limit access and keep it short.** Protect the log like the data it describes, and delete it when you no longer need it.
+- **Think twice before sending it to a third-party service** (a log platform or a product analytics tool). That copies the data to another processor, in another place, under their retention. Check that your agreements and your users' expectations cover it.
+- **Start with the least you need.** `MCP_AUDIT_SQL=hash` and `MCP_AUDIT_PARAMS` left off keep statement values out of the log. Turn on `MCP_TOOL_INTENT` only when you will read the intents.
+
 The pino log is not this record. At `info` it does not keep the SQL, and at `debug` it is a diagnostic trace, not an answer to who ran what. A failed audit write is reported once and does not fail the tool call.
 
 ## Logging Security

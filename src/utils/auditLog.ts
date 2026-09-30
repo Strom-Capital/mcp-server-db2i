@@ -11,6 +11,28 @@ import * as fs from 'node:fs';
 import { getAuditConfig, type AuditConfig } from '../config.js';
 import { logger } from './logger.js';
 
+/** Why a tool call failed, for grouping failures without parsing the error text. */
+export type AuditErrorKind =
+  | 'security_validation'
+  | 'allowlist_parse'
+  | 'allowlist_denied'
+  | 'parse_check'
+  | 'masking'
+  | 'bad_params'
+  | 'sql_error'
+  | 'not_found'
+  | 'unknown_system'
+  | 'rate_limited'
+  | 'exception'
+  | 'other';
+
+/** The MCP client that made a call, from its client info or, failing that, the HTTP User-Agent. */
+export interface AuditClient {
+  name?: string;
+  version?: string;
+  userAgent?: string;
+}
+
 export interface AuditCall {
   tool: string;
   identity: string;
@@ -19,12 +41,22 @@ export interface AuditCall {
   sql?: string | null;
   params?: unknown[];
   args?: Record<string, unknown>;
+  /** The model's reason for the call, from the `context` argument (MCP_TOOL_INTENT). */
+  intent?: string;
+  client?: AuditClient;
+  /** Short hash of the session key, so calls can be grouped without logging the key. */
+  session?: string;
   rowCount?: number;
   /** Size of the file an export wrote. */
   bytes?: number;
   durationMs?: number;
   outcome: 'success' | 'error' | 'rate_limited';
   error?: string;
+  errorKind?: AuditErrorKind;
+  sqlstate?: string;
+  sqlcode?: number;
+  /** Rule violations the security validator or schema allowlist reported. */
+  violations?: string[];
 }
 
 let config: AuditConfig | undefined;
@@ -61,6 +93,11 @@ export function closeAuditLog(): void {
   config = undefined;
 }
 
+/** Short, stable hash of a session key. The key itself can be a bearer token, so it is never logged. */
+export function auditSessionId(sessionKey: string): string {
+  return createHash('sha256').update(sessionKey).digest('hex').slice(0, 12);
+}
+
 /** Append one audit line. No-op when the audit log is off. Never throws. */
 export function writeAudit(entry: AuditCall): void {
   if (!config) {
@@ -83,6 +120,19 @@ export type AuditEvent =
       outcome: 'success' | 'not_found' | 'error';
       bytes?: number;
       rowCount?: number;
+    }
+  | {
+      /** An IBM i sign-in at the OAuth sign-in page (`oauth`) or POST /auth (`password`). */
+      event: 'sign_in';
+      method: 'oauth' | 'password';
+      /** The user name as entered. A failed sign-in may carry a mistyped name. */
+      identity: string;
+      system?: string;
+      /** OAuth client name, as the client registered it. */
+      client?: string;
+      ip?: string;
+      outcome: 'success' | 'failure' | 'rate_limited' | 'error';
+      reason?: string;
     };
 
 /** Append one event line, such as why the server shut down. No-op when the audit log is off. Never throws. */
@@ -124,6 +174,15 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
     sql: formatSql(entry.sql, current.sql),
     outcome: entry.outcome,
   };
+  if (entry.intent !== undefined) {
+    line.intent = entry.intent;
+  }
+  if (entry.client) {
+    line.client = entry.client;
+  }
+  if (entry.session !== undefined) {
+    line.session = entry.session;
+  }
   if (entry.params) {
     line.paramCount = entry.params.length;
     if (current.params) {
@@ -144,6 +203,18 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
   }
   if (entry.error !== undefined) {
     line.error = entry.error;
+  }
+  if (entry.errorKind !== undefined) {
+    line.errorKind = entry.errorKind;
+  }
+  if (entry.sqlstate !== undefined) {
+    line.sqlstate = entry.sqlstate;
+  }
+  if (entry.sqlcode !== undefined) {
+    line.sqlcode = entry.sqlcode;
+  }
+  if (entry.violations && entry.violations.length > 0) {
+    line.violations = entry.violations;
   }
   return line;
 }

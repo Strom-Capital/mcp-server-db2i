@@ -33,6 +33,7 @@ import { isTransientConnectionError } from '../src/auth/login.js';
 import { getOAuthConfig } from '../src/config.js';
 import { resetSystems } from '../src/systems.js';
 import { withExecute } from './helpers/jt400Fake.js';
+import { closeAuditLog, initAuditLog } from '../src/utils/auditLog.js';
 
 const PROFILES = `
 profiles:
@@ -114,6 +115,7 @@ describe('OAuth authorization server', () => {
   });
 
   afterEach(async () => {
+    closeAuditLog();
     await closeServer(server);
     await getTokenManager().shutdown();
     resetOAuthState();
@@ -454,6 +456,53 @@ describe('OAuth authorization server', () => {
       body: JSON.stringify({ username: 'CALLER', password: 'wrong', system: 'prod' }),
     });
     expect(auth.status).toBe(429);
+  });
+
+  it('writes sign-in events to the audit log for the sign-in form and /auth', async () => {
+    const auditFile = path.join(dir, 'audit.log');
+    process.env.MCP_AUDIT_LOG = auditFile;
+    process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS = '4';
+    initAuditLog();
+    await restart();
+
+    await signIn();
+    const client = await register();
+    const page = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    expect((await postLogin(hiddenRequest(await page.text()), { username: 'CALLER', password: 'wrong', system: 'prod' })).status).toBe(401);
+    const auth = (password: string) => fetch(`${baseUrl}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'CALLER', password, system: 'test' }),
+    });
+    const noPassword = await fetch(`${baseUrl}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'CALLER', system: 'test' }),
+    });
+    expect(noPassword.status).toBe(400);
+    expect((await auth('wrong')).status).toBe(401);
+    expect((await auth('wrong')).status).toBe(401);
+    expect((await auth('wrong')).status).toBe(429);
+
+    const events = readFileSync(auditFile, 'utf8').trim().split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((line) => line.event === 'sign_in');
+    expect(events.map((event) => [event.method, event.outcome])).toEqual([
+      ['oauth', 'success'],
+      ['oauth', 'failure'],
+      ['password', 'failure'],
+      ['password', 'failure'],
+      ['password', 'failure'],
+      ['password', 'rate_limited'],
+    ]);
+    expect(events[0]).toMatchObject({ identity: 'CALLER', system: 'test', client: 'Claude' });
+    expect(events[1]).toMatchObject({ identity: 'CALLER', system: 'prod', reason: expect.any(String) });
+    expect(events[2]).toMatchObject({ identity: 'CALLER', system: 'test', reason: expect.any(String) });
+    expect(events[5]).toMatchObject({ identity: 'CALLER', system: 'test' });
+    for (const event of events) {
+      expect(JSON.stringify(event)).not.toContain('wrong');
+      expect(JSON.stringify(event)).not.toContain('callerpass');
+    }
   });
 
   it('refuses registrations whose client ID would be too long to use', async () => {

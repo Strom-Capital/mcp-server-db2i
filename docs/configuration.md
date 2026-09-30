@@ -198,6 +198,9 @@ Both limits count per client address. Raise them when many users arrive from one
 | `MCP_AUDIT_LOG` | off | `stderr` writes one JSON line per tool call to standard error, separate from the pino log. Any other value is a file path to append. The server refuses to start when that path is not writable |
 | `MCP_AUDIT_SQL` | `hash` | `hash` records `sha256:` of the statement. `full` records the SQL text. Anything else stops startup |
 | `MCP_AUDIT_PARAMS` | off | `true` includes bound parameter values. Otherwise the line records only how many values were bound |
+| `MCP_TOOL_INTENT` | off | `true` adds an optional `context` argument to every tool, in which the model says why it made the call. It is removed before the tool runs and written to the audit log as `intent`. The text comes from the user's prompt: read [Before you turn these on](security.md#before-you-turn-these-on) first |
+
+With the audit log on, lines also record the MCP client, a hash of the session, why a failed call failed (`errorKind`), and sign-ins at the OAuth page and `POST /auth`. See [Call details and sign-ins](security.md#call-details-and-sign-ins). All of this is optional and stays in your own log.
 
 ## Example Configuration
 

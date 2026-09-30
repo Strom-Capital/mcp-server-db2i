@@ -5,6 +5,7 @@
 import { executeQuery } from '../db/connection.js';
 import { roundedColumnsWarnings } from '../db/driver.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
+import type { AuditErrorKind } from '../utils/auditLog.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -39,7 +40,7 @@ export interface ExecuteQueryInput {
 /** A statement that passed every read-only check, with the masks to apply. */
 export type PreparedReadQuery =
   | { ok: true; maskRules: Map<string, MaskRule> }
-  | ({ ok: false; error: string; violations?: string[] } & SqlErrorDetails);
+  | ({ ok: false; error: string; violations?: string[]; errorKind?: AuditErrorKind } & SqlErrorDetails);
 
 /**
  * Run the checks execute_query applies before a statement reaches the IBM i:
@@ -64,6 +65,7 @@ export async function prepareReadQuery(input: {
       ok: false,
       error: `Security validation failed: ${validationResult.violations.join('; ')}`,
       violations: validationResult.violations,
+      errorKind: 'security_validation',
     };
   }
 
@@ -76,6 +78,7 @@ export async function prepareReadQuery(input: {
         ok: false,
         error: `Schema allowlist rejected the query: ${schemaResult.violations.join('; ')}`,
         violations: schemaResult.violations,
+        errorKind: schemaResult.unparseable ? 'allowlist_parse' : 'allowlist_denied',
       };
     }
   }
@@ -85,6 +88,7 @@ export async function prepareReadQuery(input: {
     return {
       ok: false,
       error: 'Column masking is loaded and QUERY_PARSE_CHECK is off. execute_query cannot run until the check is on, because a mask the server cannot enforce is worse than no mask.',
+      errorKind: 'masking',
     };
   }
 
@@ -107,6 +111,7 @@ export async function prepareReadQuery(input: {
             ? 'The statement could not be parsed. Fix the SQL, or set QUERY_PARSE_CHECK=false to skip this check.'
             : `PARSE_STATEMENT rejected the statement (type: ${found}). Only queries are allowed.`,
           violations,
+          errorKind: 'parse_check',
         };
       }
       const decided = maskingForStatement(sql, parsed, defaultSchema);
@@ -116,6 +121,7 @@ export async function prepareReadQuery(input: {
           ok: false,
           error: `Column masking rejected the query: ${decided.violations.join('; ')}`,
           violations: decided.violations,
+          errorKind: 'masking',
         };
       }
       maskRules = decided.rules;
@@ -125,6 +131,7 @@ export async function prepareReadQuery(input: {
         return {
           ok: false,
           error: 'QSYS2.PARSE_STATEMENT is not available on this system. Set QUERY_PARSE_CHECK=false to run queries without this check.',
+          errorKind: 'parse_check',
         };
       }
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -147,6 +154,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   rowCount?: number;
   error?: string;
   violations?: string[];
+  errorKind?: AuditErrorKind;
   limitApplied?: number;
   warnings?: string[];
 } & SqlErrorDetails> {
@@ -171,7 +179,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
     const limited = result.rows.slice(0, effectiveLimit);
     const masked = maskRows(limited, prepared.maskRules);
     if (!masked.ok) {
-      return { success: false, error: masked.error };
+      return { success: false, error: masked.error, errorKind: 'masking' };
     }
     const rows = masked.rows;
     const warnings = roundedColumnsWarnings(result.roundedColumns, new Set(prepared.maskRules.keys()));

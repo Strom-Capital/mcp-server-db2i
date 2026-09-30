@@ -15,6 +15,15 @@ describe('buildServerInstructions', () => {
     expect(buildServerInstructions(loaded(), new Set(['get_business_context']))).toBeUndefined();
   });
 
+  it('asks for the context argument when MCP_TOOL_INTENT is on', () => {
+    process.env.MCP_TOOL_INTENT = 'true';
+    try {
+      expect(buildServerInstructions(loaded(), new Set())).toContain('optional context argument');
+    } finally {
+      delete process.env.MCP_TOOL_INTENT;
+    }
+  });
+
   it('mentions business tools only when one is registered', () => {
     const withTool = loaded({ tools: [TOOL] });
 

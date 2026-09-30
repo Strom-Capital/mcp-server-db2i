@@ -13,6 +13,7 @@ import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { ipKeyGenerator, MemoryStore, rateLimit } from 'express-rate-limit';
 import { getTokenManager } from './tokenManager.js';
+import { writeAuditEvent } from '../utils/auditLog.js';
 import { createChildLogger } from '../utils/logger.js';
 import {
   DEFAULT_AUTH_RATE_LIMIT,
@@ -237,6 +238,26 @@ function ipLimiterOptions(limit: IpRateLimitConfig) {
 }
 
 /**
+ * Audit a sign-in refused by the login rate limit. The OAuth form has already
+ * read its fields into res.locals.signIn; POST /auth has only its JSON body.
+ */
+function auditRateLimitedSignIn(req: Request, res: Response): void {
+  const form = res.locals.signIn as { username?: string; system?: string; client?: { name?: string } } | undefined;
+  const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>;
+  const identity = form?.username ?? (typeof body.username === 'string' ? body.username.trim().slice(0, 128) : '');
+  const system = form?.system ?? (typeof body.system === 'string' ? body.system.trim().slice(0, 128) : undefined);
+  writeAuditEvent({
+    event: 'sign_in',
+    method: form ? 'oauth' : 'password',
+    identity,
+    ...(system ? { system } : {}),
+    ...(form?.client?.name ? { client: form.client.name } : {}),
+    ip: getClientIp(req),
+    outcome: 'rate_limited',
+  });
+}
+
+/**
  * Create the login rate limiting middleware
  *
  * Limits login attempts per IP to prevent brute force. Create it once per app
@@ -260,6 +281,7 @@ export function createAuthRateLimitMiddleware(
     handler: (req: Request, res: Response) => {
       const retryAfter = retryAfterSeconds(req);
       log.warn({ ip: getClientIp(req) }, 'Auth rate limit exceeded');
+      auditRateLimitedSignIn(req, res);
       const custom = res.locals.onLoginRateLimited as LoginRateLimitedHandler | undefined;
       if (custom) {
         custom(retryAfter);

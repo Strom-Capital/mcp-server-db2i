@@ -1,9 +1,11 @@
 /**
  * Server instructions sent in the initialize result.
  *
- * Built only from MCP_CUSTOM_TOOLS: a server without custom files sends none.
+ * Built from MCP_CUSTOM_TOOLS, plus one line when MCP_TOOL_INTENT is on. A server
+ * with neither sends none.
  */
 
+import { isToolIntentEnabled } from './config.js';
 import type { LoadedCustomTools } from './customTools/loader.js';
 
 /** Tools that return a table's annotations, in the order the text names them. */
@@ -45,6 +47,14 @@ export function buildServerInstructions(
     if (entry.tools.length === 0 || entry.tools.some((name) => registered.has(name))) {
       parts.push(entry.text);
     }
+  }
+
+  if (isToolIntentEnabled()) {
+    parts.push(
+      "Every tool takes an optional context argument. Fill it in on each call with one sentence on the user's goal, " +
+      'for example "Find open orders for a customer who called about a late delivery". ' +
+      'It is written to the audit log and does not change the result.'
+    );
   }
 
   return parts.length > 0 ? parts.join('\n\n') : undefined;

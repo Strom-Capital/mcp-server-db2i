@@ -21,7 +21,7 @@ import { listSchemas, listTables } from './db/queries.js';
 import type { SessionContext } from './server.js';
 import { describeTableTool } from './tools/metadata.js';
 import { getObjectDdlTool, schemaDenied } from './tools/sqlServices.js';
-import { writeAudit, type AuditCall } from './utils/auditLog.js';
+import { auditSessionId, writeAudit, type AuditCall } from './utils/auditLog.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import { isSchemaAllowed } from './utils/security/schemaAllowlist.js';
 
@@ -68,15 +68,23 @@ export async function guarded<T>(
   run: () => Promise<T>,
   rowCount?: (value: T) => number | undefined,
 ): Promise<T> {
-  const audit = (outcome: Pick<AuditCall, 'outcome' | 'error' | 'durationMs' | 'rowCount'>): void => {
-    writeAudit({ tool: name, identity: caller.identity, system: caller.target().system, sql: null, args, ...outcome });
+  const audit = (outcome: Pick<AuditCall, 'outcome' | 'error' | 'errorKind' | 'durationMs' | 'rowCount'>): void => {
+    writeAudit({
+      tool: name,
+      identity: caller.identity,
+      system: caller.target().system,
+      sql: null,
+      args,
+      ...(caller.sessionId ? { session: auditSessionId(caller.sessionId) } : {}),
+      ...outcome,
+    });
   };
 
   const limiter = getRateLimiter();
   const rate = limiter.checkLimit(caller.sessionId ?? 'stdio');
   if (!rate.allowed) {
     const { error } = limiter.formatError(rate);
-    audit({ outcome: 'rate_limited', error });
+    audit({ outcome: 'rate_limited', error, errorKind: 'rate_limited' });
     throw new ProtocolError(ProtocolErrorCode.InternalError, error);
   }
 
@@ -89,6 +97,7 @@ export async function guarded<T>(
     audit({
       outcome: 'error',
       error: error instanceof Error ? error.message : String(error),
+      errorKind: 'exception',
       durationMs: Date.now() - started,
     });
     throw error;

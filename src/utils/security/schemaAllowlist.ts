@@ -33,6 +33,8 @@ export interface SchemaCheckOptions {
 export interface SchemaCheckResult {
   ok: boolean;
   violations: string[];
+  /** True when the query was rejected because the checker could not parse it, not for a library. */
+  unparseable?: boolean;
 }
 
 const PARSE_DIALECTS = ['db2', 'mysql'] as const;
@@ -441,7 +443,7 @@ function schemaOf(entry: string): { schema: string | undefined; table: string } 
 export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): SchemaCheckResult {
   const parsed = parseQuery(normalizeForParsing(sql));
   if (!('ast' in parsed)) {
-    return { ok: false, violations: [unparseableMessage(parsed)] };
+    return { ok: false, violations: [unparseableMessage(parsed)], unparseable: true };
   }
 
   const cteNames = new Set<string>();
