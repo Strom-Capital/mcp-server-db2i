@@ -109,7 +109,7 @@ Keys are `SCHEMA.TABLE`. Names are folded to uppercase.
 
 A relation names the other `SCHEMA.TABLE`, a `join` map of local column to remote column, an optional `cardinality` (`one-to-one`, `one-to-many`, `many-to-one`, `many-to-many`), and an optional description.
 
-`get_business_context` returns these notes. Filter with `entity`, `table` (`ORDERHDR` or `MYLIB.ORDERHDR`), or omit both to list every annotation. `describe_table` adds `filters`, `business_description` and `relations` when the table is annotated, and a `business_description` on columns that have one. `list_tables` adds `business_description` on annotated tables.
+`get_business_context` returns these notes. Filter with `entity`, `table` (`ORDERHDR` or `MYLIB.ORDERHDR`), or omit both to list every annotation. The entity filter ignores case and treats spaces and hyphens as underscores. When no entity has the requested name, it returns the entities whose names partly match it (one name contains the other, or they share the most word parts, such as `order` and `line`) with `partial_match: true` and a `hint`. When nothing matches, it returns empty `data` with `available_entities`, plus `available_tables` for a table filter, and a `hint` to pick one of them or omit the filters. The table filter itself stays exact. `describe_table` adds `filters`, `business_description` and `relations` when the table is annotated, and a `business_description` on columns that have one. `list_tables` adds `business_description` on annotated tables.
 
 #### Row filters
 

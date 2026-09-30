@@ -529,6 +529,10 @@ const businessContextOutputSchema = z.object({
     })).optional(),
   })).optional(),
   count: z.number().int().optional(),
+  partial_match: z.boolean().optional().describe('True when no entity had the requested name and data holds entities whose names partly match it'),
+  available_entities: z.array(z.string()).optional().describe('Every loaded entity name, when nothing matched the filters'),
+  available_tables: z.array(z.string()).optional().describe('Every annotated SCHEMA.TABLE, when the table filter matched nothing'),
+  hint: z.string().optional().describe('What to call next when the filters did not match exactly'),
 });
 
 const tableConstraintsOutputSchema = z.object({
@@ -1457,7 +1461,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'get_business_context',
       {
         title: 'Get Business Context',
-        description: 'List business entities, row filters most queries need (such as leaving out deleted rows), table and column descriptions, and relations that the catalog does not declare as foreign keys. Filter by entity or table. Omit both to return every annotation loaded from MCP_CUSTOM_TOOLS.',
+        description: 'List business entities, row filters most queries need (such as leaving out deleted rows), table and column descriptions, and relations that the catalog does not declare as foreign keys. Filter by entity or table. Omit both to return every annotation loaded from MCP_CUSTOM_TOOLS. An unknown entity name falls back to names that partly match it, and when nothing matches, the result lists the loaded entity names.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...contextShape(),
