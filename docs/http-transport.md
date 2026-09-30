@@ -241,6 +241,8 @@ To add it in Claude, open **Settings > Connectors > Add custom connector** and e
 
 The page names the client and the site the user returns to. After sign-in, Claude holds a token bound to that user profile and system.
 
+The page can carry your company's name, logo, colors and language. See [Customize for your company](customization.md).
+
 Other clients sign in the same way. Each connection is bound to the system picked on the sign-in page, so add one entry per system you want to use.
 
 - **Cursor.** In `~/.cursor/mcp.json` (or a project's `.cursor/mcp.json`), add the URL only, with no command, environment or password:

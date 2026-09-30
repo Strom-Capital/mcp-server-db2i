@@ -79,7 +79,7 @@ graph LR
 - **Secure by design** - Only SELECT queries allowed, credentials via environment variables
 - **Docker support** - Run as a container for easy deployment
 - **HTTP Transport** - MCP over Streamable HTTP with token authentication for remote clients and agents
-- **OAuth for Remote Clients** - Built-in OAuth 2.1 sign-in with the user's own IBM i profile, so claude.ai custom connectors can connect
+- **OAuth for Remote Clients** - Built-in OAuth 2.1 sign-in with the user's own IBM i profile, so claude.ai custom connectors can connect. The sign-in page can carry your company's name, logo, colors and language ([Customize for your company](docs/customization.md))
 - **Current MCP spec** - Speaks [2026-07-28](https://modelcontextprotocol.io/) and still serves stateless 2025-era clients
 - **Dual Transport** - Run stdio and HTTP simultaneously
 - **Multiple systems** - Reach several IBM i systems from one server with `DB2I_PROFILES`, each with its own driver, credentials, and library allowlist. Tools take an optional `system` argument. See [Multiple systems](docs/configuration.md#multiple-systems)

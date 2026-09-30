@@ -79,6 +79,16 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 | `MCP_OAUTH_SECRET` | random per process | Signing key, at least 32 characters. Set it so client registrations survive a restart |
 | `MCP_OAUTH_REFRESH_EXPIRY` | `604800` | Refresh token lifetime in seconds. `0` turns refresh tokens off |
 | `MCP_OAUTH_STATE_FILE` | none | Encrypted file for refresh grants, so users stay signed in across a restart. Requires `MCP_OAUTH_SECRET`. See [Staying signed in across restarts](http-transport.md#staying-signed-in-across-restarts) |
+| `MCP_OAUTH_BRAND_NAME` | - | Company name in the sign-in page header and browser tab. See [Customize for your company](customization.md) |
+| `MCP_OAUTH_LOGO` | db2i/mcp logo | SVG or PNG file for the sign-in page header, at most 64 KB |
+| `MCP_OAUTH_TITLE` | `Sign in to IBM i` | Sign-in page heading, for every language |
+| `MCP_OAUTH_SYSTEM_LABEL` | `System` | Label above the system picker, for every language |
+| `MCP_OAUTH_ACCENT` | `#3159E8` | Button and focus color, `#RGB` or `#RRGGBB` |
+| `MCP_OAUTH_ACCENT_DARK` | `MCP_OAUTH_ACCENT` | The same in dark mode |
+| `MCP_OAUTH_FONT_FAMILY` | system fonts | CSS font stack for the sign-in page text |
+| `MCP_OAUTH_FONT_FILE` | - | WOFF2 font for the sign-in page text, at most 200 KB |
+| `MCP_OAUTH_LANGUAGE` | `en` | Sign-in page language: `en`, `fi`, a language from `MCP_OAUTH_STRINGS`, or `auto` to follow the browser |
+| `MCP_OAUTH_STRINGS` | - | JSON file that changes sign-in page wording or adds a language. See [Language and wording](customization.md#language-and-wording) |
 
 **Authentication Modes:**
 
@@ -466,6 +476,7 @@ profiles:
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `name` | Yes | - | Name tools use in their `system` argument. Letters, digits, `_` and `-` |
+| `label` | No | `name` | Name shown in the OAuth sign-in page's system picker, up to 60 characters. The profile `name` is still what is submitted and logged |
 | `host` | Yes | - | IBM i hostname or IPv4 address |
 | `driver` | No | `DB2I_DRIVER`, else `odbc` | `odbc`, `jt400` or `mapepire`. Each profile can use a different driver |
 | `schema` | No | - | Default library, like `DB2I_SCHEMA` |

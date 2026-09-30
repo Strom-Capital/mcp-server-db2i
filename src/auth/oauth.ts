@@ -31,6 +31,15 @@ import { defaultSystem, getSystems } from '../systems.js';
 import { writeAuditEvent } from '../utils/auditLog.js';
 import { createChildLogger } from '../utils/logger.js';
 import type { LoginRateLimitedHandler } from './authMiddleware.js';
+import { lowContrastAccents, type SignInBranding } from './signInBranding.js';
+import {
+  DEFAULT_SIGN_IN_LANGUAGE,
+  ENGLISH_SIGN_IN_STRINGS,
+  pickSignInLanguage,
+  type SignInStringKey,
+  type SignInStrings,
+  type SignInText,
+} from './signInStrings.js';
 import { grantKey, RefreshGrantStore, type RefreshGrant, type StoredGrant } from './grantStore.js';
 import {
   authAllowedDbHosts,
@@ -338,7 +347,8 @@ const FAVICON_HREF = `data:image/svg+xml,${encodeURIComponent(FAVICON_SVG)}`;
 
 /*
  * Brand palette (docs/assets/brand, site/src/styles/tokens.css). The CSP allows no
- * fonts, so the page uses the system sans and mono stacks.
+ * fonts unless MCP_OAUTH_FONT_FILE inlines one, so the page uses the system sans
+ * and mono stacks. signInBranding.ts checks accents against --bg.
  */
 const PAGE_STYLE = `
   :root { color-scheme: light dark; --bg: #f3f1eb; --surface: #faf9f6; --fg: #161716; --muted: #666962; --line: #d8d6cf; --accent: #3159e8; --on-accent: #fff; --error: #b42318;
@@ -348,7 +358,10 @@ const PAGE_STYLE = `
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 32px 20px; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
   main { width: 100%; max-width: 380px; }
   .brand { margin: 0 0 40px; }
+  .brand.custom { display: flex; align-items: center; gap: 12px; }
   .logo { display: block; flex: none; color: var(--fg); }
+  .brand-logo { display: block; flex: none; width: auto; height: auto; max-width: 200px; max-height: 40px; }
+  .brand-name { font-size: 17px; font-weight: 500; line-height: 1.2; }
   h1 { font-size: 30px; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 10px; }
   p { margin: 0 0 8px; color: var(--muted); }
   strong { color: var(--fg); font-weight: 500; }
@@ -360,16 +373,104 @@ const PAGE_STYLE = `
   button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
   .error { color: var(--error); margin: 16px 0 0; }
   .note { font: 12px/1.5 var(--mono); margin: 20px 0 0; }
+  .credit { font: 11px/1.4 var(--mono); letter-spacing: 0.08em; margin: 40px 0 0; }
 `;
 
-/** Server name shown next to the logo and in the tab title. The OAuth router sets it on every request. */
-function pageBrand(res: Response): string {
-  return typeof res.locals.pageBrand === 'string' ? res.locals.pageBrand : '';
+/** Font family name of an inlined MCP_OAUTH_FONT_FILE. */
+const BRAND_FONT = 'sign-in-brand';
+
+/** The parts of the sign-in pages that stay the same for every request. */
+interface PageLook {
+  /** Shown after the page title in the browser tab: the brand name, or the server name. */
+  siteName: string;
+  /** Header HTML: the db2i/mcp logo, or the company's logo and name. */
+  header: string;
+  /** Footer HTML: a db2i/mcp credit when the header is the company's. */
+  footer: string;
+  /** CSS after PAGE_STYLE: accent colors and fonts. */
+  style: string;
+  /** Whether the CSP must allow a data: font. */
+  inlineFont: boolean;
+  text: SignInText;
+}
+
+/** A page being rendered: the look and the request's language. */
+interface PageContext {
+  look: PageLook;
+  lang: string;
+  strings: SignInStrings;
+}
+
+/**
+ * Build the sign-in page look from the branding settings. Values are already
+ * checked (signInBranding.ts), and text is escaped here.
+ */
+function buildPageLook(branding: SignInBranding, text: SignInText, resourceName: string): PageLook {
+  const custom = Boolean(branding.name || branding.logo);
+  const siteName = branding.name ?? resourceName;
+  const header = custom
+    ? `<div class="brand custom">` +
+      // With a name next to it, the logo is decoration; alone, it names the site
+      (branding.logo ? `<img class="brand-logo" src="${branding.logo}" alt="${branding.name ? '' : escapeHtml(siteName)}">` : '') +
+      (branding.name ? `<span class="brand-name">${escapeHtml(branding.name)}</span>` : '') +
+      `</div>`
+    : `<div class="brand">${LOGO_SVG}</div>`;
+
+  const style: string[] = [];
+  if (branding.fontFile) {
+    style.push(`@font-face { font-family: "${BRAND_FONT}"; src: url(${branding.fontFile}) format("woff2"); font-display: swap; }`);
+  }
+  if (branding.fontFile || branding.fontFamily) {
+    const stack = [branding.fontFile ? `"${BRAND_FONT}"` : '', branding.fontFamily ?? 'system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif']
+      .filter(Boolean)
+      .join(', ');
+    style.push(`:root { --sans: ${stack}; }`);
+  }
+  if (branding.accent) {
+    style.push(`:root { --accent: ${branding.accent.color}; --on-accent: ${branding.accent.onAccent}; }`);
+  }
+  if (branding.accentDark) {
+    style.push(
+      `@media (prefers-color-scheme: dark) { :root { --accent: ${branding.accentDark.color}; --on-accent: ${branding.accentDark.onAccent}; } }`
+    );
+  }
+
+  return {
+    siteName,
+    header,
+    footer: custom ? `<p class="credit">db2i/mcp</p>` : '',
+    style: style.join('\n'),
+    inlineFont: Boolean(branding.fontFile),
+    text,
+  };
+}
+
+/** Plain English and the default look, for a page rendered outside the OAuth router. */
+const DEFAULT_PAGE: PageContext = {
+  look: buildPageLook({}, { language: DEFAULT_SIGN_IN_LANGUAGE, languages: { en: ENGLISH_SIGN_IN_STRINGS } }, ''),
+  lang: DEFAULT_SIGN_IN_LANGUAGE,
+  strings: ENGLISH_SIGN_IN_STRINGS,
+};
+
+/** The page look and language for this request. The OAuth router sets it on every request. */
+function pageContext(res: Response): PageContext {
+  return (res.locals.page as PageContext | undefined) ?? DEFAULT_PAGE;
+}
+
+/**
+ * One sign-in page string as HTML: the text escaped, with its placeholders
+ * filled from values that are already HTML.
+ */
+function pageText(res: Response, key: SignInStringKey, values: Record<string, string> = {}): string {
+  return escapeHtml(pageContext(res).strings[key]).replace(/\{([A-Za-z]+)\}/g, (match, name: string) => values[name] ?? match);
 }
 
 function sendPage(res: Response, status: number, title: string, body: string, formAction?: string): void {
-  const brand = pageBrand(res);
+  const { look, lang } = pageContext(res);
   noStore(res);
+  if (look.text.language === 'auto') {
+    res.setHeader('Vary', 'Accept-Language');
+  }
   // Not no-referrer: with it, browsers send `Origin: null` on the form post and the
   // Origin check refuses it. same-origin still keeps the URL from the client's origin.
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -378,8 +479,10 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
     [
       "default-src 'none'",
       "style-src 'unsafe-inline'",
-      // Only the inline favicon
+      // Only the inline favicon and logo
       'img-src data:',
+      // Only an inlined MCP_OAUTH_FONT_FILE
+      ...(look.inlineFont ? ['font-src data:'] : []),
       // A form post that answers with a redirect must be allowed to reach the client's origin
       `form-action 'self'${formAction ? ` ${formAction}` : ''}`,
       "frame-ancestors 'none'",
@@ -390,12 +493,12 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
     .status(status)
     .type('html')
     .send(
-      `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+      `<!doctype html><html lang="${escapeHtml(lang)}"><head><meta charset="utf-8">` +
         `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-        `<title>${escapeHtml(brand ? `${title} · ${brand}` : title)}</title>` +
+        `<title>${escapeHtml(look.siteName ? `${title} · ${look.siteName}` : title)}</title>` +
         `<link rel="icon" type="image/svg+xml" href="${FAVICON_HREF}">` +
-        `<style>${PAGE_STYLE}</style></head>` +
-        `<body><main><div class="brand">${LOGO_SVG}</div>${body}</main></body></html>`
+        `<style>${PAGE_STYLE}${look.style}</style></head>` +
+        `<body><main>${look.header}${body}${look.footer}</main></body></html>`
     );
 }
 
@@ -407,19 +510,21 @@ function sendPage(res: Response, status: number, title: string, body: string, fo
  * form submission, so form-action does not apply to it.
  */
 function renderReturn(res: Response, url: string): void {
+  const { strings } = pageContext(res);
   res.setHeader('Refresh', `0; url=${url}`);
   sendPage(
     res,
     200,
-    'Signed in',
-    `<h1>Signed in</h1>` +
-      `<p>Returning to <strong>${escapeHtml(new URL(url).host)}</strong>.</p>` +
-      `<p><a href="${escapeHtml(url)}">Continue</a> if nothing happens.</p>`
+    strings.signedInHeading,
+    `<h1>${pageText(res, 'signedInHeading')}</h1>` +
+      `<p>${pageText(res, 'returning', { host: `<strong>${escapeHtml(new URL(url).host)}</strong>` })}</p>` +
+      `<p>${pageText(res, 'continueLine', { link: `<a href="${escapeHtml(url)}">${pageText(res, 'continueLink')}</a>` })}</p>`
   );
 }
 
-function renderError(res: Response, status: number, message: string): void {
-  sendPage(res, status, 'Sign-in error', `<h1>Sign-in error</h1><p>${escapeHtml(message)}</p>`);
+function renderError(res: Response, status: number, message: SignInStringKey): void {
+  const { strings } = pageContext(res);
+  sendPage(res, status, strings.errorHeading, `<h1>${pageText(res, 'errorHeading')}</h1><p>${pageText(res, message)}</p>`);
 }
 
 interface LoginPage {
@@ -428,6 +533,7 @@ interface LoginPage {
   request: string;
   username?: string;
   system?: string;
+  /** Error message as HTML, from pageText() */
   error?: string;
 }
 
@@ -437,6 +543,7 @@ function isWebRedirect(url: URL): boolean {
 }
 
 function renderLogin(res: Response, status: number, page: LoginPage): void {
+  const { strings } = pageContext(res);
   const redirect = new URL(page.redirectUri);
   const clientName = page.client.name ?? redirect.host;
   // An app scheme has no web origin (URL.origin is "null"), so name the scheme instead
@@ -446,12 +553,12 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
   const selected = page.system ?? defaultSystem().name;
   const systemField =
     systems.length > 1
-      ? `<label for="system">System</label><select id="system" name="system">` +
+      ? `<label for="system">${pageText(res, 'systemLabel')}</label><select id="system" name="system">` +
         systems
           .map(
             (system) =>
               `<option value="${escapeHtml(system.name)}"${system.name === selected ? ' selected' : ''}>` +
-              `${escapeHtml(system.name)}</option>`
+              `${escapeHtml(system.label ?? system.name)}</option>`
           )
           .join('') +
         `</select>`
@@ -460,20 +567,23 @@ function renderLogin(res: Response, status: number, page: LoginPage): void {
   sendPage(
     res,
     status,
-    'Sign in to IBM i',
-    `<h1>Sign in to IBM i</h1>` +
-      `<p><strong>${escapeHtml(clientName)}</strong> is asking to connect. After you sign in, you return to <strong>${escapeHtml(returnTo)}</strong>.</p>` +
-      (page.error ? `<p class="error" role="alert">${escapeHtml(page.error)}</p>` : '') +
+    strings.heading,
+    `<h1>${pageText(res, 'heading')}</h1>` +
+      `<p>${pageText(res, 'intro', {
+        client: `<strong>${escapeHtml(clientName)}</strong>`,
+        returnTo: `<strong>${escapeHtml(returnTo)}</strong>`,
+      })}</p>` +
+      (page.error ? `<p class="error" role="alert">${page.error}</p>` : '') +
       `<form method="post" action="/oauth/authorize">` +
       `<input type="hidden" name="request" value="${escapeHtml(page.request)}">` +
       systemField +
-      `<label for="username">User</label>` +
+      `<label for="username">${pageText(res, 'userLabel')}</label>` +
       `<input id="username" name="username" autocomplete="username" autocapitalize="characters" required maxlength="128" value="${escapeHtml(page.username ?? '')}">` +
-      `<label for="password">Password</label>` +
+      `<label for="password">${pageText(res, 'passwordLabel')}</label>` +
       `<input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">` +
-      `<button type="submit"><span>Sign in</span><span aria-hidden="true">→</span></button>` +
+      `<button type="submit"><span>${pageText(res, 'submit')}</span><span aria-hidden="true">→</span></button>` +
       `</form>` +
-      `<p class="note">Only continue if you started this connection.</p>`,
+      `<p class="note">${pageText(res, 'note')}</p>`,
     formAction
   );
 }
@@ -490,7 +600,7 @@ interface SignInForm {
   ip?: string;
 }
 
-/** Render the sign-in page again for a form post, with an error and the entered user profile. */
+/** Render the sign-in page again for a form post, with an error (HTML from pageText()) and the entered user profile. */
 function renderSignIn(res: Response, form: SignInForm, status: number, error: string): void {
   renderLogin(res, status, {
     client: form.client,
@@ -634,9 +744,14 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
     refreshGrants = new RefreshGrantStore(oauth.stateFile, oauth.secret);
     refreshGrants.load(restoreGrant);
   }
+  const look = buildPageLook(oauth.branding, oauth.text, resourceName);
+  for (const accent of lowContrastAccents(oauth.branding)) {
+    log.warn(accent, 'The sign-in page accent has little contrast with the page background; focus outlines may be hard to see');
+  }
   router.use('/oauth', limits.requests);
-  router.use('/oauth', (_req: Request, res: Response, next: express.NextFunction) => {
-    res.locals.pageBrand = resourceName;
+  router.use('/oauth', (req: Request, res: Response, next: express.NextFunction) => {
+    const lang = pickSignInLanguage(oauth.text, req.headers['accept-language']);
+    res.locals.page = { look, lang, strings: oauth.text.languages[lang] } satisfies PageContext;
     next();
   });
 
@@ -746,14 +861,14 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
     const clientId = params.client_id;
     const client = readClient(oauth, clientId);
     if (!clientId || !client) {
-      renderError(res, 400, 'This client is not registered with this server. Remove the connector and add it again.');
+      renderError(res, 400, 'errorUnknownClient');
       return;
     }
 
     const redirectUriExplicit = params.redirect_uri !== undefined;
     const redirectUri = params.redirect_uri ?? (client.redirectUris.length === 1 ? client.redirectUris[0] : undefined);
     if (!redirectUri || !client.redirectUris.includes(redirectUri) || !isRedirectUriAllowed(redirectUri, oauth.redirectUris)) {
-      renderError(res, 400, 'The redirect URI is not registered for this client.');
+      renderError(res, 400, 'errorRedirectUri');
       return;
     }
 
@@ -800,12 +915,12 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       const body = stringParams(req.body);
       const pending = verifySigned(oauth.secret, 'login', body.request) as LoginRequest | undefined;
       if (!pending || typeof pending.exp !== 'number' || pending.exp < Date.now()) {
-        renderError(res, 400, 'This sign-in page has expired. Start the connection again from your client.');
+        renderError(res, 400, 'errorExpired');
         return;
       }
       const client = readClient(oauth, pending.clientId);
       if (!client || !client.redirectUris.includes(pending.redirectUri) || !isRedirectUriAllowed(pending.redirectUri, oauth.redirectUris)) {
-        renderError(res, 400, 'This client is no longer allowed. Remove the connector and add it again.');
+        renderError(res, 400, 'errorClientNotAllowed');
         return;
       }
 
@@ -820,11 +935,11 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       };
       res.locals.signIn = form;
       const onRateLimited: LoginRateLimitedHandler = (retryAfter) =>
-        renderSignIn(res, form, 429, `Too many sign-in attempts. Try again in ${retryAfter} seconds.`);
+        renderSignIn(res, form, 429, pageText(res, 'errorRateLimited', { seconds: escapeHtml(String(retryAfter)) }));
       res.locals.onLoginRateLimited = onRateLimited;
 
       if (!form.username || !form.password || form.username.length > 128 || form.password.length > 256) {
-        renderSignIn(res, form, 400, 'Enter your user and password.');
+        renderSignIn(res, form, 400, pageText(res, 'errorMissingFields'));
         return;
       }
       next();
@@ -833,7 +948,8 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
     async (_req: Request, res: Response) => {
       const { pending, client, username, password, system, ip } = res.locals.signIn as SignInForm;
       const signInEvent = { event: 'sign_in', method: 'oauth', identity: username, client: client.name, ip } as const;
-      const retry = (status: number, error: string): void => renderSignIn(res, res.locals.signIn as SignInForm, status, error);
+      const retry = (status: number, error: SignInStringKey): void =>
+        renderSignIn(res, res.locals.signIn as SignInForm, status, pageText(res, error));
 
       let login: Awaited<ReturnType<typeof verifyLogin>>;
       try {
@@ -841,14 +957,14 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       } catch (err) {
         log.error({ err, user: username, system }, 'Unexpected error in OAuth sign-in');
         writeAuditEvent({ ...signInEvent, ...(system ? { system } : {}), outcome: 'error', reason: 'Unexpected error' });
-        retry(500, 'Sign-in failed unexpectedly. Try again.');
+        retry(500, 'errorUnexpected');
         return;
       }
       if (!login.ok) {
         log.warn({ user: username, system, client: client.name, reason: login.description }, 'OAuth sign-in failed');
         writeAuditEvent({ ...signInEvent, ...(system ? { system } : {}), outcome: 'failure', reason: login.description });
-        // Driver errors can describe the host; the page only says what the user can fix
-        retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user and password.');
+        // Driver and configuration errors can describe the host; the page only says what the user can do
+        retry(login.status, login.status === 400 ? 'errorSystem' : 'errorCredentials');
         return;
       }
 
@@ -863,7 +979,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
           outcome: 'error',
           reason: 'Too many sign-ins are in progress',
         });
-        retry(503, 'Too many sign-ins are in progress. Try again shortly.');
+        retry(503, 'errorBusy');
         return;
       }
       // A code nobody exchanges must not keep its pool. After a handover this finds nothing.

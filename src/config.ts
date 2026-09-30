@@ -34,6 +34,9 @@
  * - MCP_OAUTH_SECRET: Key that signs OAuth client IDs and login requests
  * - MCP_OAUTH_REFRESH_EXPIRY: OAuth refresh token lifetime in seconds (default: 7 days)
  * - MCP_OAUTH_STATE_FILE: File that keeps OAuth refresh grants across restarts
+ * - MCP_OAUTH_BRAND_NAME, MCP_OAUTH_LOGO, MCP_OAUTH_TITLE, MCP_OAUTH_SYSTEM_LABEL, MCP_OAUTH_ACCENT,
+ *   MCP_OAUTH_ACCENT_DARK, MCP_OAUTH_FONT_FAMILY, MCP_OAUTH_FONT_FILE: sign-in page branding
+ * - MCP_OAUTH_LANGUAGE, MCP_OAUTH_STRINGS: sign-in page language and wording
  * - MCP_TRUST_PROXY: Express 'trust proxy' setting, so rate limits see the client address behind a proxy
  */
 
@@ -41,6 +44,9 @@ import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+
+import { readSignInBranding, type SignInBranding } from './auth/signInBranding.js';
+import { readSignInText, type SignInText } from './auth/signInStrings.js';
 
 /**
  * Database drivers. `jt400` is the JDBC bridge (needs a JRE). `odbc` uses the
@@ -1388,6 +1394,10 @@ export interface OAuthConfig {
   refreshExpiry: number;
   /** Encrypted file that keeps refresh grants across restarts. Unset keeps them in memory only. */
   stateFile?: string;
+  /** Company branding of the sign-in page. Empty keeps the default look. */
+  branding: SignInBranding;
+  /** Sign-in page text in each available language. */
+  text: SignInText;
 }
 
 /**
@@ -1399,6 +1409,20 @@ export const DEFAULT_OAUTH_REDIRECT_URIS = [
   'https://claude.ai/api/mcp/auth_callback',
   'https://claude.com/api/mcp/auth_callback',
   'cursor://anysphere.cursor-mcp/oauth/callback',
+];
+
+/** Variables of the sign-in page. Its files are read again only when one of these changes. */
+const SIGN_IN_PAGE_VARIABLES = [
+  'MCP_OAUTH_BRAND_NAME',
+  'MCP_OAUTH_LOGO',
+  'MCP_OAUTH_TITLE',
+  'MCP_OAUTH_SYSTEM_LABEL',
+  'MCP_OAUTH_ACCENT',
+  'MCP_OAUTH_ACCENT_DARK',
+  'MCP_OAUTH_FONT_FAMILY',
+  'MCP_OAUTH_FONT_FILE',
+  'MCP_OAUTH_LANGUAGE',
+  'MCP_OAUTH_STRINGS',
 ];
 
 /** Random signing key used when MCP_OAUTH_SECRET is unset. Stable for the process. */
@@ -1416,6 +1440,7 @@ let oauthConfigCache: { key: string; config: OAuthConfig | null } | undefined;
  * - MCP_OAUTH_SECRET: signing key, at least 32 characters.
  * - MCP_OAUTH_REFRESH_EXPIRY: refresh token lifetime in seconds (default: 7 days).
  * - MCP_OAUTH_STATE_FILE: encrypted file for refresh grants. Requires MCP_OAUTH_SECRET.
+ * - Sign-in page branding and language: see signInBranding.ts and signInStrings.ts.
  *
  * @param authMode - The configured MCP_AUTH_MODE
  * @returns The settings, or null when OAuth is off
@@ -1431,6 +1456,7 @@ export function getOAuthConfig(authMode: AuthMode): OAuthConfig | null {
     process.env.MCP_OAUTH_SECRET,
     process.env.MCP_OAUTH_REFRESH_EXPIRY,
     process.env.MCP_OAUTH_STATE_FILE,
+    ...SIGN_IN_PAGE_VARIABLES.map((name) => process.env[name]),
   ]);
   if (oauthConfigCache?.key !== key) {
     oauthConfigCache = { key, config: parseOAuthConfig(authMode) };
@@ -1517,6 +1543,12 @@ function parseOAuthConfig(authMode: AuthMode): OAuthConfig | null {
     throw new Error('MCP_OAUTH_STATE_FILE requires MCP_OAUTH_SECRET. Generate with: openssl rand -hex 32');
   }
 
+  const branding = readSignInBranding();
+  const text = readSignInText({
+    ...(branding.title ? { heading: branding.title } : {}),
+    ...(branding.systemLabel ? { systemLabel: branding.systemLabel } : {}),
+  });
+
   return {
     publicUrl,
     resource: `${publicUrl}/mcp`,
@@ -1525,6 +1557,8 @@ function parseOAuthConfig(authMode: AuthMode): OAuthConfig | null {
     ephemeralSecret: !rawSecret,
     refreshExpiry,
     ...(stateFile ? { stateFile: resolve(stateFile) } : {}),
+    branding,
+    text,
   };
 }
 

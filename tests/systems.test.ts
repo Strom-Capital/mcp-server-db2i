@@ -125,6 +125,36 @@ describe('DB2I_PROFILES', () => {
     expect(test.allowedSchemas).toBeUndefined();
   });
 
+  it('reads an optional label for the sign-in page picker', () => {
+    useProfiles(`
+profiles:
+  - name: fi
+    label: "  Finland "
+    host: prod.example.com
+    username: USER
+    password: \${PROD_PASSWORD}
+  - name: se
+    host: test.example.com
+    username: USER
+    password: \${PROD_PASSWORD}
+`);
+    const [fi, se] = getSystems();
+    expect(fi.name).toBe('fi');
+    expect(fi.label).toBe('Finland');
+    expect(se.label).toBeUndefined();
+
+    resetSystems();
+    useProfiles(`
+profiles:
+  - name: fi
+    label: "${'x'.repeat(61)}"
+    host: prod.example.com
+    username: USER
+    password: \${PROD_PASSWORD}
+`);
+    expect(() => getSystems()).toThrow(SystemsError);
+  });
+
   it('gives a profile without a driver DB2I_DRIVER, and lets its own driver win', () => {
     process.env.DB2I_DRIVER = 'jt400';
     useProfiles(TWO_SYSTEMS);
