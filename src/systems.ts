@@ -44,6 +44,8 @@ const ENV_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
 export interface SystemProfile {
   name: string;
+  /** Name shown in the OAuth sign-in page's system picker. The profile name stays the value submitted and logged. */
+  label?: string;
   config: DB2iConfig;
   /** Uppercased libraries queries may use. Undefined turns the check off. */
   allowedSchemas?: string[];
@@ -60,6 +62,14 @@ export class SystemsError extends Error {
 
 const profileSchema = z.strictObject({
   name: z.string().regex(SYSTEM_NAME, 'name may use letters, digits, _ and -, up to 64 characters'),
+  label: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    // eslint-disable-next-line no-control-regex
+    .regex(/^[^\u0000-\u001f\u007f]*$/, 'label may not have control characters')
+    .optional(),
   host: z.string().min(1),
   driver: z.enum(DB_DRIVERS).optional(),
   schema: z.string().optional(),
@@ -203,6 +213,7 @@ function toSystem(def: ProfileDef, where: string): SystemProfile {
 
   return {
     name: def.name,
+    ...(def.label ? { label: def.label } : {}),
     config: {
       hostname: def.host.trim(),
       port: 446,

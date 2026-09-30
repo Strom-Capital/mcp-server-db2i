@@ -52,6 +52,7 @@ profiles:
 `;
 
 const PUBLIC_URL = 'https://mcp.example.com';
+const SIGN_IN_PAGE_VARIABLE = /^MCP_OAUTH_(LANGUAGE|STRINGS|BRAND_NAME|LOGO|TITLE|SYSTEM_LABEL|ACCENT|ACCENT_DARK|FONT_FAMILY|FONT_FILE)$/;
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 
 async function listen(app: Express): Promise<{ server: http.Server; baseUrl: string }> {
@@ -109,6 +110,9 @@ describe('OAuth authorization server', () => {
     delete process.env.MCP_OAUTH_REDIRECT_URIS;
     delete process.env.MCP_OAUTH_REFRESH_EXPIRY;
     delete process.env.MCP_OAUTH_STATE_FILE;
+    for (const name of Object.keys(process.env).filter((key) => SIGN_IN_PAGE_VARIABLE.test(key))) {
+      delete process.env[name];
+    }
     resetSystems();
     resetOAuthState();
     ({ server, baseUrl } = await listen(createHttpApp()));
@@ -346,6 +350,181 @@ describe('OAuth authorization server', () => {
     expect(html).toContain('<option value="prod" selected>prod</option>');
     expect(html).toContain('<option value="test">test</option>');
     expect(html).toContain('<strong>Claude</strong>');
+  });
+
+  it('keeps the default look and English with no page settings', async () => {
+    const client = await register();
+    const res = await fetch(authorizeUrl(client.client_id as string, pkce().challenge), {
+      headers: { 'Accept-Language': 'fi-FI,fi;q=0.9' },
+    });
+    expect(res.headers.get('content-security-policy')).not.toContain('font-src');
+    expect(res.headers.get('vary') ?? '').not.toContain('Accept-Language');
+    const html = await res.text();
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('<div class="brand"><svg class="logo"');
+    expect(html).toContain('<label for="system">System</label>');
+    expect(html).toContain('<strong>Claude</strong> is asking to connect. After you sign in, you return to <strong>claude.ai</strong>.');
+    expect(html).not.toContain('class="credit"');
+    expect(html).not.toContain('@font-face');
+  });
+
+  it('shows every string in Finnish with MCP_OAUTH_LANGUAGE=fi, including errors', async () => {
+    process.env.MCP_OAUTH_LANGUAGE = 'fi';
+    await restart();
+    const client = await register();
+    const page = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    const html = await page.text();
+    expect(html).toContain('<html lang="fi">');
+    expect(html).toContain('<title>Kirjaudu IBM i:hin · Db2 for i MCP Server</title>');
+    expect(html).toContain('<strong>Claude</strong> pyytää yhteyttä. Kirjautumisen jälkeen palaat osoitteeseen <strong>claude.ai</strong>.');
+    expect(html).toContain('<label for="system">Järjestelmä</label>');
+    expect(html).toContain('<label for="username">Käyttäjänimi</label>');
+    expect(html).toContain('<span>Kirjaudu</span>');
+
+    const failed = await postLogin(hiddenRequest(html), { username: 'CALLER', password: 'wrong', system: 'prod' });
+    expect(await failed.text()).toContain('Kirjautuminen epäonnistui. Tarkista käyttäjänimi ja salasana.');
+
+    const expired = await postLogin('tampered', { username: 'CALLER', password: 'x' });
+    const expiredHtml = await expired.text();
+    expect(expiredHtml).toContain('<h1>Kirjautumisvirhe</h1>');
+    expect(expiredHtml).toContain('Tämä kirjautumissivu on vanhentunut.');
+
+    const unknown = await fetch(authorizeUrl('not-a-client', pkce().challenge));
+    expect(await unknown.text()).toContain('Tätä sovellusta ei ole rekisteröity');
+  });
+
+  it('shows the rate limit error in the page language, with the seconds filled in', async () => {
+    process.env.MCP_OAUTH_LANGUAGE = 'fi';
+    process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS = '1';
+    await restart();
+    const client = await register();
+    const page = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    const request = hiddenRequest(await page.text());
+    await postLogin(request, { username: 'CALLER', password: 'wrong', system: 'prod' });
+    const limited = await postLogin(request, { username: 'CALLER', password: 'wrong', system: 'prod' });
+    expect(limited.status).toBe(429);
+    expect(await limited.text()).toMatch(/Liian monta kirjautumisyritystä\. Yritä uudelleen \d+ sekunnin kuluttua\./);
+  });
+
+  it('does not show configuration errors from the sign-in on the page', async () => {
+    const client = await register();
+    const page = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    const res = await postLogin(hiddenRequest(await page.text()), { username: 'CALLER', password: 'x', system: 'nosuch' });
+    expect(res.status).toBe(400);
+    const html = await res.text();
+    expect(html).toContain('This system cannot be used to sign in. Ask your administrator.');
+    expect(html).not.toContain('Available:');
+  });
+
+  it('follows Accept-Language with auto and falls back to English', async () => {
+    process.env.MCP_OAUTH_LANGUAGE = 'auto';
+    await restart();
+    const client = await register();
+    const url = authorizeUrl(client.client_id as string, pkce().challenge);
+
+    const finnish = await fetch(url, { headers: { 'Accept-Language': 'fi-FI,fi;q=0.9,en;q=0.8' } });
+    expect(finnish.headers.get('vary')).toContain('Accept-Language');
+    expect(await finnish.text()).toContain('<html lang="fi">');
+
+    const german = await fetch(url, { headers: { 'Accept-Language': 'de-DE,de;q=0.9' } });
+    expect(await german.text()).toContain('<html lang="en">');
+  });
+
+  it('uses a strings file, escaping its text', async () => {
+    const file = path.join(dir, 'strings.json');
+    writeFileSync(
+      file,
+      JSON.stringify({
+        en: { note: 'Use your <b>ERP</b> password & user.' },
+        sv: { heading: 'Logga in', intro: '{client} vill ansluta. Du återvänder till {returnTo}.' },
+      })
+    );
+    process.env.MCP_OAUTH_STRINGS = file;
+    process.env.MCP_OAUTH_LANGUAGE = 'auto';
+    await restart();
+    const client = await register({ client_name: '<img src=x>' });
+    const url = authorizeUrl(client.client_id as string, pkce().challenge);
+
+    const english = await (await fetch(url)).text();
+    expect(english).toContain('<p class="note">Use your &lt;b&gt;ERP&lt;/b&gt; password &amp; user.</p>');
+
+    const swedish = await (await fetch(url, { headers: { 'Accept-Language': 'sv-SE' } })).text();
+    expect(swedish).toContain('<html lang="sv">');
+    expect(swedish).toContain('<h1>Logga in</h1>');
+    expect(swedish).toContain('<strong>&lt;img src=x&gt;</strong> vill ansluta. Du återvänder till <strong>claude.ai</strong>.');
+    // Keys the file leaves out stay English
+    expect(swedish).toContain('<span>Sign in</span>');
+  });
+
+  it('refuses to start with an invalid strings file', async () => {
+    const file = path.join(dir, 'strings.json');
+    writeFileSync(file, JSON.stringify({ fi: { heading: 'x', unknown: 'y' } }));
+    process.env.MCP_OAUTH_STRINGS = file;
+    expect(() => getOAuthConfig('required')).toThrow(/fi.unknown is not a sign-in page string/);
+  });
+
+  it('shows the company branding: name, logo, title, labels, colors and font', async () => {
+    const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
+    writeFileSync(path.join(dir, 'logo.svg'), logo);
+    writeFileSync(path.join(dir, 'brand.woff2'), Buffer.concat([Buffer.from('wOF2', 'latin1'), Buffer.alloc(40)]));
+    writeFileSync(
+      path.join(dir, 'profiles.yaml'),
+      PROFILES.replace('  - name: prod\n', '  - name: prod\n    label: Finland\n')
+    );
+    resetSystems();
+    Object.assign(process.env, {
+      MCP_OAUTH_BRAND_NAME: 'Acme & Co',
+      MCP_OAUTH_LOGO: path.join(dir, 'logo.svg'),
+      MCP_OAUTH_TITLE: 'Sign in to Acme ERP',
+      MCP_OAUTH_SYSTEM_LABEL: 'Country',
+      MCP_OAUTH_ACCENT: '#0F6E4B',
+      MCP_OAUTH_ACCENT_DARK: '#5FD3A0',
+      MCP_OAUTH_FONT_FAMILY: '"Inter", sans-serif',
+      MCP_OAUTH_FONT_FILE: path.join(dir, 'brand.woff2'),
+    });
+    await restart();
+    const client = await register();
+    const res = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    const csp = res.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain('font-src data:');
+    expect(csp).toContain('img-src data:');
+    expect(csp).not.toMatch(/https?:\/\/(?!claude\.ai)/);
+    const html = await res.text();
+    expect(html).toContain('<title>Sign in to Acme ERP · Acme &amp; Co</title>');
+    expect(html).toContain(
+      `<div class="brand custom"><img class="brand-logo" src="data:image/svg+xml;base64,${Buffer.from(logo).toString('base64')}" alt="">` +
+        '<span class="brand-name">Acme &amp; Co</span></div>'
+    );
+    expect(html).not.toContain('<svg class="logo"');
+    expect(html).toContain('<h1>Sign in to Acme ERP</h1>');
+    expect(html).toContain('<label for="system">Country</label>');
+    // The label is shown; the profile name is what the form submits
+    expect(html).toContain('<option value="prod" selected>Finland</option>');
+    expect(html).toContain('<option value="test">test</option>');
+    expect(html).toContain(':root { --accent: #0f6e4b; --on-accent: #ffffff; }');
+    expect(html).toContain('@media (prefers-color-scheme: dark) { :root { --accent: #5fd3a0; --on-accent: #000000; } }');
+    expect(html).toContain('@font-face { font-family: "sign-in-brand"; src: url(data:font/woff2;base64,');
+    expect(html).toContain(':root { --sans: "sign-in-brand", "Inter", sans-serif; }');
+    expect(html).toContain('<p class="credit">db2i/mcp</p>');
+
+    // The title is the heading in every language, and the Finnish page keeps it
+    process.env.MCP_OAUTH_LANGUAGE = 'fi';
+    await restart();
+    const finnish = await (await fetch(authorizeUrl(client.client_id as string, pkce().challenge))).text();
+    expect(finnish).toContain('<h1>Sign in to Acme ERP</h1>');
+    expect(finnish).toContain('<label for="username">Käyttäjänimi</label>');
+  });
+
+  it('names the site with the logo alt text when there is no brand name', async () => {
+    writeFileSync(path.join(dir, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    process.env.MCP_OAUTH_LOGO = path.join(dir, 'logo.png');
+    await restart();
+    const client = await register();
+    const res = await fetch(authorizeUrl(client.client_id as string, pkce().challenge));
+    expect(res.headers.get('content-security-policy')).not.toContain('font-src');
+    const html = await res.text();
+    expect(html).toContain('<img class="brand-logo" src="data:image/png;base64,iVBORw0KGgo=" alt="Db2 for i MCP Server">');
+    expect(html).toContain('<p class="credit">db2i/mcp</p>');
   });
 
   it('sends PKCE and response type errors back to the client', async () => {
