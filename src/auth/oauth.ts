@@ -418,7 +418,10 @@ function buildPageLook(branding: SignInBranding, text: SignInText, resourceName:
 
   const style: string[] = [];
   if (branding.fontFile) {
-    style.push(`@font-face { font-family: "${BRAND_FONT}"; src: url(${branding.fontFile}) format("woff2"); font-display: swap; }`);
+    // A weight range, so a variable font renders 500 as 500. Without it the face is 400 only.
+    style.push(
+      `@font-face { font-family: "${BRAND_FONT}"; src: url(${branding.fontFile}) format("woff2"); font-weight: 1 1000; font-display: swap; }`
+    );
   }
   if (branding.fontFile || branding.fontFamily) {
     const stack = [branding.fontFile ? `"${BRAND_FONT}"` : '', branding.fontFamily ?? 'system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif']

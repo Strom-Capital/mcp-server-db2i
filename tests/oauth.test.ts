@@ -504,6 +504,7 @@ describe('OAuth authorization server', () => {
     expect(html).toContain(':root { --accent: #0f6e4b; --on-accent: #ffffff; }');
     expect(html).toContain('@media (prefers-color-scheme: dark) { :root { --accent: #5fd3a0; --on-accent: #000000; } }');
     expect(html).toContain('@font-face { font-family: "sign-in-brand"; src: url(data:font/woff2;base64,');
+    expect(html).toMatch(/@font-face \{[^}]*font-weight: 1 1000;/);
     expect(html).toContain(':root { --sans: "sign-in-brand", "Inter", sans-serif; }');
     expect(html).toContain('<p class="credit">db2i/mcp</p>');
 
