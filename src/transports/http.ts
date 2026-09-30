@@ -536,6 +536,24 @@ export function createHttpApp(): Express {
   // Authentication endpoint (only active in 'required' auth mode)
   app.post('/auth', authRateLimitMiddleware, async (req: Request, res: Response) => {
     let pool: string | undefined;
+    // Every way out of a login attempt is audited, with the user name as sent
+    const auditSignIn = (
+      outcome: 'success' | 'failure' | 'error',
+      details: { identity?: string; system?: string; reason?: string } = {},
+    ): void => {
+      const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>;
+      const identity = details.identity ?? (typeof body.username === 'string' ? body.username.trim().slice(0, 128) : '');
+      const system = details.system ?? (typeof body.system === 'string' ? body.system.trim().slice(0, 128) : undefined);
+      writeAuditEvent({
+        event: 'sign_in',
+        method: 'password',
+        identity,
+        ...(system ? { system } : {}),
+        ip: req.ip,
+        outcome,
+        ...(details.reason ? { reason: details.reason } : {}),
+      });
+    };
     try {
       // Check if /auth endpoint is needed for current auth mode
       if (httpConfig.authMode !== 'required') {
@@ -551,6 +569,7 @@ export function createHttpApp(): Express {
       // Validate request
       const validation = validateAuthRequest(req.body);
       if (!validation.valid || !validation.request) {
+        auditSignIn('failure', { reason: validation.error ?? 'Invalid request' });
         res.status(400).json({
           error: 'invalid_request',
           error_description: validation.error,
@@ -564,15 +583,7 @@ export function createHttpApp(): Express {
       // proven with a test connection
       const login = await verifyLogin(authReq);
       if (!login.ok) {
-        writeAuditEvent({
-          event: 'sign_in',
-          method: 'password',
-          identity: authReq.username,
-          ...(authReq.system ? { system: authReq.system } : {}),
-          ip: req.ip,
-          outcome: 'failure',
-          reason: login.description,
-        });
+        auditSignIn('failure', { identity: authReq.username, system: authReq.system, reason: login.description });
         res.status(login.status).json({
           error: login.error,
           error_description: login.description,
@@ -588,6 +599,7 @@ export function createHttpApp(): Express {
       
       // Advisory check - the hard limit is enforced in createSession()
       if (!tokenManager.canCreateSession()) {
+        auditSignIn('error', { identity: dbConfig.username, system, reason: 'Maximum concurrent sessions reached' });
         res.status(503).json({
           error: 'service_unavailable',
           error_description: 'Maximum concurrent sessions reached. Please try again later.',
@@ -611,6 +623,7 @@ export function createHttpApp(): Express {
       } catch (err) {
         // Check if this is a max sessions error (race condition)
         if (err instanceof Error && err.message.includes('Maximum concurrent sessions')) {
+          auditSignIn('error', { identity: dbConfig.username, system, reason: 'Maximum concurrent sessions reached' });
           res.status(503).json({
             error: 'service_unavailable',
             error_description: err.message,
@@ -631,18 +644,12 @@ export function createHttpApp(): Express {
         { host: dbConfig.hostname, system, user: dbConfig.username, expiresIn },
         'Authentication successful'
       );
-      writeAuditEvent({
-        event: 'sign_in',
-        method: 'password',
-        identity: dbConfig.username,
-        system,
-        ip: req.ip,
-        outcome: 'success',
-      });
+      auditSignIn('success', { identity: dbConfig.username, system });
 
       res.status(201).json(response);
     } catch (err) {
       log.error({ err }, 'Unexpected error in auth handler');
+      auditSignIn('error', { reason: 'Unexpected error' });
       res.status(500).json({
         error: 'server_error',
         error_description: 'An unexpected error occurred',

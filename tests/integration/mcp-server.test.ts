@@ -143,6 +143,7 @@ describe('MCP Server Integration', () => {
         for (const tool of withIntent) {
           const properties = (tool.inputSchema.properties ?? {}) as Record<string, unknown>;
           expect(properties.context, tool.name).toBeDefined();
+          expect((properties.context as { maxLength?: number }).maxLength, tool.name).toBeUndefined();
           expect(tool.inputSchema.required ?? []).not.toContain('context');
         }
         expect(intentClient.getInstructions()).toContain('optional context argument');

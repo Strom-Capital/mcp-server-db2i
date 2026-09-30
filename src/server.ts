@@ -109,7 +109,10 @@ function systemShape(sessionContext?: SessionContext): Record<never, never> {
   };
 }
 
-/** Longest `context` argument accepted. It is one sentence, not a transcript. */
+/**
+ * Longest intent written to the audit log. Longer text is cut, not refused: the
+ * argument only feeds the audit log and must never make a tool call fail.
+ */
 const MAX_INTENT_LENGTH = 500;
 
 /**
@@ -122,7 +125,7 @@ function contextShape(): Record<never, never> {
     return {};
   }
   return {
-    context: z.string().max(MAX_INTENT_LENGTH).optional().describe(
+    context: z.string().optional().describe(
       "Why you are calling this tool: one sentence on the user's goal."
     ),
   };
@@ -711,7 +714,8 @@ function splitIntent<TArgs>(input: TArgs, ownsContext?: boolean): { args: TArgs;
     return { args: input };
   }
   const { context, ...rest } = input as Record<string, unknown>;
-  const intent = typeof context === 'string' && context.trim() !== '' ? context.trim() : undefined;
+  const text = typeof context === 'string' ? context.trim() : '';
+  const intent = text === '' ? undefined : text.slice(0, MAX_INTENT_LENGTH);
   return { args: rest as TArgs, ...(intent !== undefined ? { intent } : {}) };
 }
 
@@ -909,8 +913,8 @@ export function createServer(sessionContext?: SessionContext): McpServer {
         }),
         outputSchema: exportOutputSchema,
       },
-      async (args) => {
-        const response = await handler(args);
+      async (args, ctx) => {
+        const response = await handler(args, ctx);
         const url = response.structuredContent?.url;
         const filename = response.structuredContent?.filename;
         if (typeof url === 'string' && typeof filename === 'string') {

@@ -856,6 +856,13 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       sweepExpired(pendingCodes, now);
       if (pendingCodes.size >= MAX_PENDING_CODES) {
         void closeCheckPool(login.pool);
+        writeAuditEvent({
+          ...signInEvent,
+          identity: login.config.username,
+          system: login.system,
+          outcome: 'error',
+          reason: 'Too many sign-ins are in progress',
+        });
         retry(503, 'Too many sign-ins are in progress. Try again shortly.');
         return;
       }

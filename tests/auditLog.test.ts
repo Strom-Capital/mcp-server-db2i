@@ -285,6 +285,17 @@ describe('call details in the audit log', () => {
     expect(line?.args).toEqual({ table: 'ORDERS' });
   });
 
+  it('cuts a long intent instead of failing the call', async () => {
+    const file = auditTo();
+    process.env.MCP_TOOL_INTENT = 'true';
+    const run = vi.fn(async (_args: Record<string, unknown>) => ({ success: true }));
+    const response = await withToolHandler(run, 'Failed', session, { tool: 'list_schemas' })({ context: 'x'.repeat(800) });
+
+    expect(response.isError).toBeUndefined();
+    expect(run).toHaveBeenCalledOnce();
+    expect(readLines(file)[0]?.intent).toBe('x'.repeat(500));
+  });
+
   it('leaves the arguments alone while MCP_TOOL_INTENT is off', async () => {
     const file = auditTo();
     const run = vi.fn(async (_args: Record<string, unknown>) => ({ success: true }));

@@ -461,7 +461,7 @@ describe('OAuth authorization server', () => {
   it('writes sign-in events to the audit log for the sign-in form and /auth', async () => {
     const auditFile = path.join(dir, 'audit.log');
     process.env.MCP_AUDIT_LOG = auditFile;
-    process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS = '3';
+    process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS = '4';
     initAuditLog();
     await restart();
 
@@ -474,6 +474,12 @@ describe('OAuth authorization server', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: 'CALLER', password, system: 'test' }),
     });
+    const noPassword = await fetch(`${baseUrl}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'CALLER', system: 'test' }),
+    });
+    expect(noPassword.status).toBe(400);
     expect((await auth('wrong')).status).toBe(401);
     expect((await auth('wrong')).status).toBe(401);
     expect((await auth('wrong')).status).toBe(429);
@@ -486,11 +492,13 @@ describe('OAuth authorization server', () => {
       ['oauth', 'failure'],
       ['password', 'failure'],
       ['password', 'failure'],
+      ['password', 'failure'],
       ['password', 'rate_limited'],
     ]);
     expect(events[0]).toMatchObject({ identity: 'CALLER', system: 'test', client: 'Claude' });
     expect(events[1]).toMatchObject({ identity: 'CALLER', system: 'prod', reason: expect.any(String) });
-    expect(events[4]).toMatchObject({ identity: 'CALLER', system: 'test' });
+    expect(events[2]).toMatchObject({ identity: 'CALLER', system: 'test', reason: expect.any(String) });
+    expect(events[5]).toMatchObject({ identity: 'CALLER', system: 'test' });
     for (const event of events) {
       expect(JSON.stringify(event)).not.toContain('wrong');
       expect(JSON.stringify(event)).not.toContain('callerpass');
