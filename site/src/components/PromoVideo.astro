@@ -1,0 +1,80 @@
+---
+/**
+ * The promo video (51 s, voice-over and captions) in a light and a dark version.
+ * The .shot rules in global.css show the one that matches the page theme; preload="none"
+ * means a visitor only downloads the version they play. Switching the theme mid-play
+ * hands playback over to the other version at the same second.
+ */
+import { url } from '../lib/links';
+
+const themes = ['light', 'dark'] as const;
+---
+<section class="section" id="video">
+  <div class="container">
+    <div class="sec-head">
+      <p class="label">Watch</p>
+      <div>
+        <h2>The whole idea in under a minute.</h2>
+        <p class="lead">One question from plain language to rows, what is enforced on every query, and how it connects to your IBM i. With sound and captions.</p>
+      </div>
+    </div>
+    <figure class="shot promo">
+      {themes.map((theme) => (
+        <video
+          class={theme}
+          data-promo={theme}
+          controls
+          playsinline
+          preload="none"
+          width="1920"
+          height="1080"
+          poster={url(`/video/promo-${theme}.jpg`)}
+          aria-label="Promo video: asking an IBM i a question in plain language with the Db2 for i MCP Server"
+        >
+          <source src={url(`/video/promo-${theme}.mp4`)} type="video/mp4" />
+          <track kind="captions" srclang="en" label="English" src={url('/video/promo.vtt')} />
+        </video>
+      ))}
+    </figure>
+  </div>
+</section>
+
+<style>
+  .promo { margin: 0; border: 1px solid var(--line); background: var(--surface); }
+  .promo video { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+</style>
+
+<script>
+  const videos = [...document.querySelectorAll<HTMLVideoElement>('video[data-promo]')];
+  const shown = () => videos.find((v) => v.checkVisibility());
+
+  // Hand a started video over to the version for the new theme.
+  function sync() {
+    const target = shown();
+    for (const video of videos) {
+      if (video === target || (video.paused && video.currentTime === 0)) continue;
+      const playing = !video.paused;
+      video.pause();
+      if (!target) continue;
+      target.currentTime = video.currentTime;
+      target.muted = video.muted;
+      target.volume = video.volume;
+      if (video.textTracks[0] && target.textTracks[0]) target.textTracks[0].mode = video.textTracks[0].mode;
+      if (playing) target.play().catch(() => {});
+    }
+  }
+  document.addEventListener('themechange', sync);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sync);
+
+  // One analytics event per page view, see Analytics.astro.
+  let tracked = false;
+  for (const video of videos) {
+    video.addEventListener('play', () => {
+      if (tracked) return;
+      tracked = true;
+      (window as { posthog?: { capture: (event: string, props?: object) => void } }).posthog?.capture('promo_video_played', {
+        theme: video.dataset.promo,
+      });
+    });
+  }
+</script>

@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00.400 --> 00:03.470
+Ask your IBM i in plain language.
+
+2
+00:03.520 --> 00:10.570
+An open-source MCP server that lets Claude, Cursor and other AI assistants read Db2 for i.
+
+3
+00:11.170 --> 00:14.700
+Start with a question that doesn't have a report yet.
+
+4
+00:16.400 --> 00:21.370
+The server reads the table notes, then runs one read-only query.
+
+5
+00:22.870 --> 00:26.160
+You get the answer, and the rows behind it.
+
+6
+00:27.560 --> 00:30.897
+It reads only, and only what you allow:
+
+7
+00:30.947 --> 00:36.770
+a read-only connection, an SQL validator, and a library allowlist.
+
+8
+00:37.370 --> 00:40.280
+Nothing new to install on the IBM i.
+
+9
+00:40.330 --> 00:45.460
+It connects through the host servers you already run, or over SSH.
+
+10
+00:47.010 --> 00:49.180
+Read-only by design.
