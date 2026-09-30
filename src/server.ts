@@ -179,6 +179,8 @@ const queryOutputSchema = z.object({
   rowCount: z.number().int().optional(),
   limitApplied: z.number().int().optional(),
   truncated: z.boolean().optional().describe('True when the result stopped at limitApplied and more rows match'),
+  skippedFilters: z.array(z.string()).optional()
+    .describe('Annotated tables whose row filter, such as leaving out deleted rows, the query does not use. See warnings'),
   warnings: z.array(z.string()).optional().describe('Tell the user these, such as columns the driver rounded'),
 });
 
@@ -195,6 +197,8 @@ const exportOutputSchema = z.object({
     .describe('rows or bytes when the file stops at max_rows / EXPORT_MAX_ROWS or EXPORT_MAX_BYTES'),
   columns: z.array(z.object({ name: z.string(), kind: z.string() })).optional(),
   sample: z.array(z.record(z.string(), z.unknown())).optional().describe('First rows of the file, masked'),
+  skippedFilters: z.array(z.string()).optional()
+    .describe('Annotated tables whose row filter, such as leaving out deleted rows, the query does not use. See warnings'),
   warnings: z.array(z.string()).optional().describe('Tell the user these, such as columns the driver rounded'),
   path: z.string().optional().describe('The file on the server host (stdio)'),
   url: z.string().optional().describe('Download link for the user (HTTP)'),
@@ -256,9 +260,17 @@ const searchColumnsOutputSchema = z.object({
   truncated: z.boolean().optional(),
 });
 
+// Row filters from an annotation, as describe_table and get_business_context return them
+const annotationFiltersSchema = z.array(z.object({
+  sql: z.string(),
+  columns: z.array(z.string()),
+  reason: z.string().optional(),
+})).optional().describe('Row filters most queries on this table need, such as leaving out deleted rows');
+
 const describeTableOutputSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
+  filters: annotationFiltersSchema,
   data: z.array(z.object({
     column_name: z.string(),
     ordinal_position: z.number(),
@@ -314,6 +326,9 @@ const validateQueryOutputSchema = z.object({
   missingColumns: z.array(z.string()).optional(),
   missingRoutines: z.array(z.string()).optional(),
   violations: z.array(z.string()).optional(),
+  skippedFilters: z.array(z.string()).optional()
+    .describe('Annotated tables whose row filter, such as leaving out deleted rows, the query does not use. See warnings'),
+  warnings: z.array(z.string()).optional(),
 });
 
 const objectDdlOutputSchema = z.object({
@@ -502,6 +517,7 @@ const businessContextOutputSchema = z.object({
   error: z.string().optional(),
   data: z.array(z.object({
     table: z.string(),
+    filters: annotationFiltersSchema,
     entity: z.string().optional(),
     description: z.string().optional(),
     columns: z.record(z.string(), z.string()).optional(),
@@ -662,6 +678,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       rowCount: rowCountOf(result),
       // true for a cut query result or listing, 'rows' or 'bytes' for an export
       ...(result.truncated ? { truncated: true } : {}),
+      ...(isStringArray(result.skippedFilters) ? { skippedFilters: result.skippedFilters } : {}),
       ...(typeof result.bytes === 'number' ? { bytes: result.bytes } : {}),
     });
     return {
@@ -704,8 +721,8 @@ type AuditFacts = Pick<AuditCall, 'sql' | 'params' | 'args' | 'intent' | 'client
 /** How the call ended. */
 type AuditOutcome = Pick<
   AuditCall,
-  | 'outcome' | 'error' | 'errorKind' | 'durationMs' | 'rowCount' | 'truncated' | 'bytes' | 'sqlstate' | 'sqlcode'
-  | 'violations'
+  | 'outcome' | 'error' | 'errorKind' | 'durationMs' | 'rowCount' | 'truncated' | 'skippedFilters' | 'bytes'
+  | 'sqlstate' | 'sqlcode' | 'violations'
 >;
 
 /**
@@ -783,6 +800,10 @@ function recordAudit(
     return;
   }
   writeAudit({ tool, identity, ...(system ? { system } : {}), ...facts, ...outcome });
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
 function rowCountOf(result: ToolResult): number | undefined {
@@ -1436,7 +1457,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       'get_business_context',
       {
         title: 'Get Business Context',
-        description: 'List business entities, table and column descriptions, and relations that the catalog does not declare as foreign keys. Filter by entity or table. Omit both to return every annotation loaded from MCP_CUSTOM_TOOLS.',
+        description: 'List business entities, row filters most queries need (such as leaving out deleted rows), table and column descriptions, and relations that the catalog does not declare as foreign keys. Filter by entity or table. Omit both to return every annotation loaded from MCP_CUSTOM_TOOLS.',
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: z.object({
           ...contextShape(),

@@ -197,6 +197,24 @@ describe('tool call audit', () => {
     expect(lines.map((line) => line.truncated)).toEqual([true, undefined, true]);
   });
 
+  it('records the row filters a query left out', async () => {
+    const file = path.join(tempDir(), 'audit.log');
+    process.env.MCP_AUDIT_LOG = file;
+    initAuditLog();
+    const audit = { tool: 'execute_query', audit: () => ({ sql: 'SELECT ORDERNO FROM MYLIB.ORDERS', params: [] }) };
+
+    await withToolHandler(
+      async () => ({ success: true, rowCount: 1, skippedFilters: ['MYLIB.ORDERS'] }),
+      'Query failed',
+      undefined,
+      audit,
+    )({});
+    await withToolHandler(async () => ({ success: true, rowCount: 1 }), 'Query failed', undefined, audit)({});
+
+    const lines = readLines(file);
+    expect(lines.map((line) => line.skippedFilters)).toEqual([['MYLIB.ORDERS'], undefined]);
+  });
+
   it('records a handler that throws, and still throws', async () => {
     const file = path.join(tempDir(), 'audit.log');
     process.env.MCP_AUDIT_LOG = file;

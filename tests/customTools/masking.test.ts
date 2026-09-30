@@ -299,7 +299,11 @@ describe('prepareReadQuery', () => {
 
     const result = await prepareReadQuery({ sql: 'SELECT CUSTNO, EMAIL FROM MYLIB.CUSTOMERS' });
 
-    expect(result).toEqual({ ok: true, maskRules: new Map([['EMAIL', 'redact']]) });
+    expect(result).toEqual({
+      ok: true,
+      maskRules: new Map([['EMAIL', 'redact']]),
+      filters: { tables: [], warnings: [] },
+    });
     expect(query).toHaveBeenCalledTimes(1);
     expect(String(query.mock.calls[0][0])).toMatch(/PARSE_STATEMENT/);
   });
@@ -309,7 +313,7 @@ describe('prepareReadQuery', () => {
 
     const result = await prepareReadQuery({ sql: 'SELECT ORDERNO FROM MYLIB.ORDERS' });
 
-    expect(result).toEqual({ ok: true, maskRules: new Map() });
+    expect(result).toEqual({ ok: true, maskRules: new Map(), filters: { tables: [], warnings: [] } });
     expect(query).not.toHaveBeenCalled();
   });
 });

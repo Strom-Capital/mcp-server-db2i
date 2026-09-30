@@ -156,7 +156,7 @@ npm run test -- tests/integration/
 npx mcp-server-db2i validate-tools examples/erp-tools
 ```
 
-`QUERY_ALLOWED_SCHEMAS` and `DB2I_SCHEMA` are applied when they are set. `--connect` also runs each statement through `QSYS2.PARSE_STATEMENT` on `ibmi.example.com` (or whichever host `DB2I_HOSTNAME` names). That path needs credentials. A missing `PARSE_STATEMENT` is a failure.
+`QUERY_ALLOWED_SCHEMAS` and `DB2I_SCHEMA` are applied when they are set. `--connect` also runs each statement through `QSYS2.PARSE_STATEMENT` on `ibmi.example.com` (or whichever host `DB2I_HOSTNAME` names), and checks in `QSYS2.SYSCOLUMNS` that each annotation filter column exists. That path needs credentials. A missing `PARSE_STATEMENT` is a failure.
 
 ```bash
 npx mcp-server-db2i validate-tools --connect examples/erp-tools

@@ -190,6 +190,7 @@ describe('Custom ERP tools', () => {
       arguments: { schema: 'MYLIB', table: 'ORDERHDR' },
     }) as CallToolResult;
     const describedBody = JSON.parse(textOf(described)) as {
+      filters: unknown[];
       business_description: string;
       relations: unknown[];
       data: Array<{ column_name: string; business_description?: string }>;
@@ -197,6 +198,11 @@ describe('Custom ERP tools', () => {
     expect(describedBody.business_description).toContain('Sales order header');
     expect(describedBody.relations.length).toBeGreaterThan(0);
     expect(describedBody.data[0].business_description).toContain('open');
+    // The row filter comes before the column list, so it is read first
+    expect(Object.keys(describedBody).slice(0, 3)).toEqual(['success', 'filters', 'data']);
+    expect(describedBody.filters).toEqual([
+      { sql: "TRIM(STATFLG) <> 'D'", columns: ['STATFLG'], reason: 'D rows are deleted orders' },
+    ]);
   });
 
   it('adds a business description when listing tables', async () => {

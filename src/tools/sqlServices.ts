@@ -32,6 +32,8 @@ import {
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { checkQuerySchemas, isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
+import { checkRowFilters } from '../customTools/filters.js';
+import { getCustomTools } from '../customTools/registry.js';
 
 const RELATED_OBJECTS_UNAVAILABLE =
   'SYSTOOLS.RELATED_OBJECTS is not available. It requires IBM i 7.3 Technology Refresh 9, IBM i 7.4 Technology Refresh 3, or a later release.';
@@ -45,6 +47,9 @@ export type ValidateQueryResult = SqlErrorDetails & {
   missingColumns?: string[];
   missingRoutines?: string[];
   violations?: string[];
+  /** Annotated tables whose row filter the statement leaves out. They do not make it invalid. */
+  skippedFilters?: string[];
+  warnings?: string[];
 };
 
 export type ObjectDdlResult = {
@@ -147,6 +152,7 @@ export async function validateQueryTool(input: {
     inspection.missingTables.length === 0 &&
     inspection.missingColumns.length === 0 &&
     inspection.missingRoutines.length === 0;
+  const filters = checkRowFilters(inspection.names, getCustomTools().annotations, input.defaultSchema);
 
   return {
     success: true,
@@ -156,6 +162,7 @@ export async function validateQueryTool(input: {
     missingColumns: inspection.missingColumns,
     missingRoutines: inspection.missingRoutines,
     violations: findings,
+    ...(filters.tables.length > 0 ? { skippedFilters: filters.tables, warnings: filters.warnings } : {}),
   };
 }
 

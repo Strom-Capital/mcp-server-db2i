@@ -35,6 +35,10 @@ annotations:
     description: Sales order header
     columns:
       STATUS: "O = open, C = closed"
+    filters:
+      - sql: "TRIM(STATFLG) <> 'D'"
+        columns: [STATFLG]
+        reason: D rows are deleted orders
     relations:
       - table: MYLIB.ORDERS
         join: { ORDERNO: ORDERNO }
@@ -101,14 +105,25 @@ Keys are `SCHEMA.TABLE`. Names are folded to uppercase.
 | `description` | What the table is, in business words |
 | `columns` | Meaning of a column, including status codes |
 | `relations` | A link the catalog does not declare as a foreign key |
+| `filters` | Row filters most queries on the table need, such as leaving out deleted rows |
 
 A relation names the other `SCHEMA.TABLE`, a `join` map of local column to remote column, an optional `cardinality` (`one-to-one`, `one-to-many`, `many-to-one`, `many-to-many`), and an optional description.
 
-`get_business_context` returns these notes. Filter with `entity`, `table` (`ORDERHDR` or `MYLIB.ORDERHDR`), or omit both to list every annotation. `describe_table` adds `business_description` and `relations` when the table is annotated, and a `business_description` on columns that have one. `list_tables` adds `business_description` on annotated tables.
+`get_business_context` returns these notes. Filter with `entity`, `table` (`ORDERHDR` or `MYLIB.ORDERHDR`), or omit both to list every annotation. `describe_table` adds `filters`, `business_description` and `relations` when the table is annotated, and a `business_description` on columns that have one. `list_tables` adds `business_description` on annotated tables.
+
+#### Row filters
+
+A filter has the SQL a query should include (`sql`), the `columns` it uses, and an optional `reason`. Use it for rules that are easy to miss and change the answer, such as a flag that marks deleted rows. Deleted child rows often sit under a live header, so annotate the line table too, not only the header.
+
+- `get_business_context` lists `filters` first in each table, and `describe_table` puts them before the column list.
+- With `QUERY_PARSE_CHECK` on (the default), `execute_query`, `export_query` and `validate_query` check each statement against the filters of the annotated tables it reads. When none of a filter's columns appears in the statement, qualified with that table or unqualified, the query still runs. The result lists the table in `skippedFilters` and adds a warning that quotes the filter and its reason. The check looks for the column, not the exact predicate, and never blocks a query, since some questions need deleted rows. With the parse check off, there is no filter check.
+- `validate_query` reports `skippedFilters` and `warnings` without changing `valid`.
+- `validate-tools --connect` checks that each filter column exists on its table.
+- Business SQL tools are not checked. Put the filter in their SQL.
 
 ### Instructions
 
-`instructions` is an optional top-level text. All files together may hold at most 4000 characters of it. The server sends it to clients as MCP server instructions in the `initialize` result, so the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations.
+`instructions` is an optional top-level text. All files together may hold at most 4000 characters of it. The server sends it to clients as MCP server instructions in the `initialize` result, so the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations. Put a deleted-row flag in the table's `filters` too: the instructions arrive once at the start, while a filter is checked against every query.
 
 ```yaml
 version: 1
@@ -261,7 +276,7 @@ At startup the server runs the same read-only check as `execute_query`. When `QU
 
 When `QUERY_PARSE_CHECK` is on, the first call of each tool asks `QSYS2.PARSE_STATEMENT` whether the statement is a query. That result is cached for the life of the process. A missing function rejects the tool until you set `QUERY_PARSE_CHECK=false`.
 
-`mcp-server-db2i validate-tools <path...>` runs those startup checks and exits, without a database. Add `--connect` to run the `PARSE_STATEMENT` check as well. That needs credentials and a reachable host. See [Validating tool files](development.md#validating-tool-files).
+`mcp-server-db2i validate-tools <path...>` runs those startup checks and exits, without a database. Add `--connect` to run the `PARSE_STATEMENT` check as well, and to check that annotation filter columns exist. That needs credentials and a reachable host. See [Validating tool files](development.md#validating-tool-files).
 
 `MCP_CUSTOM_TOOLS_WATCH=true` runs the same checks again when a watched file changes. A valid set replaces the registry and clients are told to refresh `tools/list`. A bad save is logged and does not replace the tools that are already running. The default is off. Watching with an empty `MCP_CUSTOM_TOOLS` stops startup.
 

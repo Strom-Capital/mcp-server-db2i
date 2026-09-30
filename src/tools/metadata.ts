@@ -22,7 +22,7 @@ import {
 import { applyQueryLimit, getDefaultSchema, loadConfig } from '../config.js';
 import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import { annotationFor } from '../customTools/context.js';
-import type { StoredRelation } from '../customTools/loader.js';
+import type { StoredFilter, StoredRelation } from '../customTools/loader.js';
 import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
 import { schemaDenied } from './sqlServices.js';
 
@@ -142,6 +142,8 @@ export async function describeTableTool(input: { schema?: string; table: string;
         business_description?: string;
       }>;
       count: number;
+      /** Row filters from the annotation, placed before the column list. */
+      filters?: StoredFilter[];
       business_description?: string;
       relations?: StoredRelation[];
     }
@@ -162,6 +164,7 @@ export async function describeTableTool(input: { schema?: string; table: string;
 
     return {
       success: true,
+      ...(annotation?.filters ? { filters: annotation.filters } : {}),
       data,
       count: data.length,
       ...(annotation?.description ? { business_description: annotation.description } : {}),
