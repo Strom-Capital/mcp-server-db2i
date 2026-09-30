@@ -74,6 +74,13 @@ describe('checkQuerySchemas', () => {
     const result = check('SELECT * FROM MYLIB/ORDERS');
     expect(result.ok).toBe(false);
     expect(result.violations[0]).toContain('could not be parsed');
+    expect(result.unparseable).toBe(true);
+  });
+
+  it('does not mark a library outside the list as unparseable', () => {
+    const result = check('SELECT ORDERNO FROM OUTSIDELIB.ORDERS');
+    expect(result.ok).toBe(false);
+    expect(result.unparseable).toBeUndefined();
   });
 
   describe('TABLE() table functions', () => {

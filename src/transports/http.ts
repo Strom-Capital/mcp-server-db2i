@@ -20,6 +20,7 @@ import { toNodeHandler, toWebRequest } from '@modelcontextprotocol/node';
 import { DISPLAY_NAME, FAVICON_ICO, FAVICON_SVG, ICON_PNG, ICON_TILE_SVG } from '../branding.js';
 import { getExportConfig, getHttpConfig, hostnameOf, isLoopbackHost } from '../config.js';
 import { exportDownloadHandler } from '../export/download.js';
+import { writeAuditEvent } from '../utils/auditLog.js';
 import { createChildLogger } from '../utils/logger.js';
 import {
   getTokenManager,
@@ -173,8 +174,19 @@ function createHttpMcpServer(request?: globalThis.Request): ReturnType<typeof cr
     };
   }
 
+  const userAgent = userAgentOf(request?.headers.get('user-agent'));
+  if (userAgent) {
+    context.userAgent = userAgent;
+  }
+
   initializeSessionPool(context.sessionId);
   return createMcpServer(context);
+}
+
+/** User-Agent for the audit log, trimmed to a length that cannot flood it. */
+function userAgentOf(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.slice(0, 200) : undefined;
 }
 
 /**
@@ -307,7 +319,8 @@ async function handleStatefulLegacyRequest(req: Request, res: Response): Promise
     let transport: Awaited<ReturnType<typeof sessionManager.createSession>>['transport'];
 
     try {
-      mcpServer = createMcpServer({ sessionId: sessionKey, binding });
+      const userAgent = userAgentOf(req.headers['user-agent']);
+      mcpServer = createMcpServer({ sessionId: sessionKey, binding, ...(userAgent ? { userAgent } : {}) });
       const result = await sessionManager.createSession(mcpServer, sessionKey);
       transport = result.transport;
     } catch (err) {
@@ -551,6 +564,15 @@ export function createHttpApp(): Express {
       // proven with a test connection
       const login = await verifyLogin(authReq);
       if (!login.ok) {
+        writeAuditEvent({
+          event: 'sign_in',
+          method: 'password',
+          identity: authReq.username,
+          ...(authReq.system ? { system: authReq.system } : {}),
+          ip: req.ip,
+          outcome: 'failure',
+          reason: login.description,
+        });
         res.status(login.status).json({
           error: login.error,
           error_description: login.description,
@@ -609,6 +631,14 @@ export function createHttpApp(): Express {
         { host: dbConfig.hostname, system, user: dbConfig.username, expiresIn },
         'Authentication successful'
       );
+      writeAuditEvent({
+        event: 'sign_in',
+        method: 'password',
+        identity: dbConfig.username,
+        system,
+        ip: req.ip,
+        outcome: 'success',
+      });
 
       res.status(201).json(response);
     } catch (err) {

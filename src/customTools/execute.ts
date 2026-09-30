@@ -20,6 +20,7 @@ import type { StoredTool } from './loader.js';
 import { cacheParse, cachedParse, type ParseOutcome } from './registry.js';
 import { maskRows } from './masking.js';
 import { formatSchemaIssues, inputSchemaFor, type ParameterDef } from './schema.js';
+import type { AuditErrorKind } from '../utils/auditLog.js';
 
 const log = createChildLogger({ component: 'custom-tools' });
 
@@ -54,6 +55,7 @@ export interface CustomToolQueryResult extends SqlErrorDetails {
   rowCount?: number;
   error?: string;
   violations?: string[];
+  errorKind?: AuditErrorKind;
   limitApplied?: number;
   warnings?: string[];
   [key: string]: unknown;
@@ -70,7 +72,7 @@ export async function executeCustomTool(
 ): Promise<CustomToolQueryResult> {
   const bound = bindCustomToolArgs(tool, args);
   if (!bound.ok) {
-    return { success: false, error: bound.error };
+    return { success: false, error: bound.error, errorKind: 'bad_params' };
   }
   const values = bound.params;
   const allowedSchemas = allowedSchemasFor(options.target);
@@ -84,6 +86,7 @@ export async function executeCustomTool(
         success: false,
         error: `Schema allowlist rejected the query: ${schemaResult.violations.join('; ')}`,
         violations: schemaResult.violations,
+        errorKind: schemaResult.unparseable ? 'allowlist_parse' : 'allowlist_denied',
       };
     }
   }
@@ -94,6 +97,7 @@ export async function executeCustomTool(
       success: false,
       error: parsedOk.error,
       ...(parsedOk.violations ? { violations: parsedOk.violations } : {}),
+      errorKind: parsedOk.errorKind ?? 'parse_check',
     };
   }
 
@@ -106,7 +110,7 @@ export async function executeCustomTool(
     const maskRules = new Map(Object.entries(tool.maskedColumns));
     const masked = maskRows(limited, maskRules);
     if (!masked.ok) {
-      return { success: false, error: masked.error };
+      return { success: false, error: masked.error, errorKind: 'masking' };
     }
     const warnings = roundedColumnsWarnings(result.roundedColumns, new Set(maskRules.keys()));
     log.info({ tool: tool.name, rowCount: masked.rows.length, effectiveLimit }, 'Custom tool executed');
@@ -196,6 +200,6 @@ async function ensureParsed(tool: StoredTool, target?: DbTarget): Promise<ParseO
       return outcome;
     }
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
-    return { ok: false, error: message };
+    return { ok: false, error: message, errorKind: 'sql_error' };
   }
 }

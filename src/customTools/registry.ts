@@ -3,6 +3,7 @@
  */
 
 import type { LoadedCustomTools, StoredAnnotation, StoredTool } from './loader.js';
+import type { AuditErrorKind } from '../utils/auditLog.js';
 
 /** A set with nothing loaded. A new object each call, so no caller shares the masking map. */
 export function emptyCustomTools(): LoadedCustomTools {
@@ -13,7 +14,7 @@ let current: LoadedCustomTools = emptyCustomTools();
 
 export type ParseOutcome =
   | { ok: true }
-  | { ok: false; error: string; violations?: string[] };
+  | { ok: false; error: string; violations?: string[]; errorKind?: AuditErrorKind };
 
 /** PARSE_STATEMENT outcomes by system and tool. A tool without `system:` can run on several. */
 const parseCache = new Map<string, ParseOutcome>();

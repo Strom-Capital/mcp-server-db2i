@@ -92,7 +92,7 @@ graph LR
 - **Catalog search and profiling** - Find tables and columns across libraries, check journaling, and profile a table's row counts and value ranges
 - **Column masking** - Redact sensitive columns, or show only their last four characters, in query results. See [Column masking](docs/security.md#column-masking)
 - **Query exports** - Hand the user a CSV or Excel file of a query's results, as a file path over stdio or a short-lived download link over HTTP. The rows never pass through the model. See [Query exports](docs/tools.md#query-exports)
-- **Audit log** - Record every tool call as one JSON line, with the SQL hashed by default. See [Audit log](docs/security.md#audit-log)
+- **Audit log** - Record every tool call and sign-in as one JSON line, with the SQL hashed by default. Optionally record the model's reason for each call (`MCP_TOOL_INTENT`). See [Audit log](docs/security.md#audit-log)
 - **Tool reload** - Reload YAML tool files when they change, with `MCP_CUSTOM_TOOLS_WATCH=true`
 - **Resources and prompts** - Read table columns and DDL as MCP resources, and start from prompts that explore a library, explain a table, or write a query. See [Resources and prompts](#resources-and-prompts)
 

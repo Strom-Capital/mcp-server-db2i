@@ -1151,6 +1151,19 @@ export function isCustomToolsWatchEnabled(): boolean {
 }
 
 /**
+ * Whether every tool takes an optional `context` argument: the model's one-sentence
+ * reason for the call. The server strips it before the tool runs and writes it to the
+ * audit log as `intent`. Off by default, because the text comes from the user's prompt.
+ *
+ * Environment variable:
+ * - MCP_TOOL_INTENT: `true` or `1` turns it on. Anything else, including unset, leaves it off.
+ */
+export function isToolIntentEnabled(): boolean {
+  const value = process.env.MCP_TOOL_INTENT?.trim().toLowerCase();
+  return value === 'true' || value === '1';
+}
+
+/**
  * Watching with no files is a startup error. A blank MCP_CUSTOM_TOOLS would
  * otherwise look like a successful watch of nothing.
  */

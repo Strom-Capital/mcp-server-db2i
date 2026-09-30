@@ -28,6 +28,7 @@ import express, { type Request, type RequestHandler, type Response, type Router 
 import { FAVICON_SVG, LOCKUP_SHAPES, LOCKUP_VIEWBOX } from '../branding.js';
 import { getHttpConfig, isLoopbackHost, normalizeDbHost, type DB2iConfig, type OAuthConfig } from '../config.js';
 import { defaultSystem, getSystems } from '../systems.js';
+import { writeAuditEvent } from '../utils/auditLog.js';
 import { createChildLogger } from '../utils/logger.js';
 import type { LoginRateLimitedHandler } from './authMiddleware.js';
 import { grantKey, RefreshGrantStore, type RefreshGrant, type StoredGrant } from './grantStore.js';
@@ -826,8 +827,9 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       next();
     },
     limits.login,
-    async (_req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const { pending, client, username, password, system } = res.locals.signIn as SignInForm;
+      const signInEvent = { event: 'sign_in', method: 'oauth', identity: username, client: client.name, ip: req.ip } as const;
       const retry = (status: number, error: string): void => renderSignIn(res, res.locals.signIn as SignInForm, status, error);
 
       let login: Awaited<ReturnType<typeof verifyLogin>>;
@@ -835,11 +837,13 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
         login = await verifyLogin({ username, password, system });
       } catch (err) {
         log.error({ err, user: username, system }, 'Unexpected error in OAuth sign-in');
+        writeAuditEvent({ ...signInEvent, ...(system ? { system } : {}), outcome: 'error', reason: 'Unexpected error' });
         retry(500, 'Sign-in failed unexpectedly. Try again.');
         return;
       }
       if (!login.ok) {
         log.warn({ user: username, system, client: client.name, reason: login.description }, 'OAuth sign-in failed');
+        writeAuditEvent({ ...signInEvent, ...(system ? { system } : {}), outcome: 'failure', reason: login.description });
         // Driver errors can describe the host; the page only says what the user can fix
         retry(login.status, login.status === 400 ? login.description : 'Sign-in failed. Check the user and password.');
         return;
@@ -867,6 +871,7 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
       });
 
       log.info({ user: login.config.username, system: login.system, client: client.name }, 'OAuth sign-in succeeded');
+      writeAuditEvent({ ...signInEvent, identity: login.config.username, system: login.system, outcome: 'success' });
       const params = { code, state: pending.state, iss: issuer };
       const target = new URL(pending.redirectUri);
       if (isWebRedirect(target) && !isLoopbackHost(target.hostname)) {

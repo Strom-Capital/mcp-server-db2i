@@ -225,7 +225,7 @@ export async function myTool(input: MyToolInput): Promise<{
 
 2. **Add the name** to `TOOL_NAMES` in `src/config.ts`, so `MCP_TOOLS_ENABLED` and `MCP_TOOLS_DISABLED` accept it.
 
-3. **Register the tool** in `createServer()` in `src/server.ts`. `withToolHandler` resolves the target system, applies the rate limit, writes the audit line, and formats the result:
+3. **Register the tool** in `createServer()` in `src/server.ts`. `withToolHandler` resolves the target system, applies the rate limit, writes the audit line, and formats the result. Spread `common` into the input schema: it adds the optional `system` argument and, with `MCP_TOOL_INTENT`, the `context` argument, which `withToolHandler` removes before your handler runs. When a failure has a known cause, set `errorKind` on the failed result so the audit line records it:
 
 ```typescript
 if (enabledTools.has('my_tool')) {
@@ -236,7 +236,7 @@ if (enabledTools.has('my_tool')) {
       description: 'Description of what this tool does',
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
-        ...system,
+        ...common,
         param1: z.string().describe('First parameter'),
         param2: z.number().optional().describe('Optional second parameter'),
       }),

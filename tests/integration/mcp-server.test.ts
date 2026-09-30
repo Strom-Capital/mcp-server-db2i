@@ -129,6 +129,28 @@ describe('MCP Server Integration', () => {
       expect(toolNames).toContain('search_ibmi_services');
     });
 
+    it('adds the optional context argument to every tool only with MCP_TOOL_INTENT', async () => {
+      const { tools } = await client.listTools();
+      expect(tools.some((t) => 'context' in ((t.inputSchema.properties ?? {}) as object))).toBe(false);
+
+      process.env.MCP_TOOL_INTENT = 'true';
+      const [intentClientTransport, intentServerTransport] = InMemoryTransport.createLinkedPair();
+      await createServer().connect(intentServerTransport);
+      const intentClient = new Client({ name: 'intent-client', version: '1.0.0' });
+      await intentClient.connect(intentClientTransport);
+      try {
+        const { tools: withIntent } = await intentClient.listTools();
+        for (const tool of withIntent) {
+          const properties = (tool.inputSchema.properties ?? {}) as Record<string, unknown>;
+          expect(properties.context, tool.name).toBeDefined();
+          expect(tool.inputSchema.required ?? []).not.toContain('context');
+        }
+        expect(intentClient.getInstructions()).toContain('optional context argument');
+      } finally {
+        await intentClient.close();
+      }
+    });
+
     it('should have correct metadata for execute_query tool', async () => {
       const { tools } = await client.listTools();
       const queryTool = tools.find((t) => t.name === 'execute_query');

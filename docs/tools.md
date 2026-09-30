@@ -4,7 +4,7 @@ sidebarTitle: Tools
 description: The built-in MCP tools, resources, and prompts that mcp-server-db2i registers.
 ---
 
-Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, or the list narrowed with `MCP_TOOLS_ENABLED` (see [Tool selection](configuration.md#tool-selection)). With several systems configured, every tool takes an optional `system` argument (see [Multiple systems](configuration.md#multiple-systems)). [Business SQL tools](custom-tools.md) loaded from YAML appear next to these.
+Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, or the list narrowed with `MCP_TOOLS_ENABLED` (see [Tool selection](configuration.md#tool-selection)). With several systems configured, every tool takes an optional `system` argument (see [Multiple systems](configuration.md#multiple-systems)). With `MCP_TOOL_INTENT=true`, every tool also takes an optional `context` argument: one sentence on why the call is made, written to the audit log and not used by the tool (see [Intent](security.md#intent)). [Business SQL tools](custom-tools.md) loaded from YAML appear next to these.
 
 ## Tools
 
