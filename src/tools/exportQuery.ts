@@ -21,6 +21,7 @@ import type { DbTarget } from '../systems.js';
 import { createChildLogger } from '../utils/logger.js';
 import { prepareReadQuery } from './query.js';
 import { applySqlRowLimit } from './sqlLimit.js';
+import { withUnknownColumnHint } from './unknownColumnHint.js';
 
 const log = createChildLogger({ component: 'export-tool' });
 
@@ -49,6 +50,8 @@ export interface ExportQueryInput {
   owner: string;
   target?: DbTarget;
   defaultSchema?: string;
+  /** False when describe_table is not registered, so an unknown-column hint does not name it. Defaults to true. */
+  describeTable?: boolean;
 }
 
 export type ExportQueryResult = SqlErrorDetails & {
@@ -361,7 +364,11 @@ export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQu
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     log.debug({ err: error }, 'Export failed');
-    return { success: false, error: message, ...sqlErrorFields(error) };
+    return {
+      success: false,
+      error: message,
+      ...withUnknownColumnHint(sqlErrorFields(error), message, input.sql, input.describeTable),
+    };
   } finally {
     clearTimeout(deadline);
     await cursor?.close();

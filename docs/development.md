@@ -95,6 +95,7 @@ mcp-server-db2i/
 │   ├── tools/             # MCP tools
 │   │   ├── query.ts       # execute_query
 │   │   ├── sqlLimit.ts    # FETCH FIRST row cap
+│   │   ├── unknownColumnHint.ts # describe_table hint for SQLCODE -206
 │   │   ├── metadata.ts    # Schema, table, and catalog search tools
 │   │   ├── indexAdvice.ts # index_advice
 │   │   ├── routines.ts    # list_routines, describe_routine
@@ -294,7 +295,7 @@ Other failures, such as a lost connection or a `QueryTimeoutError`, stay plain e
 - The second-level text keeps its `&1` placeholders. The first-level message in `error` has the values.
 - With the JDBC option `errors=full`, JT400 and Mapepire put the second-level text in the message, with the values filled in. That text is split instead, and no lookup runs.
 
-Tools spread `sqlErrorFields(error)` into their error result, and `withToolHandler` in `server.ts` returns `sqlstate`, `sqlcode`, `cause` and `recovery` in `structuredContent`, with cause and recovery also in the text. Rejections by the SQL validator, the schema allowlist or masking do not come from Db2 and carry none of these fields.
+Tools spread `sqlErrorFields(error)` into their error result (`execute_query` and `export_query` pass it through `withUnknownColumnHint` in `tools/unknownColumnHint.ts` first, which puts a describe_table hint at the start of `recovery` for SQLCODE -206), and `withToolHandler` in `server.ts` returns `sqlstate`, `sqlcode`, `cause` and `recovery` in `structuredContent`, with cause and recovery also in the text. Rejections by the SQL validator, the schema allowlist or masking do not come from Db2 and carry none of these fields.
 
 ### Pools
 

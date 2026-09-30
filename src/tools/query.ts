@@ -22,6 +22,7 @@ import {
   type MaskRule,
 } from '../customTools/masking.js';
 import { applySqlRowLimit, rowLimitWarning, takeRowsWithinLimit } from './sqlLimit.js';
+import { withUnknownColumnHint } from './unknownColumnHint.js';
 
 const log = createChildLogger({ component: 'query-tool' });
 
@@ -36,6 +37,8 @@ export interface ExecuteQueryInput {
   target?: DbTarget;
   /** Schema unqualified names resolve to. Used by the schema allowlist only. */
   defaultSchema?: string;
+  /** False when describe_table is not registered, so an unknown-column hint does not name it. Defaults to true. */
+  describeTable?: boolean;
 }
 
 /** A statement that passed every read-only check, with the masks to apply and the row filters it leaves out. */
@@ -217,7 +220,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
     return {
       success: false,
       error: message,
-      ...sqlErrorFields(error),
+      ...withUnknownColumnHint(sqlErrorFields(error), message, sql, input.describeTable),
     };
   }
 }
