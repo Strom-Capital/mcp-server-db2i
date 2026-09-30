@@ -745,8 +745,11 @@ export function createOAuthRouter(oauth: OAuthConfig, resourceName: string, limi
     refreshGrants.load(restoreGrant);
   }
   const look = buildPageLook(oauth.branding, oauth.text, resourceName);
-  for (const accent of lowContrastAccents(oauth.branding)) {
-    log.warn(accent, 'The sign-in page accent has little contrast with the page background; focus outlines may be hard to see');
+  // Only the mode is logged: the setting's value stays out of the log
+  for (const mode of lowContrastAccents(oauth.branding).map((accent) => (accent.mode === 'dark' ? 'dark' : 'light'))) {
+    log.warn(
+      `The sign-in page accent for ${mode} mode has little contrast with the page background; focus outlines may be hard to see`
+    );
   }
   router.use('/oauth', limits.requests);
   router.use('/oauth', (req: Request, res: Response, next: express.NextFunction) => {

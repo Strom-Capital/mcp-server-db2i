@@ -120,7 +120,7 @@ describe('readSignInText', () => {
     process.env.MCP_OAUTH_LANGUAGE = 'auto';
     expect(readSignInText().language).toBe('auto');
     process.env.MCP_OAUTH_LANGUAGE = 'sv';
-    expect(() => readSignInText()).toThrow(/MCP_OAUTH_LANGUAGE "sv" has no strings/);
+    expect(() => readSignInText()).toThrow(/MCP_OAUTH_LANGUAGE has no strings for that language. Use auto or one of: en, fi/);
   });
 
   it('overrides only the keys a strings file sets, and adds its languages', () => {
@@ -160,7 +160,19 @@ describe('readSignInText', () => {
 
   it('refuses a missing strings file', () => {
     process.env.MCP_OAUTH_STRINGS = path.join(dir, 'missing.json');
-    expect(() => readSignInText()).toThrow(/MCP_OAUTH_STRINGS/);
+    expect(() => readSignInText()).toThrow('MCP_OAUTH_STRINGS: the file could not be read');
+  });
+
+  it('keeps file paths and values out of error messages', () => {
+    const secretPath = path.join(dir, 'private-name', 'strings.json');
+    process.env.MCP_OAUTH_STRINGS = secretPath;
+    expect(() => readSignInText()).toThrow(expect.objectContaining({ message: expect.not.stringContaining('private-name') }));
+    delete process.env.MCP_OAUTH_STRINGS;
+    process.env.MCP_OAUTH_LANGUAGE = 'private-name';
+    expect(() => readSignInText()).toThrow(expect.objectContaining({ message: expect.not.stringContaining('private-name') }));
+    delete process.env.MCP_OAUTH_LANGUAGE;
+    process.env.MCP_OAUTH_LOGO = path.join(dir, 'private-name.svg');
+    expect(() => readSignInBranding()).toThrow(expect.objectContaining({ message: expect.not.stringContaining('private-name') }));
   });
 });
 

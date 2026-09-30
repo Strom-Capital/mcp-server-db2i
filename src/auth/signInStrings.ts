@@ -81,12 +81,13 @@ export function checkSignInString(key: SignInStringKey, value: unknown): string 
 }
 
 function readStringsFile(file: string): Record<string, Partial<SignInStrings>> {
-  const where = `MCP_OAUTH_STRINGS (${file})`;
+  // Errors name the variable, not the path, so the configured value never reaches a log line
+  const where = 'MCP_OAUTH_STRINGS';
   let raw: Buffer;
   try {
     raw = readFileSync(file);
-  } catch (error) {
-    throw new Error(`${where}: ${error instanceof Error ? error.message : 'Could not read file'}`, { cause: error });
+  } catch {
+    throw new Error(`${where}: the file could not be read. Check the path and its permissions.`);
   }
   if (raw.length > MAX_STRINGS_FILE_BYTES) {
     throw new Error(`${where}: the file is larger than ${MAX_STRINGS_FILE_BYTES / 1024} KB`);
@@ -146,7 +147,7 @@ export function readSignInText(overrides: SignInStringOverrides = {}): SignInTex
   const language = (process.env.MCP_OAUTH_LANGUAGE?.trim() || DEFAULT_SIGN_IN_LANGUAGE).toLowerCase();
   if (language !== 'auto' && !languages[language]) {
     throw new Error(
-      `MCP_OAUTH_LANGUAGE "${language}" has no strings. Use auto or one of: ${Object.keys(languages).join(', ')}. ` +
+      `MCP_OAUTH_LANGUAGE has no strings for that language. Use auto or one of: ${Object.keys(languages).join(', ')}. ` +
         'Add a language with MCP_OAUTH_STRINGS.'
     );
   }

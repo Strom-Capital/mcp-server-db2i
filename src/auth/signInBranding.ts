@@ -85,15 +85,16 @@ function readText(variable: string, maxLength: number): string | undefined {
   return value;
 }
 
+/** Read a file a variable points at. Errors name the variable, not the path, so the configured value never reaches a log line. */
 function readFile(variable: string, file: string, maxBytes: number): Buffer {
   let data: Buffer;
   try {
     data = readFileSync(file);
-  } catch (error) {
-    throw new Error(`${variable} (${file}): ${error instanceof Error ? error.message : 'Could not read file'}`, { cause: error });
+  } catch {
+    throw new Error(`${variable}: the file could not be read. Check the path and its permissions.`);
   }
   if (data.length > maxBytes) {
-    throw new Error(`${variable} (${file}): the file is larger than ${maxBytes / 1024} KB`);
+    throw new Error(`${variable}: the file is larger than ${maxBytes / 1024} KB`);
   }
   return data;
 }
@@ -105,22 +106,22 @@ function readLogo(): string | undefined {
   }
   const type = extname(file).toLowerCase();
   if (type !== '.svg' && type !== '.png') {
-    throw new Error(`MCP_OAUTH_LOGO (${file}): the logo must be an .svg or .png file`);
+    throw new Error(`MCP_OAUTH_LOGO: the logo must be an .svg or .png file`);
   }
   const data = readFile('MCP_OAUTH_LOGO', file, MAX_LOGO_BYTES);
   if (type === '.png') {
     if (!data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
-      throw new Error(`MCP_OAUTH_LOGO (${file}): not a PNG image`);
+      throw new Error(`MCP_OAUTH_LOGO: not a PNG image`);
     }
     return `data:image/png;base64,${data.toString('base64')}`;
   }
   const svg = data.toString('utf8');
   if (!/<svg\b/i.test(svg)) {
-    throw new Error(`MCP_OAUTH_LOGO (${file}): not an SVG image`);
+    throw new Error(`MCP_OAUTH_LOGO: not an SVG image`);
   }
   for (const [pattern, what] of SVG_REFUSALS) {
     if (pattern.test(svg)) {
-      throw new Error(`MCP_OAUTH_LOGO (${file}): the SVG has ${what}. Remove it, or use a PNG.`);
+      throw new Error(`MCP_OAUTH_LOGO: the SVG has ${what}. Remove it, or use a PNG.`);
     }
   }
   return `data:image/svg+xml;base64,${data.toString('base64')}`;
@@ -132,11 +133,11 @@ function readFontFile(): string | undefined {
     return undefined;
   }
   if (extname(file).toLowerCase() !== '.woff2') {
-    throw new Error(`MCP_OAUTH_FONT_FILE (${file}): the font must be a .woff2 file`);
+    throw new Error(`MCP_OAUTH_FONT_FILE: the font must be a .woff2 file`);
   }
   const data = readFile('MCP_OAUTH_FONT_FILE', file, MAX_FONT_BYTES);
   if (!data.subarray(0, WOFF2_SIGNATURE.length).equals(WOFF2_SIGNATURE)) {
-    throw new Error(`MCP_OAUTH_FONT_FILE (${file}): not a WOFF2 font`);
+    throw new Error(`MCP_OAUTH_FONT_FILE: not a WOFF2 font`);
   }
   return `data:font/woff2;base64,${data.toString('base64')}`;
 }
