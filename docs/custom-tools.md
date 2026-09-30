@@ -123,7 +123,7 @@ A filter has the SQL a query should include (`sql`), the `columns` it uses, and 
 
 ### Instructions
 
-`instructions` is an optional top-level text. All files together may hold at most 4000 characters of it. The server sends it to clients as MCP server instructions in the `initialize` result, so the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations. Put a deleted-row flag in the table's `filters` too: the instructions arrive once at the start, while a filter is checked against every query.
+`instructions` is an optional top-level text. All files together may hold at most 4000 characters of it. The server sends it to clients as MCP server instructions: in the `initialize` result for 2025-era clients, and in the `server/discover` result on protocol 2026-07-28, which has no `initialize`. Either way the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations. Put a deleted-row flag in the table's `filters` too: the instructions arrive once at the start, while a filter is checked against every query.
 
 ```yaml
 version: 1
@@ -145,7 +145,7 @@ A server without `MCP_CUSTOM_TOOLS` sends no instructions.
 
 Some clients do not pass server instructions to the model. So when annotations are loaded and `get_business_context` or `describe_table` is enabled, the descriptions of `execute_query` and `export_query` also end with a sentence that asks the model to call that tool for a table before querying it. Tool descriptions reach the model in every client.
 
-Instructions are read when a session starts. With `MCP_CUSTOM_TOOLS_WATCH`, a change reaches new HTTP sessions; a running session and a stdio server keep the text they started with. The sentence in the `execute_query` and `export_query` descriptions follows the reload, and the server sends `notifications/tools/list_changed`. Clients decide what to do with server instructions. Claude Code adds them to the model's context. Check your client if the rules do not seem to reach the model.
+Clients read instructions when they connect, from the `initialize` or `server/discover` result. With `MCP_CUSTOM_TOOLS_WATCH`, a change reaches the next such request over HTTP, because the default stateless mode builds the server for each request. A stdio server, and a session in the deprecated `MCP_SESSION_MODE=stateful` mode, keep the text they started with. The sentence in the `execute_query` and `export_query` descriptions follows the reload, and stdio servers and stateful sessions also get `notifications/tools/list_changed`. Clients decide what to do with server instructions. Claude Code adds them to the model's context. Check your client if the rules do not seem to reach the model.
 
 ### Masking
 

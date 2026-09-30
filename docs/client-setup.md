@@ -340,7 +340,7 @@ Claude for Excel needs a paid Claude plan. As with any assistant, query results 
 
 1. **Check hostname resolution**: Ensure the IBM i hostname is reachable
 2. **Verify credentials**: Test with a known-good username/password
-3. **Check port**: Default is 446, verify firewall allows access
+3. **Check ports**: Port 446 is not used. `odbc` and `jt400` connect to the IBM i database host servers: 449 (port mapper), 8476 (sign-on) and 8471 (database), or 9476 and 9471 with TLS. `mapepire` needs only SSH (port 22, or `sshPort` in `DB2I_MAPEPIRE_OPTIONS`). Verify a firewall allows the ports your driver uses. See [Database Drivers](configuration.md#database-drivers)
 4. **Enable debug logging**: Set `LOG_LEVEL=debug`
 
 ### Docker Issues
