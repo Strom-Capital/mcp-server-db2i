@@ -38,7 +38,7 @@ DB2I_PASSWORD=your-password
 | `DB2I_PASSWORD` | Yes* | - | User password. Not needed with `DB2I_DRIVER=mapepire` and `privateKeyFile` in `DB2I_MAPEPIRE_OPTIONS` |
 | `DB2I_USERNAME_FILE` | No | - | Path to file containing username (overrides `DB2I_USERNAME`) |
 | `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
-| `DB2I_PORT` | No | `446` | Not used. The `odbc` and `jt400` drivers connect to the IBM i host servers (8471, or 9471 with TLS), not the DRDA port. `mapepire` uses SSH (`sshPort` in `DB2I_MAPEPIRE_OPTIONS`) |
+| `DB2I_PORT` | No | `446` | Not used. The `odbc` and `jt400` drivers connect to the IBM i host servers (449 port mapper, 8476 sign-on and 8471 database, or 9476 and 9471 with TLS), not the DRDA port. `mapepire` uses SSH (`sshPort` in `DB2I_MAPEPIRE_OPTIONS`) |
 | `DB2I_DATABASE` | No | `*LOCAL` | Not used. To reach an independent ASP, set the driver option (`database name` for jt400, `DATABASE` for ODBC) |
 | `DB2I_SCHEMA` | No | - | Default schema/library. Also the library list for `execute_query` (JDBC `libraries`, ODBC `DBQ`) when the option is not set |
 | `DB2I_DRIVER` | No | `odbc` | Database driver: `odbc` (IBM i Access ODBC driver, no Java), `jt400` (JDBC via node-jt400, installed separately, needs Java) or `mapepire` (Mapepire over SSH, @ibm/mapepire-js and ssh2 installed separately, needs Java on the IBM i only). See [Database Drivers](#database-drivers) |

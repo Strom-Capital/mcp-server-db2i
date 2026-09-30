@@ -123,7 +123,7 @@ A filter has the SQL a query should include (`sql`), the `columns` it uses, and 
 
 ### Instructions
 
-`instructions` is an optional top-level text. All files together may hold at most 4000 characters of it. The server sends it to clients as MCP server instructions in the `initialize` result, so the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations. Put a deleted-row flag in the table's `filters` too: the instructions arrive once at the start, while a filter is checked against every query.
+`instructions` is an optional top-level text. All files together may hold at most 4000 characters of it. The server sends it to clients as MCP server instructions: in the `initialize` result for 2025-era clients, and in the `server/discover` result on protocol 2026-07-28, which has no `initialize`. Either way the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations. Put a deleted-row flag in the table's `filters` too: the instructions arrive once at the start, while a filter is checked against every query.
 
 ```yaml
 version: 1

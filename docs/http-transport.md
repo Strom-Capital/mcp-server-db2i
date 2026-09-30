@@ -178,8 +178,8 @@ curl -X POST http://localhost:3000/mcp \
 | `username` | Yes | IBM i username |
 | `password` | Yes | IBM i password |
 | `host` | No | IBM i hostname (falls back to `DB2I_HOSTNAME`) |
-| `port` | No | Accepted for compatibility. Not used by either driver |
-| `database` | No | Accepted for compatibility. Not used by either driver |
+| `port` | No | Accepted for compatibility and checked to be 1 to 65535. Not used by any driver: `odbc` and `jt400` connect to the database host server ports, and `mapepire` uses `sshPort` from `DB2I_MAPEPIRE_OPTIONS` |
+| `database` | No | Accepted for compatibility. Not used by any driver (`odbc`, `jt400` or `mapepire`) |
 | `schema` | No | Default schema (falls back to `DB2I_SCHEMA`) |
 | `duration` | No | Token lifetime in seconds. Capped at `MCP_TOKEN_EXPIRY` |
 | `system` | No | Profile from `DB2I_PROFILES` to log in to (default: the first). Not accepted with `host`, `port`, or `database` |

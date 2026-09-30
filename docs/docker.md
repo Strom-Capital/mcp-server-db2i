@@ -13,7 +13,7 @@ This guide covers running mcp-server-db2i with Docker and docker-compose.
 docker build -t mcp-server-db2i .
 ```
 
-This builds the default `odbc` image with the IBM i Access ODBC Driver. IBM publishes that driver for amd64 only, so on an arm64 host such as an Apple Silicon Mac add `--platform linux/amd64`, or build the `jt400` image instead. See [Multi-Stage Build](#multi-stage-build).
+This builds the default `odbc` image with the IBM i Access ODBC Driver. IBM publishes no arm64 Linux build of that driver, so on an arm64 host such as an Apple Silicon Mac add `--platform linux/amd64`, or build the `jt400` image instead. See [Multi-Stage Build](#multi-stage-build).
 
 ### Run with Environment Variables
 
@@ -294,7 +294,7 @@ docker run --rm -i --env-file .env -e DB2I_ODBC_OPTIONS="SSL=1" mcp-server-db2i
 docker build --target jt400 -t mcp-server-db2i:jt400 .
 ```
 
-IBM publishes the ODBC driver package for amd64, i386 and ppc64el only. On an arm64 host such as an Apple Silicon Mac, build and run the ODBC image under emulation with `--platform linux/amd64`; the build fails early with a message otherwise. The `jt400` image builds natively on arm64.
+IBM publishes the ODBC driver package for amd64 and ppc64el, and its apt repository also carries older i386 builds (see [Installing the IBM i Access ODBC Driver](configuration.md#installing-the-ibm-i-access-odbc-driver)). There is no arm64 build, so in practice the ODBC image is an amd64 image. On an arm64 host such as an Apple Silicon Mac, build and run it under emulation with `--platform linux/amd64`; the build fails early with a message otherwise. The `jt400` image builds natively on arm64.
 
 ```bash
 docker build --platform linux/amd64 -t mcp-server-db2i .
@@ -480,7 +480,7 @@ secrets:
 
 ### Connection Refused
 
-1. Check if IBM i port (446) is accessible
+1. Check that the container can reach the IBM i ports your driver uses: 449, 8476 and 8471 (9476 and 9471 with TLS) for `odbc` and `jt400`, or SSH (port 22) for `mapepire`. Port 446 is not used
 2. Verify hostname resolves correctly
 3. Check firewall rules
 

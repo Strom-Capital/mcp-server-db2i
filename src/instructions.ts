@@ -1,5 +1,6 @@
 /**
- * Server instructions sent in the initialize result.
+ * Server instructions sent in the initialize result (2025-era protocols) and
+ * the server/discover result (2026-07-28).
  *
  * Built from MCP_CUSTOM_TOOLS, plus one line when MCP_TOOL_INTENT is on. A server
  * with neither sends none.
