@@ -129,6 +129,8 @@ When Db2 rejects a statement in `execute_query`, a business SQL tool, `validate_
 
 `cause` and `recovery` also follow the message in the text content, and come from the second-level text of the SQL message (`SYSTOOLS.SQLCODE_INFO`). `&1`, `&2` and so on stand for the values in the first-level message in `error`. With the JDBC option `errors=full`, the `jt400` and `mapepire` drivers return the text with the values filled in. If the text cannot be read, the error comes without `cause` and `recovery`. Rejections by the SQL validator, the schema allowlist or column masking explain themselves and have none of these fields.
 
+When `execute_query` or `export_query` names a column the table does not have (SQLCODE `-206`, SQLSTATE `42703`, or `42S22` through ODBC), `recovery` starts with a hint such as `Check the column names with describe_table for MYLIB.ORDERS before trying again, and put text values in single quotes, not double quotes.` The tables come from parsing the statement on the server, with no extra database call. When the statement cannot be parsed, the hint says "the tables in the query" instead, and when `describe_table` is disabled, it is not named. Business SQL tools do not get the hint, since the caller cannot change their SQL.
+
 ## Filter syntax
 
 The list tools support pattern matching:

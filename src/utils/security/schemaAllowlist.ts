@@ -523,6 +523,42 @@ export function checkQuerySchemas(sql: string, options: SchemaCheckOptions): Sch
 }
 
 /**
+ * Tables a query reads, as `SCHEMA.TABLE` or a bare `TABLE` when unqualified,
+ * uppercased, in the order they appear and without CTE names. Used for error
+ * hints, not for a security check. Empty when the query cannot be parsed.
+ *
+ * @param sql - Statement as the caller sent it
+ */
+export function referencedTables(sql: string): string[] {
+  let parsed: ReturnType<typeof parseQuery>;
+  try {
+    parsed = parseQuery(normalizeForParsing(sql));
+  } catch {
+    return [];
+  }
+  if (!('ast' in parsed)) {
+    return [];
+  }
+
+  const cteNames = new Set<string>();
+  collectCteNames(parsed.ast, cteNames);
+
+  const tables = new Set<string>();
+  for (const entry of parsed.tables) {
+    const ref = schemaOf(entry);
+    if (!ref) {
+      continue;
+    }
+    const table = ref.table.toUpperCase();
+    if (!ref.schema && cteNames.has(table)) {
+      continue;
+    }
+    tables.add(ref.schema ? `${ref.schema}.${table}` : table);
+  }
+  return [...tables];
+}
+
+/**
  * True when schema is in the allowlist. Comparison is case-insensitive.
  */
 export function isSchemaAllowed(schema: string, allowed: readonly string[]): boolean {

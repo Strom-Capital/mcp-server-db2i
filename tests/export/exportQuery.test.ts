@@ -11,6 +11,7 @@ vi.mock('../../src/db/connection.js', () => ({
 
 import { executeQuery, openQueryCursor } from '../../src/db/connection.js';
 import type { DbColumn, RowCursor } from '../../src/db/driver.js';
+import { DatabaseQueryError } from '../../src/db/sqlErrorInfo.js';
 import { resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
 import {
   closeExportStore,
@@ -282,6 +283,22 @@ describe('export_query', () => {
 
     expect(result).toMatchObject({ success: false, error: expect.stringMatching(/ORDERNO appears more than once/) });
     expect(cursor.closed).toBeGreaterThan(0);
+  });
+
+  it('adds the describe_table hint to recovery when a column is unknown', async () => {
+    openCursor.mockRejectedValueOnce(new DatabaseQueryError(
+      'Database query failed: [42S22] SQL0206 - Column or global variable ITEMNUM not found.',
+      { sqlstate: '42S22', sqlcode: -206 },
+    ));
+
+    const result = await exportQueryTool(input({ sql: 'SELECT ITEMNUM FROM MYLIB.ORDERS' }));
+
+    expect(result).toMatchObject({
+      success: false,
+      sqlcode: -206,
+      recovery:
+        'Check the column names with describe_table for MYLIB.ORDERS before trying again, and put text values in single quotes, not double quotes.',
+    });
   });
 
   it('passes validation errors through without opening a cursor', async () => {
