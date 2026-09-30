@@ -30,6 +30,21 @@ Local clients such as Claude Desktop, Claude Code, and Cursor start the server a
 <img className="block dark:hidden" src="/assets/architecture-light.svg" alt="Architecture: local clients (Claude Desktop, Cursor, VS Code, Claude Code) start the server over stdio, and remote clients (claude.ai, Claude for Excel, custom agents) reach it over HTTPS with OAuth 2.1 or a token. Every call passes the SQL validator, the library allowlist, column masking, the query timeout and the audit log. The server reaches Db2 for i through the IBM i Access ODBC driver or JT400 JDBC via the database host server, or Mapepire over SSH, on a read-only connection." />
 <img className="hidden dark:block" src="/assets/architecture-dark.svg" alt="Architecture: local clients (Claude Desktop, Cursor, VS Code, Claude Code) start the server over stdio, and remote clients (claude.ai, Claude for Excel, custom agents) reach it over HTTPS with OAuth 2.1 or a token. Every call passes the SQL validator, the library allowlist, column masking, the query timeout and the audit log. The server reaches Db2 for i through the IBM i Access ODBC driver or JT400 JDBC via the database host server, or Mapepire over SSH, on a read-only connection." />
 
+### Video walkthrough
+
+A narrated walkthrough (4:46, with captions): clients and transports, the three auth modes and OAuth 2.1, the three drivers, profiles, runtimes, a production setup on AWS Fargate, the security layers, and business context in YAML.
+
+<div data-video="architecture">
+  <video className="block dark:hidden" data-theme-version="light" controls playsInline preload="none" crossOrigin="anonymous" width="1920" height="1080" poster="https://db2i-mcp.com/video/architecture-light.jpg" aria-label="Architecture walkthrough of the Db2 for i MCP Server" style={{ width: '100%', height: 'auto', aspectRatio: '16 / 9' }}>
+    <source src="https://db2i-mcp.com/video/architecture-light.mp4" type="video/mp4" />
+    <track kind="captions" srcLang="en" label="English" src="https://db2i-mcp.com/video/architecture.vtt" />
+  </video>
+  <video className="hidden dark:block" data-theme-version="dark" controls playsInline preload="none" crossOrigin="anonymous" width="1920" height="1080" poster="https://db2i-mcp.com/video/architecture-dark.jpg" aria-label="Architecture walkthrough of the Db2 for i MCP Server" style={{ width: '100%', height: 'auto', aspectRatio: '16 / 9' }}>
+    <source src="https://db2i-mcp.com/video/architecture-dark.mp4" type="video/mp4" />
+    <track kind="captions" srcLang="en" label="English" src="https://db2i-mcp.com/video/architecture.vtt" />
+  </video>
+</div>
+
 ## Features
 
 - **Read-only SQL.** SELECT and WITH only, checked by a SQL parser and by `QSYS2.PARSE_STATEMENT`, with a row limit and a query timeout that cancels runaway statements on the IBM i. See [Query validation](/security#query-validation).

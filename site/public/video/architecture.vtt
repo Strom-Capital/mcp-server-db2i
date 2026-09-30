@@ -1,0 +1,293 @@
+WEBVTT
+
+1
+00:01.400 --> 00:05.510
+This is how the Db2 for i MCP Server fits together.
+
+2
+00:05.560 --> 00:09.910
+A client asks, the server checks the request against your policy,
+
+3
+00:09.960 --> 00:12.470
+a driver talks to Db2 for i,
+
+4
+00:12.520 --> 00:15.650
+and the IBM i decides what the user may read.
+
+5
+00:16.750 --> 00:18.700
+There are two ways to run it.
+
+6
+00:18.750 --> 00:23.260
+Over standard I/O, the client starts the server on your own machine:
+
+7
+00:23.310 --> 00:27.820
+Claude Desktop, Claude Code, Cursor and VS Code.
+
+8
+00:27.870 --> 00:31.553
+Over HTTP, one server is shared by a team,
+
+9
+00:31.603 --> 00:33.687
+and remote clients connect to it:
+
+10
+00:33.737 --> 00:39.980
+claude.ai connectors, Claude for Excel, Cursor and Claude Code over HTTP,
+
+11
+00:40.030 --> 00:41.880
+and your own agents.
+
+12
+00:42.980 --> 00:45.810
+HTTP has three auth modes.
+
+13
+00:45.860 --> 00:51.463
+None is for local development, and the server refuses to start it on a public address.
+
+14
+00:51.513 --> 00:55.117
+Token mode uses one shared secret and one service account,
+
+15
+00:55.167 --> 00:56.770
+for internal services.
+
+16
+00:56.820 --> 01:02.530
+Required, the default, makes every user sign in with their own IBM i profile.
+
+17
+01:02.580 --> 01:05.330
+With the built-in OAuth 2.1 server,
+
+18
+01:05.380 --> 01:08.930
+claude.ai or Cursor open a sign-in page,
+
+19
+01:08.980 --> 01:11.810
+the server tests the credentials on the IBM i,
+
+20
+01:11.860 --> 01:15.250
+and the client gets a token, with a seven-day refresh.
+
+21
+01:15.300 --> 01:21.150
+Nobody shares a service profile, and object authority and exit programs still apply.
+
+22
+01:22.450 --> 01:26.120
+Three drivers, the same rules on all of them.
+
+23
+01:26.170 --> 01:28.320
+ODBC is the default.
+
+24
+01:28.370 --> 01:31.680
+It uses the IBM i Access ODBC Driver,
+
+25
+01:31.730 --> 01:35.360
+needs no Java, and connects to the host servers.
+
+26
+01:35.410 --> 01:39.920
+JT400 is the Java option, if you prefer JDBC.
+
+27
+01:39.970 --> 01:42.560
+Mapepire runs over SSH:
+
+28
+01:42.610 --> 01:46.080
+when only port 22 is open, the server logs in,
+
+29
+01:46.130 --> 01:49.040
+starts Mapepire in the session and uses it.
+
+30
+01:49.090 --> 01:55.100
+No daemon and no admin install, but the first query of a session takes a few seconds.
+
+31
+01:56.400 --> 02:00.350
+A profile is one system, or one part of one.
+
+32
+02:00.400 --> 02:08.110
+Use profiles for development, test and production, or for the countries and companies in one ERP installation.
+
+33
+02:08.160 --> 02:12.430
+Two profiles can point at the same IBM i with different libraries,
+
+34
+02:12.480 --> 02:15.870
+each with its own credentials, driver and allowlist.
+
+35
+02:15.920 --> 02:18.217
+The first profile is the default.
+
+36
+02:18.267 --> 02:21.577
+With more than one, every tool gets a system argument,
+
+37
+02:21.627 --> 02:24.730
+and each sign-in is bound to one system.
+
+38
+02:26.030 --> 02:30.220
+Run it with npx, install it globally with npm,
+
+39
+02:30.270 --> 02:32.140
+or use the Docker image.
+
+40
+02:32.190 --> 02:35.127
+Pin a version in production instead of latest.
+
+41
+02:35.177 --> 02:39.340
+The image runs as a non-root user and comes in two targets:
+
+42
+02:39.390 --> 02:42.620
+ODBC, which is amd64 only,
+
+43
+02:42.670 --> 02:47.020
+and JT400, which also builds on arm64.
+
+44
+02:47.070 --> 02:49.240
+Both can use Mapepire.
+
+45
+02:50.540 --> 02:54.190
+For a team, put it behind HTTPS.
+
+46
+02:54.300 --> 02:57.650
+One tested setup is AWS Fargate.
+
+47
+02:57.700 --> 03:01.850
+A load balancer with a web application firewall takes the traffic.
+
+48
+03:01.900 --> 03:09.130
+The server runs as a single task in a private subnet and reaches the IBM i over a site-to-site VPN.
+
+49
+03:09.180 --> 03:14.730
+Secrets Manager holds the secrets, and EFS keeps sign-ins across restarts.
+
+50
+03:14.780 --> 03:19.050
+Run one task, because authorization codes live in memory.
+
+51
+03:19.100 --> 03:21.850
+Add the task's own address to the allowed hosts,
+
+52
+03:21.900 --> 03:23.690
+or the health check fails.
+
+53
+03:23.740 --> 03:27.010
+And raise the idle timeout for long queries.
+
+54
+03:27.060 --> 03:29.350
+Nothing new runs on the IBM i.
+
+55
+03:30.850 --> 03:33.200
+Security comes in layers.
+
+56
+03:33.250 --> 03:36.480
+An SQL validator only accepts queries.
+
+57
+03:36.530 --> 03:39.360
+The connection itself is read-only.
+
+58
+03:39.410 --> 03:42.960
+IBM i parses each statement before it runs.
+
+59
+03:43.010 --> 03:46.000
+A library allowlist limits what can be read,
+
+60
+03:46.050 --> 03:48.907
+and masking hides sensitive columns.
+
+61
+03:48.957 --> 03:53.040
+A timeout cancels a runaway statement on the IBM i itself,
+
+62
+03:53.090 --> 03:56.240
+results are capped at a thousand rows by default,
+
+63
+03:56.290 --> 03:58.853
+and every tool call goes to an audit log,
+
+64
+03:58.903 --> 04:00.987
+with the SQL hashed.
+
+65
+04:01.037 --> 04:04.320
+The last line of defense is the one you already have:
+
+66
+04:04.370 --> 04:07.580
+the user's own authority on the IBM i.
+
+67
+04:09.080 --> 04:11.670
+The model does better with context.
+
+68
+04:11.720 --> 04:15.670
+In YAML, you describe tables, status codes and joins,
+
+69
+04:15.720 --> 04:22.150
+write rules the model reads first, and turn vetted queries into named tools with bound parameters.
+
+70
+04:22.200 --> 04:28.310
+validate_query lets IBM i check the model's SQL against the catalog before it runs,
+
+71
+04:28.360 --> 04:33.970
+and a failed statement comes back with the same cause and recovery text you know from the green screen.
+
+72
+04:36.420 --> 04:39.970
+It's open source, and every setting is in the docs.
+
+73
+04:40.020 --> 04:44.190
+Start with npx mcp-server-db2i.
