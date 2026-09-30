@@ -1,6 +1,11 @@
 # Example sales-order tools. Table and column names are placeholders.
 # ORDERDAT is a number YYYYMMDD. STATUS is a number. STATFLG D is deleted and E is an error.
 version: 1
+# Sent to clients as server instructions at the start of every session. Keep it to the rules
+# a query must never miss; table detail belongs in annotations.
+instructions: |
+  MYLIB.ORDERHDR: always filter TRIM(STATFLG) <> 'D'. D rows are deleted orders.
+  STATUS 60 is invoiced. Use search_sales_orders or list_sales_orders for order questions.
 tools:
   - name: list_sales_orders
     title: List sales orders

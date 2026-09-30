@@ -42,7 +42,7 @@ annotations:
         description: Order lines
 ```
 
-`version` must be `1`. A file needs at least one tool, one annotation, or one masking rule.
+`version` must be `1`. A file needs at least one tool, one annotation, one masking rule, or `instructions`.
 
 ### Tools
 
@@ -105,6 +105,28 @@ Keys are `SCHEMA.TABLE`. Names are folded to uppercase.
 A relation names the other `SCHEMA.TABLE`, a `join` map of local column to remote column, an optional `cardinality` (`one-to-one`, `one-to-many`, `many-to-one`, `many-to-many`), and an optional description.
 
 `get_business_context` returns these notes. Filter with `entity`, `table` (`ORDERHDR` or `MYLIB.ORDERHDR`), or omit both to list every annotation. `describe_table` adds `business_description` and `relations` when the table is annotated, and a `business_description` on columns that have one. `list_tables` adds `business_description` on annotated tables.
+
+### Instructions
+
+`instructions` is an optional top-level text, at most 4000 characters. The server sends it to clients as MCP server instructions in the `initialize` result, so the model has it for the whole session without calling a tool first. Use it for the few rules no query may miss, such as which flag marks a deleted row. Table and column detail belongs in annotations.
+
+```yaml
+version: 1
+instructions: |
+  MYLIB.ORDERHDR: always filter TRIM(STATFLG) <> 'D'. D rows are deleted orders.
+  STATUS 60 is invoiced. Use search_sales_orders for order questions.
+```
+
+A file may hold only `instructions`. Texts from several files are joined in file order.
+
+When custom files are loaded, the server puts a short built-in part first:
+
+- with annotations and `get_business_context` enabled: read a table's business context with `get_business_context` or `describe_table` before writing SQL against it
+- with business tools enabled: prefer a business tool when one answers the question
+
+A server without `MCP_CUSTOM_TOOLS` sends no instructions.
+
+Instructions are read when a session starts. With `MCP_CUSTOM_TOOLS_WATCH`, a change reaches new HTTP sessions; a running session and a stdio server keep the text they started with. Clients decide what to do with server instructions. Claude Code adds them to the model's context. Check your client if the rules do not seem to reach the model.
 
 ### Masking
 

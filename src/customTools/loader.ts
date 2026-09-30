@@ -66,10 +66,18 @@ export interface StoredTool {
   maskedColumns: Record<string, MaskRule>;
 }
 
+/** Instructions text from one file, sent to clients as part of the server instructions. */
+export interface StoredInstructions {
+  text: string;
+  source: string;
+}
+
 export interface LoadedCustomTools {
   tools: StoredTool[];
   annotations: StoredAnnotation[];
   masking: MaskingMap;
+  /** In file order. */
+  instructions: StoredInstructions[];
 }
 
 export interface FileValidationResult {
@@ -78,6 +86,8 @@ export interface FileValidationResult {
   error?: string;
   tools: number;
   annotations: number;
+  /** True when the file has an instructions text. */
+  instructions?: boolean;
 }
 
 export interface CustomToolsValidation {
@@ -118,7 +128,7 @@ export function systemLoadOptions(): LoadCustomToolsOptions {
   return { ...systems[0], systems };
 }
 
-const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map() };
+const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map(), instructions: [] };
 
 /**
  * Load the files or directories listed in MCP_CUSTOM_TOOLS.
@@ -172,12 +182,16 @@ export function loadCustomTools(
   const tools: StoredTool[] = [];
   const annotations: StoredAnnotation[] = [];
   const masking: MaskingMap = new Map();
+  const instructions: StoredInstructions[] = [];
   const toolSources = new Map<string, string>();
   const annotationSources = new Map<string, string>();
   const maskingSources = new Map<string, string>();
 
   for (const file of files) {
     const parsed = readFile(file);
+    if (parsed.instructions) {
+      instructions.push({ text: parsed.instructions, source: displayPath(file) });
+    }
     for (const tool of parsed.tools ?? []) {
       const stored = checkTool(tool, file, options);
       const previous = toolSources.get(stored.name);
@@ -243,7 +257,7 @@ export function loadCustomTools(
     tool.maskedColumns = selected;
   }
 
-  return { tools, annotations, masking };
+  return { tools, annotations, masking, instructions };
 }
 
 /**
@@ -276,6 +290,7 @@ export function validateCustomToolFiles(
         path: displayPath(file),
         tools: loaded.tools.length,
         annotations: loaded.annotations.length,
+        ...(loaded.instructions.length > 0 ? { instructions: true } : {}),
       });
     } catch (error) {
       if (!(error instanceof CustomToolsError)) {

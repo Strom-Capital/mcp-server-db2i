@@ -48,6 +48,7 @@ import { getCustomTools, type StoredTool } from './customTools/registry.js';
 import type { LoadedCustomTools } from './customTools/loader.js';
 import { getSessionManager } from './transports/sessionManager.js';
 import { inputSchemaFor } from './customTools/schema.js';
+import { buildServerInstructions } from './instructions.js';
 import { registerPrompts } from './prompts.js';
 import { registerResources } from './resources.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
@@ -697,16 +698,20 @@ function argsAudit<T extends Record<string, unknown>>(tool: string): ToolAudit<T
  * @returns Configured McpServer instance ready to connect to a transport
  */
 export function createServer(sessionContext?: SessionContext): McpServer {
-  const server = new McpServer({
-    name: SERVER_NAME,
-    version: SERVER_VERSION,
-    icons: serverIcons(),
-  });
-
-  const system = systemShape(sessionContext);
-
   const loadedTools = getCustomTools();
   const enabledTools = new Set(getEnabledTools(loadedTools.tools));
+  const instructions = buildServerInstructions(loadedTools, enabledTools);
+
+  const server = new McpServer(
+    {
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
+      icons: serverIcons(),
+    },
+    instructions ? { instructions } : undefined,
+  );
+
+  const system = systemShape(sessionContext);
 
   if (enabledTools.has('execute_query')) {
     server.registerTool(

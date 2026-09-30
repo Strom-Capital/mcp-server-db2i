@@ -4,7 +4,7 @@
 
 import type { LoadedCustomTools, StoredAnnotation, StoredTool } from './loader.js';
 
-const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map() };
+const EMPTY: LoadedCustomTools = { tools: [], annotations: [], masking: new Map(), instructions: [] };
 
 let current: LoadedCustomTools = EMPTY;
 

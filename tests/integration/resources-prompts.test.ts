@@ -68,6 +68,7 @@ const ORDER_COLUMNS = [
 function annotate(): void {
   setCustomTools({
     tools: [],
+    instructions: [],
     masking: new Map(),
     annotations: [
       {

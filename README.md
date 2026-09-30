@@ -86,6 +86,7 @@ graph LR
 - **SSH-only systems** - With `DB2I_DRIVER=mapepire`, reach an IBM i where only SSH is open. Mapepire starts inside the SSH session, with no server install and a host key check. See [Using the Mapepire driver](docs/configuration.md#using-the-mapepire-driver-ssh)
 - **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
 - **Business SQL tools** - Load read-only ERP queries and table notes from YAML, and check the files with `mcp-server-db2i validate-tools` before the server starts. See [Business SQL tools](docs/custom-tools.md)
+- **Server instructions** - Send the rules no query may miss, such as which flag marks a deleted row, to the model at the start of every session. See [Instructions](docs/custom-tools.md#instructions)
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens
 - **Statement checks and DDL** - Validate object names, return the SQL that recreates an object, and list what depends on a table
 - **Catalog search and profiling** - Find tables and columns across libraries, check journaling, and profile a table's row counts and value ranges

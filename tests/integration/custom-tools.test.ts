@@ -216,6 +216,44 @@ describe('Custom ERP tools', () => {
     expect(body.data[1].business_description).toBeUndefined();
   });
 
+  describe('server instructions', () => {
+    async function instructionsFor(): Promise<string | undefined> {
+      const [otherClientTransport, otherServerTransport] = InMemoryTransport.createLinkedPair();
+      const otherServer = createServer();
+      await otherServer.connect(otherServerTransport);
+      const otherClient = new Client({ name: 'instructions-test', version: '1.0.0' });
+      await otherClient.connect(otherClientTransport);
+      const instructions = otherClient.getInstructions();
+      await otherClient.close();
+      await otherClientTransport.close();
+      await otherServerTransport.close();
+      return instructions;
+    }
+
+    it('sends the built-in part and the file text', () => {
+      const instructions = client.getInstructions() ?? '';
+
+      expect(instructions).toContain('get_business_context');
+      expect(instructions).toContain('Business SQL tools');
+      expect(instructions).toContain("TRIM(STATFLG) <> 'D'");
+    });
+
+    it('leaves out the business context sentence when that tool is disabled', async () => {
+      process.env.MCP_TOOLS_DISABLED = 'get_business_context';
+
+      const instructions = await instructionsFor();
+
+      expect(instructions).not.toContain('get_business_context');
+      expect(instructions).toContain("TRIM(STATFLG) <> 'D'");
+    });
+
+    it('sends no instructions without custom files', async () => {
+      resetCustomTools();
+
+      expect(await instructionsFor()).toBeUndefined();
+    });
+  });
+
   it('limits registration to one toolset', async () => {
     process.env.MCP_TOOLS_ENABLED = 'toolset:sales,get_business_context';
 
