@@ -1,0 +1,93 @@
+---
+/**
+ * A narrated video (voice-over and captions) in a light and a dark version, as a "Watch"
+ * section. Files live in public/video: <name>-light.mp4, <name>-dark.mp4, the matching .jpg
+ * posters and <name>.vtt. The .shot rules in global.css show the version that matches the
+ * page theme; preload="none" means a visitor only downloads the version they play.
+ * Switching the theme mid-play hands playback over to the other version at the same second.
+ */
+import { url } from '../lib/links';
+
+interface Props {
+  /** File name stem in public/video, such as "promo" or "business". */
+  name: string;
+  title: string;
+  lead: string;
+  /** Accessible name for the video. */
+  description: string;
+}
+
+const { name, title, lead, description } = Astro.props;
+const themes = ['light', 'dark'] as const;
+---
+<section class="section" id="video">
+  <div class="container">
+    <div class="sec-head">
+      <p class="label">Watch</p>
+      <div>
+        <h2>{title}</h2>
+        <p class="lead">{lead}</p>
+      </div>
+    </div>
+    <figure class="shot site-video" data-video={name}>
+      {themes.map((theme) => (
+        <video
+          class={theme}
+          data-theme-version={theme}
+          controls
+          playsinline
+          preload="none"
+          width="1920"
+          height="1080"
+          poster={url(`/video/${name}-${theme}.jpg`)}
+          aria-label={description}
+        >
+          <source src={url(`/video/${name}-${theme}.mp4`)} type="video/mp4" />
+          <track kind="captions" srclang="en" label="English" src={url(`/video/${name}.vtt`)} />
+        </video>
+      ))}
+    </figure>
+  </div>
+</section>
+
+<style>
+  .site-video { margin: 0; border: 1px solid var(--line); background: var(--surface); }
+  .site-video video { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+</style>
+
+<script>
+  for (const figure of document.querySelectorAll<HTMLElement>('figure[data-video]')) {
+    const videos = [...figure.querySelectorAll('video')];
+
+    // Hand a started video over to the version for the new theme.
+    const sync = () => {
+      const target = videos.find((v) => v.checkVisibility());
+      for (const video of videos) {
+        if (video === target || (video.paused && video.currentTime === 0)) continue;
+        const playing = !video.paused;
+        video.pause();
+        if (!target) continue;
+        target.currentTime = video.currentTime;
+        target.muted = video.muted;
+        target.volume = video.volume;
+        if (video.textTracks[0] && target.textTracks[0]) target.textTracks[0].mode = video.textTracks[0].mode;
+        if (playing) target.play().catch(() => {});
+      }
+    };
+    document.addEventListener('themechange', sync);
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sync);
+
+    // One analytics event per video per page view, see Analytics.astro.
+    let tracked = false;
+    for (const video of videos) {
+      video.addEventListener('play', () => {
+        if (tracked) return;
+        tracked = true;
+        (window as { posthog?: { capture: (event: string, props?: object) => void } }).posthog?.capture('promo_video_played', {
+          video: figure.dataset.video,
+          theme: video.dataset.themeVersion,
+        });
+      });
+    }
+  }
+</script>
