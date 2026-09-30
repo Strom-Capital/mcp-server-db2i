@@ -92,6 +92,11 @@
           "anchor": "npm",
           "icon": "npm",
           "href": "https://www.npmjs.com/package/mcp-server-db2i"
+        },
+        {
+          "anchor": "YouTube",
+          "icon": "youtube",
+          "href": "https://www.youtube.com/@db2i-mcp"
         }
       ]
     }

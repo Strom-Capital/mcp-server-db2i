@@ -29,6 +29,7 @@ export const links = {
   releases: `${GITHUB}/releases`,
   sponsor: 'https://github.com/sponsors/Strom-Capital',
   npm: 'https://www.npmjs.com/package/mcp-server-db2i',
+  youtube: 'https://www.youtube.com/@db2i-mcp',
   registry: 'https://registry.modelcontextprotocol.io/',
   mcp: 'https://modelcontextprotocol.io/',
   ibmMcp: 'https://github.com/IBM/ibmi-mcp-server',
