@@ -2,7 +2,7 @@
  * QSYS2.PARSE_STATEMENT rows recorded on a real IBM i (7.4 or later) for every statement in
  * db2iSqlCorpus.ts, keyed by the exact statement text. Only the parse output is kept.
  * An empty list means PARSE_STATEMENT returned no rows, which the parse check rejects.
- * Regenerate with local/record-parse-rows.mjs (not in the repository) after adding statements.
+ * Regenerate with `npm run corpus:record` after adding statements (see docs/development.md).
  */
 export interface RecordedParseRow {
   NAME_TYPE: string;
