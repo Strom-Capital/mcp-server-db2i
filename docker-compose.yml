@@ -101,6 +101,7 @@ services:
       - QUERY_TIMEOUT=${QUERY_TIMEOUT:-}
       - QUERY_ALLOWED_SCHEMAS=${QUERY_ALLOWED_SCHEMAS:-}
       - QUERY_PARSE_CHECK=${QUERY_PARSE_CHECK:-}
+      - QUERY_MAX_LENGTH=${QUERY_MAX_LENGTH:-}
       
       # Tool selection and response format
       - MCP_TOOLS_ENABLED=${MCP_TOOLS_ENABLED:-}

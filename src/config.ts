@@ -1145,6 +1145,19 @@ export function isQueryParseCheckEnabled(): boolean {
   return value !== 'false' && value !== '0';
 }
 
+/** Default for QUERY_MAX_LENGTH, in characters. */
+export const DEFAULT_QUERY_MAX_LENGTH = 32_768;
+
+/**
+ * Longest SQL statement the security validator accepts.
+ *
+ * Environment variable:
+ * - QUERY_MAX_LENGTH: characters, default 32768, from 1 to 2097152 (the CLOB(2M) that PARSE_STATEMENT takes)
+ */
+export function getQueryMaxLength(): number {
+  return readIntEnvInRange('QUERY_MAX_LENGTH', DEFAULT_QUERY_MAX_LENGTH, 1, 2_097_152);
+}
+
 /**
  * Whether YAML tool files are re-read when they change.
  *
