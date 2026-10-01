@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { validateQuery } from '../src/utils/security/sqlSecurityValidator.js';
 import { checkQuerySchemas } from '../src/utils/security/schemaAllowlist.js';
 import { checkParsedSchemas, type ParsedName } from '../src/db/sqlServices.js';
+import { applySqlRowLimit } from '../src/tools/sqlLimit.js';
 import { DB2I_SQL_CORPUS } from './fixtures/db2iSqlCorpus.js';
 import { RECORDED_PARSE_ROWS } from './fixtures/parseStatementRows.js';
 
@@ -18,6 +19,16 @@ describe('Db2 for i statement corpus', () => {
       expect({ valid: result.isValid, violations: result.violations }).toMatchObject({
         valid: entry.validator === 'accept',
       });
+    });
+  });
+
+  describe('row limit', () => {
+    const accepted = DB2I_SQL_CORPUS.filter((entry) => entry.validator === 'accept');
+
+    it.each(accepted.map((entry) => [entry.name, entry] as const))('%s stays valid with the row limit added', (_name, entry) => {
+      const limited = applySqlRowLimit(entry.sql, 1001);
+      expect(limited).toMatch(/FETCH FIRST \d+ ROWS ONLY|LIMIT \d+/);
+      expect(validateQuery(limited).violations).toEqual([]);
     });
   });
 

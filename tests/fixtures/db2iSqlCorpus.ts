@@ -134,6 +134,8 @@ export const DB2I_SQL_CORPUS: readonly CorpusEntry[] = [
     allowlist: 'accept',
   },
   { name: 'trailing semicolon', sql: 'SELECT ORDERNO FROM MYLIB.ORDERS;', validator: 'accept', allowlist: 'accept' },
+  { name: 'isolation clause WITH UR', sql: 'SELECT ORDERNO FROM MYLIB.ORDERS WITH UR', validator: 'accept', allowlist: 'accept' },
+  { name: 'OPTIMIZE FOR n ROWS', sql: 'SELECT ORDERNO FROM MYLIB.ORDERS OPTIMIZE FOR 10 ROWS', validator: 'accept', allowlist: 'unparseable' },
   { name: 'FOR READ ONLY', sql: 'SELECT ORDERNO FROM MYLIB.ORDERS FOR READ ONLY', validator: 'accept', allowlist: 'unparseable' },
 
   // Read-only, but outside the allowlist
