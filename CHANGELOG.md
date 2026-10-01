@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.5.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.4.0...v3.5.0) (2026-10-01)
+
+
+### Features
+
+* enforce the schema allowlist from PARSE_STATEMENT names ([#260](https://github.com/Strom-Capital/mcp-server-db2i/issues/260)) ([a5f6380](https://github.com/Strom-Capital/mcp-server-db2i/commit/a5f6380274a3dc0e119a5b23e7a4c3ed57d3fd86)), closes [#256](https://github.com/Strom-Capital/mcp-server-db2i/issues/256)
+* record the server version and build in the audit log ([#266](https://github.com/Strom-Capital/mcp-server-db2i/issues/266)) ([8773a42](https://github.com/Strom-Capital/mcp-server-db2i/commit/8773a42c0fc65cdf54d8afef81cc3b8f61781e7e)), closes [#265](https://github.com/Strom-Capital/mcp-server-db2i/issues/265)
+* record which check rejected a statement, and validate_query's verdict, in the audit log ([#264](https://github.com/Strom-Capital/mcp-server-db2i/issues/264)) ([64d51e5](https://github.com/Strom-Capital/mcp-server-db2i/commit/64d51e5d88a9648b1a09800a94ee2626d49eefe4)), closes [#257](https://github.com/Strom-Capital/mcp-server-db2i/issues/257)
+* return Db2's reason when the parse check cannot parse a statement ([#262](https://github.com/Strom-Capital/mcp-server-db2i/issues/262)) ([1c4db07](https://github.com/Strom-Capital/mcp-server-db2i/commit/1c4db076260042e009e83adff11ba0c6fc571593)), closes [#140](https://github.com/Strom-Capital/mcp-server-db2i/issues/140)
+
+
+### Bug Fixes
+
+* add the row limit before FOR READ ONLY and other trailing clauses ([#263](https://github.com/Strom-Capital/mcp-server-db2i/issues/263)) ([8225685](https://github.com/Strom-Capital/mcp-server-db2i/commit/82256852aa92acdc3322e45b09cfc5af26d07402)), closes [#258](https://github.com/Strom-Capital/mcp-server-db2i/issues/258)
+* match writes by shape so the SQL validator accepts Db2 for i functions and names ([#259](https://github.com/Strom-Capital/mcp-server-db2i/issues/259)) ([7fd5b52](https://github.com/Strom-Capital/mcp-server-db2i/commit/7fd5b52b0de75d51ac9836bc22a777d012f40c80)), closes [#255](https://github.com/Strom-Capital/mcp-server-db2i/issues/255)
+
 ## [3.4.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.3.0...v3.4.0) (2026-09-30)
 
 
