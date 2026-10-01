@@ -149,6 +149,22 @@ The tests in `tests/integration/` run the MCP server end to end over an in-memor
 npm run test -- tests/integration/
 ```
 
+### Db2 for i statement corpus
+
+`tests/fixtures/db2iSqlCorpus.ts` lists Db2 for i statements the way assistants write them. Each entry says what the SQL validator must decide and what the schema allowlist must decide, both from the JavaScript parser and from the names IBM i's own parser returns. `tests/fixtures/parseStatementRows.ts` holds the `QSYS2.PARSE_STATEMENT` rows recorded for every entry, so `npm test` checks the allowlist without an IBM i. `tests/db2iSqlCorpus.test.ts` runs every entry through the validator, both allowlist paths and the row limit.
+
+When a deployment rejects SQL that Db2 for i accepts, add the statement here instead of fixing one construct on its own. The audit log says which check refused it in `rejectedBy`: `validator`, `allowlist`, `parse_check` or `masking` are the server's own checks, and `db2` means Db2 itself found the statement invalid.
+
+1. Reduce the statement to the construct that failed, and rewrite it with generic names (`MYLIB`, `OUTSIDELIB`, `ORDERS`, `ORDERNO`). Never copy a library, table or column name from a real system.
+2. Add it to `DB2I_SQL_CORPUS` with the decisions it should get. Statements the validator must accept go with the other valid statements, and a library outside the list goes in the deny section.
+3. Record its `PARSE_STATEMENT` rows. This only parses; no statement runs:
+
+   ```bash
+   npm run build && npm run corpus:record
+   ```
+
+4. Run `npm test`, fix the check that gets it wrong, and keep the entry as the regression test.
+
 ## Validating tool files
 
 `validate-tools` runs the startup checks on YAML tool files and then exits. It does not open a database connection and does not need `DB2I_HOSTNAME`.

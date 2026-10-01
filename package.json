@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
-    "typecheck": "tsc -p tsconfig.eslint.json"
+    "typecheck": "tsc -p tsconfig.eslint.json",
+    "corpus:record": "node --env-file=.env scripts/record-parse-rows.mjs"
   },
   "keywords": [
     "mcp",

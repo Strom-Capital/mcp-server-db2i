@@ -26,6 +26,35 @@ export type AuditErrorKind =
   | 'exception'
   | 'other';
 
+/**
+ * Which check refused a statement: one of the server's own checks, or Db2.
+ * `parse_check` is QSYS2.PARSE_STATEMENT with no reason from Db2; when a prepare
+ * found Db2's reason, the statement is invalid Db2 and counts as `db2`.
+ */
+export type AuditRejectedBy = 'validator' | 'allowlist' | 'parse_check' | 'masking' | 'db2';
+
+/**
+ * The check behind a failed call, from its error kind and whether Db2 gave a SQLSTATE.
+ * Undefined for failures that are not about the statement, such as bad parameters.
+ */
+export function rejectedByOf(errorKind: AuditErrorKind | undefined, sqlstate?: string): AuditRejectedBy | undefined {
+  switch (errorKind) {
+    case 'security_validation':
+      return 'validator';
+    case 'allowlist_parse':
+    case 'allowlist_denied':
+      return 'allowlist';
+    case 'parse_check':
+      return sqlstate ? 'db2' : 'parse_check';
+    case 'masking':
+      return 'masking';
+    case 'sql_error':
+      return 'db2';
+    default:
+      return undefined;
+  }
+}
+
 /** The MCP client that made a call, from its client info or, failing that, the HTTP User-Agent. */
 export interface AuditClient {
   name?: string;
@@ -59,8 +88,12 @@ export interface AuditCall {
   errorKind?: AuditErrorKind;
   sqlstate?: string;
   sqlcode?: number;
-  /** Rule violations the security validator or schema allowlist reported. */
+  /** Rule violations the security validator or schema allowlist reported, or validate_query's findings. */
   violations?: string[];
+  /** Which check refused the statement (failed calls). */
+  rejectedBy?: AuditRejectedBy;
+  /** validate_query's verdict, so a call that ran a statement after `valid: false` can be traced. */
+  valid?: boolean;
 }
 
 let config: AuditConfig | undefined;
@@ -225,6 +258,12 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
   }
   if (entry.violations && entry.violations.length > 0) {
     line.violations = entry.violations;
+  }
+  if (entry.rejectedBy !== undefined) {
+    line.rejectedBy = entry.rejectedBy;
+  }
+  if (entry.valid !== undefined) {
+    line.valid = entry.valid;
   }
   return line;
 }

@@ -57,6 +57,7 @@ import type { SqlErrorDetails } from './db/sqlErrorInfo.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import {
   auditSessionId,
+  rejectedByOf,
   writeAudit,
   type AuditCall,
   type AuditClient,
@@ -650,10 +651,13 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       const violations = 'violations' in result && Array.isArray(result.violations)
         ? (result.violations as string[])
         : undefined;
+      const errorKind = errorKindOf(result, message, sqlError);
+      const rejectedBy = rejectedByOf(errorKind, sqlError.sqlstate);
       recordAudit(audit?.tool, identity, system, facts, {
         outcome: 'error',
         error: message,
-        errorKind: errorKindOf(result, message, sqlError),
+        errorKind,
+        ...(rejectedBy ? { rejectedBy } : {}),
         durationMs,
         rowCount: rowCountOf(result),
         ...(sqlError.sqlstate ? { sqlstate: sqlError.sqlstate } : {}),
@@ -684,6 +688,13 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
       ...(result.truncated ? { truncated: true } : {}),
       ...(isStringArray(result.skippedFilters) ? { skippedFilters: result.skippedFilters } : {}),
       ...(typeof result.bytes === 'number' ? { bytes: result.bytes } : {}),
+      // validate_query: the verdict and findings, and Db2's SQLSTATE when it could not parse
+      ...(typeof result.valid === 'boolean' ? { valid: result.valid } : {}),
+      ...(typeof result.valid === 'boolean' && isStringArray(result.violations) && result.violations.length > 0
+        ? { violations: result.violations }
+        : {}),
+      ...(typeof result.valid === 'boolean' && typeof result.sqlstate === 'string' ? { sqlstate: result.sqlstate } : {}),
+      ...(typeof result.valid === 'boolean' && typeof result.sqlcode === 'number' ? { sqlcode: result.sqlcode } : {}),
     });
     return {
       content: [{ type: 'text', text: formatToolText(result, getResponseFormat()) }],
@@ -726,7 +737,7 @@ type AuditFacts = Pick<AuditCall, 'sql' | 'params' | 'args' | 'intent' | 'client
 type AuditOutcome = Pick<
   AuditCall,
   | 'outcome' | 'error' | 'errorKind' | 'durationMs' | 'rowCount' | 'truncated' | 'skippedFilters' | 'bytes'
-  | 'sqlstate' | 'sqlcode' | 'violations'
+  | 'sqlstate' | 'sqlcode' | 'violations' | 'rejectedBy' | 'valid'
 >;
 
 /**

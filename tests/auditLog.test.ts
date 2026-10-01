@@ -399,6 +399,58 @@ describe('call details in the audit log', () => {
     ]);
     expect(lines[0]?.violations).toEqual(['x']);
     expect(lines[1]).toMatchObject({ sqlstate: '42703', sqlcode: -206 });
+    expect(lines.map((line) => line.rejectedBy)).toEqual([
+      'allowlist', 'db2', 'allowlist', undefined, undefined, undefined, undefined, undefined,
+    ]);
+  });
+
+  it('records which check refused a statement', async () => {
+    const file = auditTo();
+    const fail = (result: Record<string, unknown>) =>
+      withToolHandler(async () => ({ success: false, ...result }), 'Failed', undefined, { tool: 'execute_query' })({});
+
+    await fail({ error: 'Security validation failed: x', errorKind: 'security_validation' });
+    await fail({ error: 'Schema allowlist rejected the query: x', errorKind: 'allowlist_denied' });
+    await fail({ error: 'The statement could not be parsed.', errorKind: 'parse_check' });
+    await fail({ error: 'The statement could not be parsed: SQL0104', errorKind: 'parse_check', sqlstate: '42000', sqlcode: -104 });
+    await fail({ error: 'Column masking rejected the query: x', errorKind: 'masking' });
+    await fail({ error: 'Bad parameter', errorKind: 'bad_params' });
+
+    expect(readLines(file).map((line) => [line.errorKind, line.rejectedBy])).toEqual([
+      ['security_validation', 'validator'],
+      ['allowlist_denied', 'allowlist'],
+      ['parse_check', 'parse_check'],
+      ['parse_check', 'db2'],
+      ['masking', 'masking'],
+      ['bad_params', undefined],
+    ]);
+  });
+
+  it("records validate_query's verdict and findings", async () => {
+    const file = auditTo();
+    const validate = (result: Record<string, unknown>) =>
+      withToolHandler(async () => ({ success: true, ...result }), 'Failed', undefined, { tool: 'validate_query' })({});
+
+    await validate({ valid: true, violations: [] });
+    await validate({
+      valid: false,
+      violations: ['The statement could not be parsed: SQL0104'],
+      sqlstate: '42000',
+      sqlcode: -104,
+    });
+    await withToolHandler(async () => ({ success: true, data: [] }), 'Failed', undefined, { tool: 'list_schemas' })({});
+
+    const lines = readLines(file);
+    expect(lines[0]).toMatchObject({ outcome: 'success', valid: true });
+    expect(lines[0]?.violations).toBeUndefined();
+    expect(lines[1]).toMatchObject({
+      outcome: 'success',
+      valid: false,
+      violations: ['The statement could not be parsed: SQL0104'],
+      sqlstate: '42000',
+      sqlcode: -104,
+    });
+    expect(lines[2]?.valid).toBeUndefined();
   });
 
   it('tells an unparseable query from a library outside the allowlist', async () => {
