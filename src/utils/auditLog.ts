@@ -8,7 +8,8 @@
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 
-import { getAuditConfig, type AuditConfig } from '../config.js';
+import { getAuditConfig, getBuildId, type AuditConfig } from '../config.js';
+import { SERVER_VERSION } from '../version.js';
 import { logger } from './logger.js';
 
 /** Why a tool call failed, for grouping failures without parsing the error text. */
@@ -98,6 +99,8 @@ export interface AuditCall {
 
 let config: AuditConfig | undefined;
 let fd: number | undefined;
+// MCP_BUILD_ID, read when the audit log opens
+let build: string | undefined;
 let writeFailureReported = false;
 
 /** Open the file sink when MCP_AUDIT_LOG is a path. Throws when that path is not writable. */
@@ -105,6 +108,7 @@ export function initAuditLog(): void {
   closeAuditLog();
   writeFailureReported = false;
   config = getAuditConfig();
+  build = getBuildId();
   if (!config || config.target === 'stderr') {
     return;
   }
@@ -128,6 +132,7 @@ export function closeAuditLog(): void {
     fd = undefined;
   }
   config = undefined;
+  build = undefined;
 }
 
 /** Short, stable hash of a session key. The key itself can be a bearer token, so it is never logged. */
@@ -177,7 +182,7 @@ export function writeAuditEvent(entry: AuditEvent): void {
   if (!config) {
     return;
   }
-  writeLine({ time: new Date().toISOString(), ...entry });
+  writeLine({ time: new Date().toISOString(), ...versionFields(), ...entry });
 }
 
 function writeLine(record: Record<string, unknown>): void {
@@ -205,6 +210,7 @@ function writeLine(record: Record<string, unknown>): void {
 function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unknown> {
   const line: Record<string, unknown> = {
     time: new Date().toISOString(),
+    ...versionFields(),
     tool: entry.tool,
     identity: entry.identity,
     ...(entry.system ? { system: entry.system } : {}),
@@ -266,6 +272,11 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
     line.valid = entry.valid;
   }
   return line;
+}
+
+/** The server version, and the build when MCP_BUILD_ID is set, so lines can be grouped by release or deploy. */
+function versionFields(): { serverVersion: string; build?: string } {
+  return build ? { serverVersion: SERVER_VERSION, build } : { serverVersion: SERVER_VERSION };
 }
 
 function formatSql(sql: string | null | undefined, mode: AuditConfig['sql']): string | null {

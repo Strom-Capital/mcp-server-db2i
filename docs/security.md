@@ -371,6 +371,8 @@ The audit log also records why the server stopped, as a line such as `{"time":".
 
 When the audit log is on, each tool call line also records:
 
+- `serverVersion`: the server version, from `package.json`. Every line has it, events such as `sign_in` and `shutdown` too, so errors can be counted per release.
+- `build`: the value of `MCP_BUILD_ID`, when it is set. A server built from a checkout between releases reports the previous release as `serverVersion`, so set `MCP_BUILD_ID` to the git commit to tell such deployments apart.
 - `client`: the MCP client's `name` and `version` from the request metadata, or the HTTP `userAgent` when the client sends none.
 - `session`: a 12-character hash of the session key. It groups calls from one sign-in or token without logging the key, which can be a bearer token.
 - `truncated: true` when a successful call stopped at a row or size limit and more rows matched: `execute_query` and business SQL tools at their row limit, a listing tool at its cap, or an export at `max_rows` or `EXPORT_MAX_BYTES`. A complete result has no `truncated` field.

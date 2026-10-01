@@ -12,7 +12,6 @@
  * the tools take an optional `system` argument.
  */
 
-import { createRequire } from 'module';
 import { CLIENT_INFO_META_KEY, McpServer, type RegisteredTool, type ServerContext } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
@@ -64,13 +63,9 @@ import {
   type AuditErrorKind,
 } from './utils/auditLog.js';
 import { formatToolText } from './utils/formatResult.js';
+import { SERVER_NAME, SERVER_VERSION } from './version.js';
 
-// Read version from package.json to keep it in sync with npm releases
-const require = createRequire(import.meta.url);
-const packageJson = require('../package.json') as { name: string; version: string };
-
-export const SERVER_NAME = packageJson.name;
-export const SERVER_VERSION = packageJson.version;
+export { SERVER_NAME, SERVER_VERSION } from './version.js';
 
 /**
  * Session context for HTTP transport

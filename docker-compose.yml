@@ -15,6 +15,9 @@ services:
     build:
       context: .
       # target: jt400
+      # Written to the audit log as `build`: MCP_BUILD_ID=$(git rev-parse --short HEAD) docker compose build
+      args:
+        MCP_BUILD_ID: ${MCP_BUILD_ID:-}
     platform: linux/amd64
     image: mcp-server-db2i:latest
     container_name: mcp-server-db2i
