@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { parseDocument } from 'yaml';
 
-import { assertExtendedMetadataAllowsMasking, TOOL_NAMES } from '../config.js';
+import { assertExtendedMetadataAllowsMasking, isQueryParseCheckEnabled, TOOL_NAMES } from '../config.js';
 import { getSystems, isProfilesFileConfigured } from '../systems.js';
 import { checkQuerySchemas } from '../utils/security/schemaAllowlist.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
@@ -409,7 +409,9 @@ function checkTool(tool: ToolDef, file: string, options: LoadCustomToolsOptions)
       allowed: policy.allowedSchemas,
       defaultSchema: policy.defaultSchema,
     });
-    if (!schemaResult.ok) {
+    // With the parse check on, a statement the JavaScript parser cannot read is checked
+    // against the allowlist from IBM i's parsed names when the tool first runs
+    if (!schemaResult.ok && !(schemaResult.unparseable && isQueryParseCheckEnabled())) {
       throw new CustomToolsError(
         `${where}: Schema allowlist rejected the query: ${schemaResult.violations.join('; ')}`
       );

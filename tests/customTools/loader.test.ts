@@ -77,6 +77,23 @@ describe('loadCustomTools', () => {
       .toThrow(/OTHERLIB\.ORDERHDR/);
   });
 
+  it('leaves a statement the JavaScript parser cannot read to the parse check when it is on', () => {
+    const file = writeYaml(VALID.replace(
+      'SELECT H.ORDERNO FROM MYLIB.ORDERHDR H',
+      "SELECT LISTAGG(H.ORDERNO, ',') WITHIN GROUP (ORDER BY H.ORDERNO) AS ORDERNO FROM MYLIB.ORDERHDR H"
+    ));
+    const previous = process.env.QUERY_PARSE_CHECK;
+    try {
+      delete process.env.QUERY_PARSE_CHECK;
+      expect(() => loadCustomTools([file], { allowedSchemas: ['MYLIB'] })).not.toThrow();
+      process.env.QUERY_PARSE_CHECK = 'false';
+      expect(() => loadCustomTools([file], { allowedSchemas: ['MYLIB'] })).toThrow(/could not be parsed/);
+    } finally {
+      if (previous === undefined) delete process.env.QUERY_PARSE_CHECK;
+      else process.env.QUERY_PARSE_CHECK = previous;
+    }
+  });
+
   it('rejects a built-in name, a duplicate, an unknown placeholder, and an unused parameter', () => {
     expect(() => loadCustomTools([writeYaml(VALID.replace('search_sales_orders', 'execute_query'))]))
       .toThrow(/already a built-in tool/);

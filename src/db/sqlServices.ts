@@ -10,6 +10,7 @@ import { executeProcedure, executeQuery } from './connection.js';
 import type { DbTarget } from '../systems.js';
 import { filterToLikePattern } from './queries.js';
 import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
+import { unqualifiedTableFunctions } from '../utils/security/sqlSecurityValidator.js';
 
 export const SQL_OBJECT_TYPES = [
   'TABLE',
@@ -76,7 +77,7 @@ export interface InspectOptions {
   allowedSchemas?: string[];
 }
 
-interface TableRef {
+export interface TableRef {
   schema: string;
   table: string;
 }
@@ -130,8 +131,14 @@ function requireSqlName(value: string, label: string): string {
   return name;
 }
 
+/**
+ * Parse a statement with QSYS2.PARSE_STATEMENT. A trailing semicolon is removed first:
+ * PARSE_STATEMENT returns no rows for `SELECT ...;`, and the statement runs without it.
+ */
 export async function parseStatement(sql: string, target?: DbTarget): Promise<ParsedName[]> {
-  const result = await executeQuery(PARSE_SQL, [sql], target);
+  const trimmed = sql.trim();
+  const statement = trimmed.endsWith(';') ? trimmed.slice(0, -1).trimEnd() : trimmed;
+  const result = await executeQuery(PARSE_SQL, [statement], target);
   return result.rows.map((row) => ({
     nameType: cell(row.NAME_TYPE) ?? '',
     schema: cell(row.SCHEMA),
@@ -187,12 +194,118 @@ export async function hasRoutine(schema: string, name: string, target?: DbTarget
   return found;
 }
 
-function allowlistViolation(kind: 'Table' | 'Routine', schema: string, name: string, allowed: string[]): string {
+function allowlistViolation(kind: 'Table' | 'Routine' | 'Sequence' | 'Type', schema: string, name: string, allowed: string[]): string {
   return `${kind} ${schema}.${name} is not in the allowed schemas (${allowed.join(', ')}).`;
 }
 
 function unresolvedTable(table: string): string {
   return `Unqualified table ${table} has no default schema. Set DB2I_SCHEMA (or schema in the profile), or qualify the table with a library.`;
+}
+
+/** Tables and qualified routines a parsed statement uses, and the ones the allowlist refuses. */
+export interface ParsedSchemaCheck {
+  /** Allowlist violations and unqualified tables with no default schema. */
+  violations: string[];
+  /** Tables, views and aliases inside the allowlist, each once. */
+  tables: TableRef[];
+  /** Qualified routines inside the allowlist, each once. */
+  routines: Array<{ schema: string; name: string }>;
+}
+
+/**
+ * Check the tables and routines in PARSE_STATEMENT rows against the schema allowlist.
+ *
+ * IBM i lists every table, view and alias the statement reads, including those in
+ * subqueries, LATERAL, EXISTS and TABLE() arguments, and never lists CTE names.
+ * An unqualified table resolves to the default schema. Unqualified routines are
+ * built-ins (UPPER, COALESCE) and are skipped. Column rows are not needed: a column
+ * belongs to a table that is listed on its own row.
+ *
+ * @param parsed - Rows from parseStatement
+ * @param options - Uppercased allowlist (unset means no restriction) and the default schema
+ * @returns Violations, and the tables and routines that passed
+ */
+export function checkParsedSchemas(
+  parsed: readonly ParsedName[],
+  options: { allowed?: readonly string[]; defaultSchema?: string; sql?: string }
+): ParsedSchemaCheck {
+  const allowed = options.allowed ? [...options.allowed] : undefined;
+  const defaultSchema = options.defaultSchema?.trim().toUpperCase() || undefined;
+  const violations: string[] = [];
+
+  // PARSE_STATEMENT returns an unqualified table function with no schema, the same as a
+  // built-in such as UPPER. It resolves through the SQL path, which includes QSYS2, so it
+  // could read any library (DISPLAY_JOURNAL, IFS_READ). Require a library for table functions.
+  if (allowed && options.sql) {
+    for (const name of unqualifiedTableFunctions(options.sql)) {
+      violations.push(
+        `Table function ${name} is not qualified with a library, so the allowed schemas cannot be checked. ` +
+          'Qualify it, for example TABLE(QSYS2.ACTIVE_JOB_INFO(...)).'
+      );
+    }
+  }
+
+  // Sequences and user-defined types live in a library too
+  for (const row of parsed) {
+    if (!allowed || !row.name) {
+      continue;
+    }
+    if (row.nameType === 'SEQUENCE') {
+      const schema = row.schema ?? defaultSchema;
+      if (!schema || !isSchemaAllowed(schema, allowed)) {
+        violations.push(schema ? allowlistViolation('Sequence', schema, row.name, allowed) : unresolvedTable(row.name));
+      }
+    } else if (row.nameType === 'TYPE' && row.schema && !isSchemaAllowed(row.schema, allowed)) {
+      violations.push(allowlistViolation('Type', row.schema, row.name, allowed));
+    }
+  }
+
+  const tables: TableRef[] = [];
+  const seenTables = new Set<string>();
+  for (const row of parsed) {
+    if (!TABLE_NAME_TYPES.has(row.nameType) || !row.name) {
+      continue;
+    }
+    const schema = row.schema ?? defaultSchema;
+    if (!schema) {
+      violations.push(unresolvedTable(row.name));
+      continue;
+    }
+    if (allowed && !isSchemaAllowed(schema, allowed)) {
+      violations.push(allowlistViolation('Table', schema, row.name, allowed));
+      continue;
+    }
+    const key = `${schema}.${row.name}`;
+    if (seenTables.has(key)) {
+      continue;
+    }
+    seenTables.add(key);
+    tables.push({ schema, table: row.name });
+  }
+
+  const routines: Array<{ schema: string; name: string }> = [];
+  const seenRoutines = new Set<string>();
+  for (const row of parsed) {
+    if (!ROUTINE_NAME_TYPES.has(row.nameType) || !row.name) {
+      continue;
+    }
+    // Unqualified functions are built-ins (UPPER, COALESCE). Skip them.
+    if (!row.schema) {
+      continue;
+    }
+    if (allowed && !isSchemaAllowed(row.schema, allowed)) {
+      violations.push(allowlistViolation('Routine', row.schema, row.name, allowed));
+      continue;
+    }
+    const key = `${row.schema}.${row.name}`;
+    if (seenRoutines.has(key)) {
+      continue;
+    }
+    seenRoutines.add(key);
+    routines.push({ schema: row.schema, name: row.name });
+  }
+
+  return { violations: [...new Set(violations)], tables, routines };
 }
 
 async function lookupPairs(
@@ -242,29 +355,9 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
   const defaultSchema = options.defaultSchema?.trim().toUpperCase() || undefined;
   const allowed = options.allowedSchemas;
 
-  const tables: TableRef[] = [];
-  const seenTables = new Set<string>();
-
-  for (const row of parsed) {
-    if (!TABLE_NAME_TYPES.has(row.nameType) || !row.name) {
-      continue;
-    }
-    const schema = row.schema ?? defaultSchema;
-    if (!schema) {
-      violations.push(unresolvedTable(row.name));
-      continue;
-    }
-    if (allowed && !isSchemaAllowed(schema, allowed)) {
-      violations.push(allowlistViolation('Table', schema, row.name, allowed));
-      continue;
-    }
-    const key = `${schema}.${row.name}`;
-    if (seenTables.has(key)) {
-      continue;
-    }
-    seenTables.add(key);
-    tables.push({ schema, table: row.name });
-  }
+  const names = checkParsedSchemas(parsed, { allowed, defaultSchema, sql });
+  violations.push(...names.violations);
+  const { tables, routines } = names;
 
   const specificColumns: ColumnRef[] = [];
   const seenColumns = new Set<string>();
@@ -302,27 +395,6 @@ export async function inspectStatement(sql: string, options: InspectOptions = {}
     looseColumns.clear();
   }
 
-  const routines: Array<{ schema: string; name: string }> = [];
-  const seenRoutines = new Set<string>();
-  for (const row of parsed) {
-    if (!ROUTINE_NAME_TYPES.has(row.nameType) || !row.name) {
-      continue;
-    }
-    // Unqualified functions are built-ins (UPPER, COALESCE). Skip them.
-    if (!row.schema) {
-      continue;
-    }
-    if (allowed && !isSchemaAllowed(row.schema, allowed)) {
-      violations.push(allowlistViolation('Routine', row.schema, row.name, allowed));
-      continue;
-    }
-    const key = `${row.schema}.${row.name}`;
-    if (seenRoutines.has(key)) {
-      continue;
-    }
-    seenRoutines.add(key);
-    routines.push({ schema: row.schema, name: row.name });
-  }
 
   const missingTables: string[] = [];
   const missingColumns: string[] = [];

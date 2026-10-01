@@ -7,7 +7,7 @@ import { roundedColumnsWarnings } from '../db/driver.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import type { AuditErrorKind } from '../utils/auditLog.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
-import { isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
+import { checkParsedSchemas, isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
 import { createChildLogger } from '../utils/logger.js';
 import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
 import { allowedSchemasFor, type DbTarget } from '../systems.js';
@@ -48,8 +48,9 @@ export type PreparedReadQuery =
 
 /**
  * Run the checks execute_query applies before a statement reaches the IBM i:
- * the read-only validator, the schema allowlist, the PARSE_STATEMENT check,
- * and the column masking decision. Any tool that runs caller SQL uses this.
+ * the read-only validator, the PARSE_STATEMENT check, the schema allowlist
+ * (from the parsed names, or from the JavaScript parser when the parse check
+ * is off), and the column masking decision. Any tool that runs caller SQL uses this.
  * With the parse check on, it also finds annotated row filters the statement
  * leaves out; those only warn.
  *
@@ -75,8 +76,11 @@ export async function prepareReadQuery(input: {
     };
   }
 
+  // With the parse check on, IBM i's own parser lists the tables and routines the statement
+  // uses, and the allowlist is checked from those names below. The JavaScript parser is
+  // the fallback for when the check is off.
   const allowedSchemas = allowedSchemasFor(target);
-  if (allowedSchemas) {
+  if (allowedSchemas && !isQueryParseCheckEnabled()) {
     const schemaResult = checkQuerySchemas(sql, { allowed: allowedSchemas, defaultSchema });
     if (!schemaResult.ok) {
       log.warn({ violations: schemaResult.violations }, 'Query rejected: schema allowlist');
@@ -120,6 +124,18 @@ export async function prepareReadQuery(input: {
           violations,
           errorKind: 'parse_check',
         };
+      }
+      if (allowedSchemas) {
+        const { violations } = checkParsedSchemas(parsed, { allowed: allowedSchemas, defaultSchema, sql });
+        if (violations.length > 0) {
+          log.warn({ violations }, 'Query rejected: schema allowlist');
+          return {
+            ok: false,
+            error: `Schema allowlist rejected the query: ${violations.join('; ')}`,
+            violations,
+            errorKind: 'allowlist_denied',
+          };
+        }
       }
       const decided = maskingForStatement(sql, parsed, defaultSchema);
       if (!decided.ok) {

@@ -1,3 +1,4 @@
+import type { ParsedName } from '../db/sqlServices.js';
 /**
  * Process-wide custom tools, loaded once at startup.
  */
@@ -13,7 +14,8 @@ export function emptyCustomTools(): LoadedCustomTools {
 let current: LoadedCustomTools = emptyCustomTools();
 
 export type ParseOutcome =
-  | { ok: true }
+  /** names: the PARSE_STATEMENT rows, for the schema allowlist. Unset when the check is off. */
+  | { ok: true; names?: ParsedName[] }
   | { ok: false; error: string; violations?: string[]; errorKind?: AuditErrorKind };
 
 /** PARSE_STATEMENT outcomes by system and tool. A tool without `system:` can run on several. */

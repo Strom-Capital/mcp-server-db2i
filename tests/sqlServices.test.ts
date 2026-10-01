@@ -179,6 +179,31 @@ describe('SQL service tools', () => {
       expect(query.mock.calls[0]?.[0]).toContain('PARSE_STATEMENT');
     });
 
+    it('should report valid Db2 for i as valid when the JavaScript parser cannot read it', async () => {
+      process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
+      query.mockImplementation(async (sql: string) => {
+        if (sql.includes('PARSE_STATEMENT')) {
+          return {
+            rows: [
+              parsedRow({ NAME_TYPE: 'TABLE', SCHEMA: 'MYLIB', NAME: 'ORDERS' }),
+              parsedRow({ NAME_TYPE: 'COLUMN', SCHEMA: 'MYLIB', NAME: 'ORDERS', COLUMN_NAME: 'ITEMNO' }),
+            ],
+          };
+        }
+        if (sql.includes('SYSTABLES')) {
+          return { rows: [{ TABLE_SCHEMA: 'MYLIB', TABLE_NAME: 'ORDERS' }] };
+        }
+        return { rows: [{ TABLE_SCHEMA: 'MYLIB', TABLE_NAME: 'ORDERS', COLUMN_NAME: 'ITEMNO' }] };
+      });
+
+      const result = await validateQueryTool({
+        sql: "SELECT ITEMNO, LISTAGG(ITEMNO, ',') WITHIN GROUP (ORDER BY ITEMNO) FROM MYLIB.ORDERS GROUP BY ITEMNO",
+      });
+
+      expect(result.violations).toEqual([]);
+      expect(result.valid).toBe(true);
+    });
+
     it('should report a qualified column on a table outside the allowlist and not look it up', async () => {
       process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
       query.mockResolvedValue({

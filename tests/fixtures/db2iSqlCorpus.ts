@@ -21,6 +21,11 @@ export interface CorpusEntry {
    * Omitted for statements the validator rejects.
    */
   allowlist?: 'accept' | 'deny' | 'unparseable';
+  /**
+   * What the allowlist decides from IBM i's parsed names, when it differs from `allowlist`
+   * (an `unparseable` statement is otherwise expected to be accepted).
+   */
+  parsedAllowlist?: 'accept' | 'deny';
 }
 
 export const DB2I_SQL_CORPUS: readonly CorpusEntry[] = [
@@ -160,6 +165,30 @@ export const DB2I_SQL_CORPUS: readonly CorpusEntry[] = [
     validator: 'accept',
     allowlist: 'deny',
   },
+
+  {
+    name: 'unqualified table function',
+    sql: "SELECT ENTRY_DATA FROM TABLE(DISPLAY_JOURNAL('OUTSIDELIB', 'QSQJRN')) J",
+    validator: 'accept',
+    allowlist: 'unparseable',
+    parsedAllowlist: 'deny',
+  },
+  {
+    name: 'unqualified table function in LATERAL',
+    sql: 'SELECT O.ORDERNO FROM MYLIB.ORDERS O, LATERAL (SELECT * FROM TABLE(ACTIVE_JOB_INFO()) Z) Y',
+    validator: 'accept',
+    allowlist: 'unparseable',
+    parsedAllowlist: 'deny',
+  },
+  {
+    name: 'unqualified table function in lowercase',
+    sql: "select entry_data from table(display_journal('OUTSIDELIB', 'QSQJRN')) j",
+    validator: 'accept',
+    allowlist: 'unparseable',
+    parsedAllowlist: 'deny',
+  },
+  { name: 'outside sequence', sql: 'SELECT NEXT VALUE FOR OUTSIDELIB.SEQ FROM MYLIB.ORDERS', validator: 'accept', allowlist: 'unparseable', parsedAllowlist: 'deny' },
+  { name: 'outside user-defined type', sql: 'SELECT CAST(ORDERNO AS OUTSIDELIB.UDT) FROM MYLIB.ORDERS', validator: 'accept', allowlist: 'unparseable', parsedAllowlist: 'deny' },
 
   // Writes and side effects
   { name: 'INSERT', sql: "INSERT INTO MYLIB.ORDERS (ORDERNO) VALUES (1)", validator: 'reject' },

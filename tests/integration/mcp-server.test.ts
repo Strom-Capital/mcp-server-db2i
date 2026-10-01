@@ -284,6 +284,105 @@ describe('MCP Server Integration', () => {
     });
   });
 
+  describe('Schema allowlist from PARSE_STATEMENT names', () => {
+    const row = (nameType: string, schema: string | null, name: string) => ({
+      NAME_TYPE: nameType, SCHEMA: schema, NAME: name, COLUMN_NAME: null, SQL_STATEMENT_TYPE: 'QUERY',
+    });
+    const text = (result: CallToolResult) => (result.content[0] as { type: 'text'; text: string }).text;
+
+    beforeEach(() => {
+      process.env.QUERY_PARSE_CHECK = 'true';
+      process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB,SYSIBM';
+    });
+
+    it('runs valid Db2 for i that the JavaScript parser cannot read', async () => {
+      mockQuery
+        .mockResolvedValueOnce([row('TABLE', 'MYLIB', 'ORDERS'), row('FUNCTION', null, 'CHAR')])
+        .mockResolvedValueOnce([{ ITEMNO: 'A', L: '1001,1002' }]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: {
+          sql: "SELECT ITEMNO, LISTAGG(CHAR(ORDERNO), ',') WITHIN GROUP (ORDER BY ORDERNO) AS L FROM MYLIB.ORDERS GROUP BY ITEMNO",
+        },
+      }) as CallToolResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ['a table outside the list', [row('TABLE', 'OUTSIDELIB', 'ORDERS')], 'Table OUTSIDELIB.ORDERS'],
+      ['a qualified routine outside the list', [row('TABLE', 'MYLIB', 'ORDERS'), row('FUNCTION', 'OUTSIDELIB', 'MYFN')], 'Routine OUTSIDELIB.MYFN'],
+      ['an unqualified table in a default schema outside the list', [row('TABLE', null, 'ORDERS')], 'Table TESTLIB.ORDERS'],
+    ])('rejects %s without running the query', async (_label, rows, named) => {
+      mockQuery.mockResolvedValueOnce(rows);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'WITH ORDERS AS (SELECT * FROM OUTSIDELIB.ORDERS) SELECT * FROM ORDERS' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain('Schema allowlist rejected the query');
+      expect(text(result)).toContain(named);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an unqualified table function, which resolves through the SQL path', async () => {
+      mockQuery.mockResolvedValueOnce([row('FUNCTION', null, 'DISPLAY_JOURNAL')]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: "SELECT ENTRY_DATA FROM TABLE(DISPLAY_JOURNAL('OUTSIDELIB', 'QSQJRN')) J" },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain('Table function DISPLAY_JOURNAL is not qualified with a library');
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a sequence outside the list', async () => {
+      mockQuery.mockResolvedValueOnce([row('SEQUENCE', 'OUTSIDELIB', 'SEQ'), row('TABLE', 'MYLIB', 'ORDERS')]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT NEXT VALUE FOR OUTSIDELIB.SEQ FROM MYLIB.ORDERS' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain('Sequence OUTSIDELIB.SEQ');
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('parses the statement without a trailing semicolon', async () => {
+      mockQuery.mockResolvedValueOnce([row('TABLE', 'MYLIB', 'ORDERS')]).mockResolvedValueOnce([{ ORDERNO: 1 }]);
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: { sql: 'SELECT ORDERNO FROM MYLIB.ORDERS;' },
+      }) as CallToolResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(mockQuery.mock.calls[0][1]).toEqual(['SELECT ORDERNO FROM MYLIB.ORDERS']);
+    });
+
+    it('falls back to the JavaScript parser when the parse check is off', async () => {
+      process.env.QUERY_PARSE_CHECK = 'false';
+
+      const result = await client.callTool({
+        name: 'execute_query',
+        arguments: {
+          sql: "SELECT ITEMNO, LISTAGG(CHAR(ORDERNO), ',') WITHIN GROUP (ORDER BY ORDERNO) AS L FROM MYLIB.ORDERS GROUP BY ITEMNO",
+        },
+      }) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain('could not be parsed');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+  });
+
   describe('PARSE_STATEMENT check', () => {
     it('should reject a statement that does not parse', async () => {
       process.env.QUERY_PARSE_CHECK = 'true';
