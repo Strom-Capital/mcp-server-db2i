@@ -32,6 +32,7 @@ import {
   getQueryLimitConfig,
   getQueryTimeoutSeconds,
   getQueryMaxLength,
+  getBuildId,
 } from './config.js';
 import { initializePool, testConnection, closeGlobalPool, pendingPoolCloses } from './db/connection.js';
 import { findMissingDriverPackages, missingDriverPackagesMessage } from './db/driverPackages.js';
@@ -62,10 +63,11 @@ async function main(): Promise<void> {
 
     // Initialize rate limiter (logs its own config)
     getRateLimiter();
-    // Fail on a malformed QUERY_DEFAULT_LIMIT / QUERY_MAX_LIMIT / QUERY_TIMEOUT / QUERY_MAX_LENGTH now, not on the first query
+    // Fail on a malformed QUERY_DEFAULT_LIMIT / QUERY_MAX_LIMIT / QUERY_TIMEOUT / QUERY_MAX_LENGTH / MCP_BUILD_ID now, not on the first query
     getQueryLimitConfig();
     getQueryTimeoutSeconds();
     getQueryMaxLength();
+    getBuildId();
 
     // Reads and checks DB2I_PROFILES, so a bad file stops startup
     const systems = getSystems();

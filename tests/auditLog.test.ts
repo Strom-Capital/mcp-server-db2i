@@ -24,7 +24,8 @@ import { createServer, liveCustomTool, withToolHandler } from '../src/server.js'
 import { closeAuditLog, initAuditLog, writeAudit, writeAuditEvent } from '../src/utils/auditLog.js';
 import { logger } from '../src/utils/logger.js';
 import { resetRateLimiterInstance } from '../src/utils/rateLimiter.js';
-import type { DB2iConfig } from '../src/config.js';
+import { getBuildId, type DB2iConfig } from '../src/config.js';
+import { SERVER_VERSION } from '../src/version.js';
 import { CLIENT_INFO_META_KEY } from '@modelcontextprotocol/server';
 import { prepareReadQuery } from '../src/tools/query.js';
 import type { DbTarget } from '../src/systems.js';
@@ -50,6 +51,7 @@ afterEach(() => {
   delete process.env.QUERY_PARSE_CHECK;
   delete process.env.RATE_LIMIT_MAX_REQUESTS;
   delete process.env.MCP_TOOL_INTENT;
+  delete process.env.MCP_BUILD_ID;
   vi.restoreAllMocks();
 });
 
@@ -114,7 +116,38 @@ describe('audit log writer', () => {
     initAuditLog();
     writeAuditEvent({ event: 'shutdown', reason: 'stdin closed' });
     const [line] = readLines(file);
-    expect(line).toEqual({ time: expect.any(String), event: 'shutdown', reason: 'stdin closed' });
+    expect(line).toEqual({ time: expect.any(String), serverVersion: SERVER_VERSION, event: 'shutdown', reason: 'stdin closed' });
+  });
+
+  it('writes the server version on every line, and the build when MCP_BUILD_ID is set', () => {
+    const file = path.join(tempDir(), 'audit.log');
+    process.env.MCP_AUDIT_LOG = file;
+    initAuditLog();
+    writeAudit({ tool: 'list_schemas', identity: 'stdio', outcome: 'success' });
+
+    process.env.MCP_BUILD_ID = 'a1b2c3d-dirty';
+    initAuditLog();
+    writeAudit({ tool: 'list_schemas', identity: 'stdio', outcome: 'success' });
+    writeAuditEvent({ event: 'sign_in', method: 'password', identity: 'TESTUSER', outcome: 'success' });
+
+    const lines = readLines(file);
+    expect(SERVER_VERSION).toMatch(/^\d+\.\d+\.\d+/);
+    expect(lines.map((line) => [line.serverVersion, line.build])).toEqual([
+      [SERVER_VERSION, undefined],
+      [SERVER_VERSION, 'a1b2c3d-dirty'],
+      [SERVER_VERSION, 'a1b2c3d-dirty'],
+    ]);
+  });
+
+  it('refuses an MCP_BUILD_ID that is not a short token', () => {
+    for (const value of ['has space', 'x'.repeat(65), 'semi;colon', '{"json":1}']) {
+      process.env.MCP_BUILD_ID = value;
+      expect(() => getBuildId()).toThrow('MCP_BUILD_ID must be 1 to 64 letters, digits and . _ + -');
+    }
+    process.env.MCP_BUILD_ID = '  ';
+    expect(getBuildId()).toBeUndefined();
+    process.env.MCP_BUILD_ID = 'v3.5.0+abc1234';
+    expect(getBuildId()).toBe('v3.5.0+abc1234');
   });
 
   it('writes no event when the audit log is off', () => {

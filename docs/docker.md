@@ -308,6 +308,12 @@ docker run --rm -i --env-file .env -e DB2I_DRIVER=mapepire \
   -e DB2I_MAPEPIRE_OPTIONS="hostKey=SHA256:abc...xyz" mcp-server-db2i:jt400
 ```
 
+To tell images apart in the audit log between releases, pass the git commit as `MCP_BUILD_ID`. Every audit line then records it as `build`, next to `serverVersion`:
+
+```bash
+docker build --build-arg MCP_BUILD_ID=$(git rev-parse --short HEAD) -t mcp-server-db2i .
+```
+
 The bundled `docker-compose.yml` builds the ODBC image with `platform: linux/amd64`. To use the JDBC image, set `target: jt400` under `build` and remove the `platform` line.
 
 Both images:

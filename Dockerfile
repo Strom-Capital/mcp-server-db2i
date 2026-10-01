@@ -142,6 +142,12 @@ COPY --from=deps-jt400 /app/node_modules ./node_modules
 
 ENV DB2I_DRIVER="jt400"
 
+# Build identifier for the audit log, such as the git commit:
+# docker build --build-arg MCP_BUILD_ID=$(git rev-parse --short HEAD) .
+# Last, so a new value does not rebuild the layers above.
+ARG MCP_BUILD_ID=""
+ENV MCP_BUILD_ID=$MCP_BUILD_ID
+
 USER mcpuser
 
 # ODBC runtime: unixODBC plus the IBM i Access ODBC Driver from IBM's apt
@@ -170,5 +176,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=deps-odbc /app/node_modules ./node_modules
 
 ENV DB2I_DRIVER="odbc"
+
+# Build identifier for the audit log, such as the git commit:
+# docker build --build-arg MCP_BUILD_ID=$(git rev-parse --short HEAD) .
+# Last, so a new value does not rebuild the layers above.
+ARG MCP_BUILD_ID=""
+ENV MCP_BUILD_ID=$MCP_BUILD_ID
 
 USER mcpuser

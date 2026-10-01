@@ -1145,6 +1145,27 @@ export function isQueryParseCheckEnabled(): boolean {
   return value !== 'false' && value !== '0';
 }
 
+const BUILD_ID = /^[A-Za-z0-9._+-]{1,64}$/;
+
+/**
+ * Build identifier written to every audit line, such as the git commit the image
+ * was built from. Undefined when unset.
+ *
+ * Environment variable:
+ * - MCP_BUILD_ID: 1 to 64 letters, digits and `._+-`
+ */
+export function getBuildId(): string | undefined {
+  const value = process.env.MCP_BUILD_ID?.trim();
+  if (!value) {
+    return undefined;
+  }
+  if (!BUILD_ID.test(value)) {
+    // The message leaves out the value, so config values never reach an error log
+    throw new Error('MCP_BUILD_ID must be 1 to 64 letters, digits and . _ + -');
+  }
+  return value;
+}
+
 /** Default for QUERY_MAX_LENGTH, in characters. */
 export const DEFAULT_QUERY_MAX_LENGTH = 32_768;
 
