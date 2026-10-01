@@ -151,6 +151,25 @@ export const odbcDriver: DbDriver = {
           throw toOdbcError(error);
         }
       },
+      async prepare(sql) {
+        let connection: Connection;
+        try {
+          connection = await pool.connect();
+        } catch (error) {
+          throw toOdbcError(error);
+        }
+        let statement: OdbcStatement | undefined;
+        try {
+          statement = await connection.createStatement();
+          // SQLPrepare only: the statement is never executed
+          await statement.prepare(sql);
+        } catch (error) {
+          throw toOdbcError(error);
+        } finally {
+          await statement?.close().catch(() => undefined);
+          await connection.close().catch(() => undefined);
+        }
+      },
       async openCursor(sql, params, options) {
         let connection: Connection;
         try {

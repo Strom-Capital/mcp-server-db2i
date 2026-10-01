@@ -179,7 +179,9 @@ The driver connection is a second layer. JT400 and the Mapepire server (which us
 
 ### Statement parse check
 
-`execute_query` asks IBM i to parse the statement with `QSYS2.PARSE_STATEMENT` before it runs. The query is rejected when the statement does not parse, or when it is not a query. The names it returns drive the [schema allowlist](#schema-allowlist), column masking and row filter warnings. A trailing semicolon is removed before parsing. `PARSE_STATEMENT` does not parse a statement that starts with `VALUES`, so such a statement is rejected while the check is on.
+`execute_query` asks IBM i to parse the statement with `QSYS2.PARSE_STATEMENT` before it runs. The query is rejected when the statement does not parse, or when it is not a query. The names it returns drive the [schema allowlist](#schema-allowlist), column masking and row filter warnings. A trailing semicolon is removed before parsing. `PARSE_STATEMENT` does not parse a statement that starts with `VALUES`, so such a statement is rejected while the check is on, and the error suggests the `SELECT * FROM (VALUES ...)` form.
+
+When `PARSE_STATEMENT` returns no rows, the server prepares the statement on the read-only connection, without running it, to get Db2's reason (`odbc` and `mapepire`; `jt400` cannot prepare alone). Preparing never executes the statement, and the statement stays rejected whatever the prepare returns. The prepare has a 5 second limit.
 
 The check is on unless `QUERY_PARSE_CHECK` is `false` or `0`. It adds one round trip, often a few hundred milliseconds, on every `execute_query` call. Business SQL tools run the same check the first time each tool is called, then cache the result. If `QSYS2.PARSE_STATEMENT` is not installed, the query is rejected and the error tells you to turn the check off. A missing function does not skip the check on its own.
 

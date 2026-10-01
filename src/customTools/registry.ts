@@ -1,4 +1,5 @@
 import type { ParsedName } from '../db/sqlServices.js';
+import type { SqlErrorDetails } from '../db/sqlErrorInfo.js';
 /**
  * Process-wide custom tools, loaded once at startup.
  */
@@ -16,7 +17,8 @@ let current: LoadedCustomTools = emptyCustomTools();
 export type ParseOutcome =
   /** names: the PARSE_STATEMENT rows, for the schema allowlist. Unset when the check is off. */
   | { ok: true; names?: ParsedName[] }
-  | { ok: false; error: string; violations?: string[]; errorKind?: AuditErrorKind };
+  /** details: Db2's SQLSTATE, SQLCODE, cause and recovery when the statement did not parse. */
+  | { ok: false; error: string; violations?: string[]; errorKind?: AuditErrorKind; details?: SqlErrorDetails };
 
 /** PARSE_STATEMENT outcomes by system and tool. A tool without `system:` can run on several. */
 const parseCache = new Map<string, ParseOutcome>();

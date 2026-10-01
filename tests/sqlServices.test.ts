@@ -8,9 +8,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/db/connection.js', () => ({
   executeQuery: vi.fn(),
   executeProcedure: vi.fn(),
+  explainUnparsedStatement: vi.fn(async () => undefined),
 }));
 
-import { executeProcedure, executeQuery } from '../src/db/connection.js';
+import { executeProcedure, executeQuery, explainUnparsedStatement } from '../src/db/connection.js';
 import {
   clearRoutineCache,
   clearServicesCache,
@@ -28,6 +29,11 @@ import {
 } from '../src/tools/sqlServices.js';
 
 const query = vi.mocked(executeQuery);
+const explain = vi.mocked(explainUnparsedStatement);
+const SQL0104 = {
+  message: '[42000] SQL0104 - Token EXISTS was not valid. Valid tokens: <IDENTIFIER>.',
+  details: { sqlstate: '42000', sqlcode: -104, cause: 'A syntax error was detected at token EXISTS.', recovery: 'Correct the syntax.' },
+};
 const procedure = vi.mocked(executeProcedure);
 
 function parsedRow(row: Record<string, unknown>) {
@@ -63,6 +69,22 @@ describe('SQL service tools', () => {
       expect(result.valid).toBe(false);
       expect(result.violations).toContain('The statement could not be parsed.');
       expect(query).toHaveBeenCalledTimes(1);
+      expect(result.sqlstate).toBeUndefined();
+    });
+
+    it("should report Db2's reason when the statement does not parse and a prepare explains it", async () => {
+      query.mockResolvedValueOnce({ rows: [] });
+      explain.mockResolvedValueOnce(SQL0104);
+
+      const result = await validateQueryTool({
+        sql: 'SELECT CASE WHEN EXISTS (SELECT 1 FROM MYLIB.ORDERS) THEN 1 END FROM SYSIBM.SYSDUMMY1;',
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.violations?.[0]).toContain('SQL0104 - Token EXISTS was not valid');
+      expect(result).toMatchObject(SQL0104.details);
+      // The prepare gets the statement as PARSE_STATEMENT did, without the semicolon
+      expect(explain.mock.calls[0]?.[0]).toBe('SELECT CASE WHEN EXISTS (SELECT 1 FROM MYLIB.ORDERS) THEN 1 END FROM SYSIBM.SYSDUMMY1');
     });
 
     it('should report a table that is not in the catalog', async () => {
@@ -693,6 +715,38 @@ describe('SQL service tools', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('could not be parsed');
+      expect(result.error).toContain('QUERY_PARSE_CHECK=false');
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should say when Db2 accepts a statement that PARSE_STATEMENT cannot parse', async () => {
+      process.env.QUERY_PARSE_CHECK = 'true';
+      query.mockResolvedValueOnce({ rows: [] });
+      explain.mockResolvedValueOnce({ accepted: true });
+
+      const result = await executeQueryTool({ sql: 'VALUES 1' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('although Db2 accepts it');
+      expect(result.error).toContain('SELECT * FROM (VALUES');
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return Db2's reason, cause and recovery when a prepare explains the parse failure", async () => {
+      process.env.QUERY_PARSE_CHECK = 'true';
+      query.mockResolvedValueOnce({ rows: [] });
+      explain.mockResolvedValueOnce(SQL0104);
+
+      const result = await executeQueryTool({
+        sql: 'SELECT CASE WHEN EXISTS (SELECT 1 FROM MYLIB.ORDERS) THEN 1 END FROM SYSIBM.SYSDUMMY1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.errorKind).toBe('parse_check');
+      expect(result.error).toContain('could not be parsed: [42000] SQL0104');
+      expect(result.error).toContain('was not run');
+      expect(result).toMatchObject(SQL0104.details);
+      // Only PARSE_STATEMENT ran; the statement itself was never executed
       expect(query).toHaveBeenCalledTimes(1);
     });
 

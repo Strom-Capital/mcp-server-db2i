@@ -101,6 +101,12 @@ export interface DbPool {
    * or job until it is closed. Optional, so test pools need not implement it.
    */
   openCursor?(sql: string, params: readonly QueryParam[], options: DbCursorOptions): Promise<RowCursor>;
+  /**
+   * Prepare a statement and close it without running it. Resolves when Db2
+   * accepts the statement, and rejects with a DbError carrying the SQLSTATE
+   * and SQLCODE when it does not. Optional: JT400 has no prepare-only call.
+   */
+  prepare?(sql: string): Promise<void>;
   /** Close every connection in the pool. */
   close(): Promise<void>;
 }
