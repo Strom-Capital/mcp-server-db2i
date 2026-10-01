@@ -75,7 +75,7 @@ Results are sorted by `mti_used`, then `times_advised`. Advice the optimizer kep
 
 ### Row limit
 
-`execute_query` returns at most `limit` rows (default `QUERY_DEFAULT_LIMIT`, never above `QUERY_MAX_LIMIT`), and a business SQL tool at most its `maxRows`. The result has `limitApplied` and `truncated`. The server asks Db2 for one row more than the limit, so `truncated: true` means more rows match than were returned, and `truncated: false` means the result is complete. A `FETCH FIRST` in the statement that is smaller than the limit is kept, and reaching it is not reported as truncation.
+`execute_query` returns at most `limit` rows (default `QUERY_DEFAULT_LIMIT`, never above `QUERY_MAX_LIMIT`), and a business SQL tool at most its `maxRows`. The result has `limitApplied` and `truncated`. The server asks Db2 for one row more than the limit, so `truncated: true` means more rows match than were returned, and `truncated: false` means the result is complete. A `FETCH FIRST` in the statement that is smaller than the limit is kept, and reaching it is not reported as truncation. The server adds its `FETCH FIRST` before clauses that Db2 for i requires after it, such as `FOR READ ONLY`, `OPTIMIZE FOR n ROWS` or an isolation clause like `WITH UR`, and ignores a limit written inside a comment or a string.
 
 ### Warnings
 

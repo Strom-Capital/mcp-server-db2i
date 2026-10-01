@@ -49,9 +49,64 @@ describe('applySqlRowLimit', () => {
     ).toBe('SELECT * FROM MYLIB.USERS FETCH FIRST 10 ROWS ONLY');
   });
 
-  it('puts the cap on its own line after a trailing -- comment', () => {
+  it('drops a trailing -- comment so the cap is not commented out', () => {
     expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS -- open orders', 50)).toBe(
-      'SELECT * FROM MYLIB.ORDERS -- open orders\nFETCH FIRST 50 ROWS ONLY'
+      'SELECT * FROM MYLIB.ORDERS FETCH FIRST 50 ROWS ONLY'
+    );
+  });
+
+  it('ignores a limit inside a trailing comment', () => {
+    for (const sql of [
+      'SELECT * FROM MYLIB.ORDERS -- FETCH FIRST 5 ROWS ONLY',
+      'SELECT * FROM MYLIB.ORDERS /* LIMIT 5 */',
+      'SELECT * FROM MYLIB.ORDERS --x\u0085',
+    ]) {
+      expect(applySqlRowLimit(sql, 50)).toBe('SELECT * FROM MYLIB.ORDERS FETCH FIRST 50 ROWS ONLY');
+    }
+  });
+
+  it('ignores a clause inside a trailing string literal', () => {
+    expect(applySqlRowLimit("SELECT * FROM MYLIB.ORDERS WHERE NOTE = 'FOR READ ONLY'", 50)).toBe(
+      "SELECT * FROM MYLIB.ORDERS WHERE NOTE = 'FOR READ ONLY' FETCH FIRST 50 ROWS ONLY"
+    );
+  });
+
+  it.each([
+    ['FOR READ ONLY', 'FOR READ ONLY'],
+    ['FOR FETCH ONLY', 'FOR FETCH ONLY'],
+    ['FOR UPDATE', 'FOR UPDATE'],
+    ['FOR UPDATE OF a list', 'FOR UPDATE OF ITEMNO, "QTY"'],
+    ['OPTIMIZE FOR n ROWS', 'OPTIMIZE FOR 20 ROWS'],
+    ['WITH UR', 'WITH UR'],
+    ['WITH RS USE AND KEEP EXCLUSIVE LOCKS', 'WITH RS USE AND KEEP EXCLUSIVE LOCKS'],
+    ['SKIP LOCKED DATA', 'SKIP LOCKED DATA'],
+    ['WAIT FOR OUTCOME', 'WAIT FOR OUTCOME'],
+    ['several clauses', 'FOR READ ONLY OPTIMIZE FOR 5 ROWS WITH NC'],
+    ['lower case', 'for read only with ur'],
+  ])('puts the cap before %s', (_label, clauses) => {
+    expect(applySqlRowLimit(`SELECT * FROM MYLIB.ORDERS ORDER BY ORDERNO ${clauses};`, 50)).toBe(
+      `SELECT * FROM MYLIB.ORDERS ORDER BY ORDERNO FETCH FIRST 50 ROWS ONLY ${clauses}`
+    );
+  });
+
+  it('clamps an existing FETCH FIRST that sits before the trailing clauses', () => {
+    expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS FETCH FIRST 5 ROWS ONLY FOR READ ONLY', 100)).toBe(
+      'SELECT * FROM MYLIB.ORDERS FETCH FIRST 5 ROWS ONLY FOR READ ONLY'
+    );
+    expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS FETCH FIRST 5000 ROWS ONLY WITH UR', 100)).toBe(
+      'SELECT * FROM MYLIB.ORDERS FETCH FIRST 100 ROWS ONLY WITH UR'
+    );
+  });
+
+  it('keeps a comment between the statement and its trailing clauses out of the way', () => {
+    expect(applySqlRowLimit('SELECT * FROM MYLIB.ORDERS /* c */ FOR READ ONLY -- done', 10)).toBe(
+      'SELECT * FROM MYLIB.ORDERS FETCH FIRST 10 ROWS ONLY FOR READ ONLY'
+    );
+  });
+
+  it('does not take a CTE or a column named like a clause for one', () => {
+    expect(applySqlRowLimit('WITH UR AS (SELECT 1 AS N FROM SYSIBM.SYSDUMMY1) SELECT N FROM UR', 10)).toBe(
+      'WITH UR AS (SELECT 1 AS N FROM SYSIBM.SYSDUMMY1) SELECT N FROM UR FETCH FIRST 10 ROWS ONLY'
     );
   });
 
