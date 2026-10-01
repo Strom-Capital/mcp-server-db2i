@@ -6,6 +6,7 @@ import { executeQuery } from '../db/connection.js';
 import { roundedColumnsWarnings } from '../db/driver.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import {
+  checkParsedSchemas,
   isParseStatementMissing,
   PARSE_STATEMENT_UNAVAILABLE,
   parseStatement,
@@ -46,7 +47,7 @@ export function classifyParsedStatement(parsed: ParsedName[]): ParseOutcome {
         : [`Statement type is ${found}.`],
     };
   }
-  return { ok: true };
+  return { ok: true, names: parsed };
 }
 
 export interface CustomToolQueryResult extends SqlErrorDetails {
@@ -77,8 +78,10 @@ export async function executeCustomTool(
     return { success: false, error: bound.error, errorKind: 'bad_params' };
   }
   const values = bound.params;
+  // With the parse check on, the allowlist is checked from IBM i's parsed names below.
+  // The JavaScript parser is the fallback for when the check is off.
   const allowedSchemas = allowedSchemasFor(options.target);
-  if (allowedSchemas) {
+  if (allowedSchemas && !isQueryParseCheckEnabled()) {
     const schemaResult = checkQuerySchemas(tool.sql, {
       allowed: allowedSchemas,
       defaultSchema: options.defaultSchema,
@@ -101,6 +104,21 @@ export async function executeCustomTool(
       ...(parsedOk.violations ? { violations: parsedOk.violations } : {}),
       errorKind: parsedOk.errorKind ?? 'parse_check',
     };
+  }
+  if (allowedSchemas && parsedOk.names) {
+    const { violations } = checkParsedSchemas(parsedOk.names, {
+      allowed: allowedSchemas,
+      defaultSchema: options.defaultSchema,
+      sql: tool.sql,
+    });
+    if (violations.length > 0) {
+      return {
+        success: false,
+        error: `Schema allowlist rejected the query: ${violations.join('; ')}`,
+        violations,
+        errorKind: 'allowlist_denied',
+      };
+    }
   }
 
   const effectiveLimit = applyQueryLimit(tool.maxRows, getQueryLimitConfig());

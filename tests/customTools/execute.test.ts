@@ -4,7 +4,8 @@ vi.mock('../../src/db/connection.js', () => ({
   executeQuery: vi.fn(async () => ({ rows: [{ ORDERNO: 1001 }] })),
 }));
 
-vi.mock('../../src/db/sqlServices.js', () => ({
+vi.mock('../../src/db/sqlServices.js', async (importOriginal) => ({
+  checkParsedSchemas: (await importOriginal<typeof import('../../src/db/sqlServices.js')>()).checkParsedSchemas,
   parseStatement: vi.fn(async () => [{ statementType: 'QUERY' }]),
   isParseStatementMissing: vi.fn(() => false),
   PARSE_STATEMENT_UNAVAILABLE: 'QSYS2.PARSE_STATEMENT is not available on this system.',
@@ -171,6 +172,40 @@ describe('executeCustomTool', () => {
     expect(result.success).toBe(false);
     expect(result.violations?.join(' ')).toContain('MYLIB.ORDERHDR');
     expect(executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('checks the allowlist from the parsed names when the parse check is on', async () => {
+    process.env.QUERY_PARSE_CHECK = 'true';
+    process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
+    vi.mocked(parseStatement).mockResolvedValueOnce([
+      { nameType: 'TABLE', schema: 'MYLIB', name: 'ORDERHDR', columnName: null, statementType: 'QUERY' },
+      { nameType: 'TABLE', schema: 'OUTSIDELIB', name: 'ORDERS', columnName: null, statementType: 'QUERY' },
+    ]);
+
+    const result = await executeCustomTool(tool, { customer: '1001' }, { defaultSchema: 'MYLIB' });
+
+    expect(result.success).toBe(false);
+    expect(result.errorKind).toBe('allowlist_denied');
+    expect(result.violations?.join(' ')).toContain('OUTSIDELIB.ORDERS');
+    expect(executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('runs a tool the JavaScript parser cannot read when the parsed names are allowed', async () => {
+    process.env.QUERY_PARSE_CHECK = 'true';
+    process.env.QUERY_ALLOWED_SCHEMAS = 'MYLIB';
+    vi.mocked(parseStatement).mockResolvedValueOnce([
+      { nameType: 'TABLE', schema: 'MYLIB', name: 'ORDERHDR', columnName: null, statementType: 'QUERY' },
+    ]);
+    const listagg: StoredTool = {
+      ...tool,
+      name: 'items_per_customer',
+      sql: "SELECT H.CUSTNO, LISTAGG(H.ORDERNO, ',') WITHIN GROUP (ORDER BY H.ORDERNO) FROM MYLIB.ORDERHDR H WHERE H.CUSTNO = ? AND H.STATUS = ? AND (? = 1 OR H.STATUS = ?) GROUP BY H.CUSTNO",
+    };
+
+    const result = await executeCustomTool(listagg, { customer: '1001' }, { defaultSchema: 'MYLIB' });
+
+    expect(result.success).toBe(true);
+    expect(executeQuery).toHaveBeenCalledTimes(1);
   });
 
   it('parses the statement once and reuses the result', async () => {

@@ -31,7 +31,7 @@ import {
 } from '../db/sqlServices.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
-import { checkQuerySchemas, isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
+import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
 import { checkRowFilters } from '../customTools/filters.js';
 import { getCustomTools } from '../customTools/registry.js';
 
@@ -120,14 +120,9 @@ export async function validateQueryTool(input: {
   const security = validateQuery(input.sql);
   const violations = security.isValid ? [] : [...security.violations];
 
+  // inspectStatement checks the allowlist from the names IBM i's parser returns,
+  // so valid Db2 for i that the JavaScript parser cannot read is not marked invalid
   const allowed = allowedSchemasFor(input.target);
-  if (allowed) {
-    const schemaResult = checkQuerySchemas(input.sql, {
-      allowed,
-      defaultSchema: input.defaultSchema,
-    });
-    violations.push(...schemaResult.violations);
-  }
 
   let inspection: StatementInspection;
   try {

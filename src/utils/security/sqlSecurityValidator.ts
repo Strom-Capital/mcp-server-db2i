@@ -552,6 +552,32 @@ function isBlockedFunction(name: string): boolean {
   return SIDE_EFFECT_FUNCTION_PREFIXES.some((prefix) => upper.startsWith(prefix));
 }
 
+/** Words that can follow TABLE ( without being a table function name. */
+const NOT_TABLE_FUNCTION = new Set(['VALUES', 'SELECT', 'WITH', 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'LATERAL']);
+
+/**
+ * Names of table functions called without a library, as in TABLE(DISPLAY_JOURNAL(...)).
+ * Such a call resolves through the SQL path, so the schema allowlist cannot tell which
+ * library it reads from. Literals and comments are ignored; a quoted name counts as
+ * unqualified unless a library precedes it.
+ *
+ * @param sql - Statement text
+ * @returns Uppercased function names, each once
+ */
+export function unqualifiedTableFunctions(sql: string): string[] {
+  const scanned = normalizeForScan(sql, 'mask');
+  const found = new Set<string>();
+  // TABLE ( name ( with no "library." before the name
+  // Case-insensitive, and names may hold any Unicode letter, as Db2 for i allows
+  for (const match of scanned.text.matchAll(/(?<![\p{L}\p{N}_$#@])TABLE[^\p{L}\p{N}_$#@]*?\(\s*([\p{L}_$#@][\p{L}\p{N}_$#@]*)\s*\(/giu)) {
+    const name = match[1].toUpperCase();
+    if (!NOT_TABLE_FUNCTION.has(name)) {
+      found.add(name === 'QUOTED_NAME' ? 'a quoted name' : name);
+    }
+  }
+  return [...found];
+}
+
 /**
  * Convenience function for simple validation
  * 

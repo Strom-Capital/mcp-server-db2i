@@ -10,6 +10,7 @@ import {
   DANGEROUS_OPERATIONS,
   DANGEROUS_FUNCTIONS,
   IBM_I_DANGEROUS_OPERATIONS,
+  unqualifiedTableFunctions,
 } from '../src/utils/security/sqlSecurityValidator.js';
 
 describe('SqlSecurityValidator', () => {
@@ -531,5 +532,35 @@ describe('SqlSecurityValidator', () => {
       expect(IBM_I_DANGEROUS_OPERATIONS).toContain('QCMDEXC');
       expect(IBM_I_DANGEROUS_OPERATIONS).toContain('SQL_EXECUTE_IMMEDIATE');
     });
+  });
+});
+
+describe('unqualifiedTableFunctions', () => {
+  it.each([
+    ["SELECT * FROM TABLE(DISPLAY_JOURNAL('OUTSIDELIB', 'QSQJRN')) J", ['DISPLAY_JOURNAL']],
+    ['SELECT * FROM MYLIB.ORDERS O, LATERAL (SELECT * FROM TABLE ( ACTIVE_JOB_INFO () ) Z) Y', ['ACTIVE_JOB_INFO']],
+    ["SELECT * FROM TABLE(IFS_READ(PATH_NAME => '/x')) X, TABLE(IFS_READ(PATH_NAME => '/y')) Y", ['IFS_READ']],
+    ['SELECT * FROM TABLE("MYTF"(1)) X', ['a quoted name']],
+    ["select entry_data from table(display_journal('OUTSIDELIB', 'QSQJRN')) j", ['DISPLAY_JOURNAL']],
+    ["SELECT * FROM Table(Ifs_Read(PATH_NAME => '/x')) X", ['IFS_READ']],
+    ['SELECT * FROM TABLE(\u00c4CTIVE_JOB_INFO()) X', ['\u00c4CTIVE_JOB_INFO']],
+    ['SELECT * FROM LATERAL(TABLE(\nACTIVE_JOB_INFO())) X', ['ACTIVE_JOB_INFO']],
+    ['SELECT * FROM TABLE/* c */(OBJECT_STATISTICS(\'MYLIB\', \'*FILE\')) X', ['OBJECT_STATISTICS']],
+  ])('finds the unqualified call in %s', (sql, names) => {
+    expect(unqualifiedTableFunctions(sql)).toEqual(names);
+  });
+
+  it.each([
+    ["SELECT * FROM TABLE(QSYS2.DISPLAY_JOURNAL('MYLIB', 'QSQJRN')) J"],
+    ['SELECT * FROM TABLE("QSYS2"."ACTIVE_JOB_INFO"()) X'],
+    ['SELECT * FROM TABLE(VALUES (1), (2)) AS T (N)'],
+    ['SELECT * FROM FINAL TABLE (INSERT INTO MYLIB.ORDERS VALUES (1))'],
+    ["SELECT * FROM JSON_TABLE('{}', '$' COLUMNS (A INT PATH '$.a')) J"],
+    ["SELECT 'TABLE(DISPLAY_JOURNAL(' FROM SYSIBM.SYSDUMMY1"],
+    ['SELECT UPPER(ITEMNO) FROM MYLIB.ORDERS'],
+    ["select * from table(qsys2.display_journal('MYLIB', 'QSQJRN')) j"],
+    ['SELECT * FROM xmltable(\'$d\' PASSING X COLUMNS A INT) T'],
+  ])('finds nothing in %s', (sql) => {
+    expect(unqualifiedTableFunctions(sql)).toEqual([]);
   });
 });
