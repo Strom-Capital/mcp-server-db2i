@@ -6,7 +6,8 @@
  * GENERATE_SQL runs on the procedure pool because a read-only connection rejects it.
  */
 
-import { executeProcedure, executeQuery } from './connection.js';
+import { executeProcedure, executeQuery, explainUnparsedStatement } from './connection.js';
+import type { SqlErrorDetails } from './sqlErrorInfo.js';
 import type { DbTarget } from '../systems.js';
 import { filterToLikePattern } from './queries.js';
 import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
@@ -67,6 +68,8 @@ export interface StatementInspection {
   violations: string[];
   /** The PARSE_STATEMENT rows, for checks that read more than names. Empty when not parsed. */
   names: ParsedName[];
+  /** Db2's SQLSTATE, SQLCODE, cause and recovery when the statement did not parse and a prepare found them. */
+  parseError?: SqlErrorDetails;
 }
 
 export interface InspectOptions {
@@ -131,14 +134,58 @@ function requireSqlName(value: string, label: string): string {
   return name;
 }
 
+/** The statement text sent to PARSE_STATEMENT: trimmed, without a trailing semicolon. */
+function statementForParse(sql: string): string {
+  const trimmed = sql.trim();
+  return trimmed.endsWith(';') ? trimmed.slice(0, -1).trimEnd() : trimmed;
+}
+
+/** Generic reason when PARSE_STATEMENT returns no rows and Db2 gives none either. */
+export const STATEMENT_NOT_PARSED =
+  'The statement could not be parsed. Fix the SQL, or set QUERY_PARSE_CHECK=false to skip this check.';
+
+/** When Db2 prepares a statement that PARSE_STATEMENT cannot parse, such as one that starts with VALUES. */
+export const STATEMENT_ACCEPTED_NOT_PARSED =
+  'QSYS2.PARSE_STATEMENT could not parse the statement, although Db2 accepts it, so the parse check cannot tell ' +
+  'what it reads. Write it as a SELECT: for example SELECT * FROM (VALUES 1, 2) AS V (N) instead of VALUES 1, 2.';
+
+/** Why a statement PARSE_STATEMENT returned no rows for was rejected. */
+export interface ParseFailure {
+  /** The error message for the tool result. */
+  error: string;
+  /** SQLSTATE, SQLCODE, cause and recovery from Db2, when the prepare found them. */
+  details: SqlErrorDetails;
+}
+
+/**
+ * The reason for a statement PARSE_STATEMENT returned no rows for. The statement
+ * is prepared without running, and Db2's error is returned when there is one, as
+ * in `The statement could not be parsed: [42000] SQL0104 - Token EXISTS was not valid.`
+ * Otherwise the generic message, for example on JT400, which cannot prepare alone.
+ *
+ * @param sql - A statement that already passed the SQL validator
+ * @param target - Caller and system
+ */
+export async function explainParseFailure(sql: string, target?: DbTarget): Promise<ParseFailure> {
+  const reason = await explainUnparsedStatement(statementForParse(sql), target);
+  if (!reason) {
+    return { error: STATEMENT_NOT_PARSED, details: {} };
+  }
+  if ('accepted' in reason) {
+    return { error: STATEMENT_ACCEPTED_NOT_PARSED, details: {} };
+  }
+  return {
+    error: `The statement could not be parsed: ${reason.message} The statement was prepared to find this reason and was not run.`,
+    details: reason.details,
+  };
+}
+
 /**
  * Parse a statement with QSYS2.PARSE_STATEMENT. A trailing semicolon is removed first:
  * PARSE_STATEMENT returns no rows for `SELECT ...;`, and the statement runs without it.
  */
 export async function parseStatement(sql: string, target?: DbTarget): Promise<ParsedName[]> {
-  const trimmed = sql.trim();
-  const statement = trimmed.endsWith(';') ? trimmed.slice(0, -1).trimEnd() : trimmed;
-  const result = await executeQuery(PARSE_SQL, [statement], target);
+  const result = await executeQuery(PARSE_SQL, [statementForParse(sql)], target);
   return result.rows.map((row) => ({
     nameType: cell(row.NAME_TYPE) ?? '',
     schema: cell(row.SCHEMA),
@@ -339,14 +386,17 @@ async function lookupPairs(
 export async function inspectStatement(sql: string, options: InspectOptions = {}): Promise<StatementInspection> {
   const parsed = await parseStatement(sql, options.target);
   if (parsed.length === 0) {
+    const failure = await explainParseFailure(sql, options.target);
+    const hasReason = Object.keys(failure.details).length > 0;
     return {
       parsed: false,
       statementType: null,
       missingTables: [],
       missingColumns: [],
       missingRoutines: [],
-      violations: ['The statement could not be parsed.'],
+      violations: [hasReason ? failure.error : 'The statement could not be parsed.'],
       names: [],
+      ...(hasReason ? { parseError: failure.details } : {}),
     };
   }
 

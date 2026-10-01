@@ -7,7 +7,13 @@ import { roundedColumnsWarnings } from '../db/driver.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import type { AuditErrorKind } from '../utils/auditLog.js';
 import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
-import { checkParsedSchemas, isParseStatementMissing, parseStatement, type ParsedName } from '../db/sqlServices.js';
+import {
+  checkParsedSchemas,
+  explainParseFailure,
+  isParseStatementMissing,
+  parseStatement,
+  type ParsedName,
+} from '../db/sqlServices.js';
 import { createChildLogger } from '../utils/logger.js';
 import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
 import { allowedSchemasFor, type DbTarget } from '../systems.js';
@@ -110,17 +116,20 @@ export async function prepareReadQuery(input: {
       const types = [
         ...new Set(parsed.map((row) => row.statementType).filter((type): type is string => Boolean(type))),
       ];
-      if (parsed.length === 0 || types.length === 0 || types.some((type) => type !== 'QUERY')) {
+      if (parsed.length === 0) {
+        // PARSE_STATEMENT gives no reason; preparing the statement without running it does
+        const failure = await explainParseFailure(sql, target);
+        const violations = ['The statement could not be parsed.'];
+        log.warn({ violations, sqlstate: failure.details.sqlstate }, 'Query rejected: PARSE_STATEMENT check');
+        return { ok: false, error: failure.error, violations, errorKind: 'parse_check', ...failure.details };
+      }
+      if (types.length === 0 || types.some((type) => type !== 'QUERY')) {
         const found = types.join(', ') || 'unknown';
-        const violations = parsed.length === 0
-          ? ['The statement could not be parsed.']
-          : [`Statement type is ${found}.`];
+        const violations = [`Statement type is ${found}.`];
         log.warn({ violations }, 'Query rejected: PARSE_STATEMENT check');
         return {
           ok: false,
-          error: parsed.length === 0
-            ? 'The statement could not be parsed. Fix the SQL, or set QUERY_PARSE_CHECK=false to skip this check.'
-            : `PARSE_STATEMENT rejected the statement (type: ${found}). Only queries are allowed.`,
+          error: `PARSE_STATEMENT rejected the statement (type: ${found}). Only queries are allowed.`,
           violations,
           errorKind: 'parse_check',
         };

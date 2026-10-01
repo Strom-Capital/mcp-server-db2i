@@ -157,6 +157,7 @@ export async function validateQueryTool(input: {
     missingColumns: inspection.missingColumns,
     missingRoutines: inspection.missingRoutines,
     violations: findings,
+    ...(inspection.parseError ?? {}),
     ...(filters.tables.length > 0 ? { skippedFilters: filters.tables, warnings: filters.warnings } : {}),
   };
 }

@@ -7,6 +7,7 @@ import { roundedColumnsWarnings } from '../db/driver.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
 import {
   checkParsedSchemas,
+  explainParseFailure,
   isParseStatementMissing,
   PARSE_STATEMENT_UNAVAILABLE,
   parseStatement,
@@ -102,6 +103,7 @@ export async function executeCustomTool(
       success: false,
       error: parsedOk.error,
       ...(parsedOk.violations ? { violations: parsedOk.violations } : {}),
+      ...(parsedOk.details ?? {}),
       errorKind: parsedOk.errorKind ?? 'parse_check',
     };
   }
@@ -212,7 +214,12 @@ async function ensureParsed(tool: StoredTool, target?: DbTarget): Promise<ParseO
 
   try {
     const parsed = await parseStatement(tool.sql, target);
-    const outcome = classifyParsedStatement(parsed);
+    let outcome = classifyParsedStatement(parsed);
+    if (parsed.length === 0 && !outcome.ok) {
+      // PARSE_STATEMENT gives no reason; preparing the statement without running it does
+      const failure = await explainParseFailure(tool.sql, target);
+      outcome = { ...outcome, error: failure.error, details: failure.details };
+    }
     cacheParse(tool.name, target?.system, outcome);
     return outcome;
   } catch (error) {

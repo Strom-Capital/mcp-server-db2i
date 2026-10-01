@@ -162,6 +162,17 @@ function bindParams(params: readonly QueryParam[]): Array<string | number | null
   return params.map((p) => (p instanceof Date ? toDb2Timestamp(p) : p));
 }
 
+/** The Mapepire server's answer to a request, as far as prepare needs it. */
+interface MapepireResponse {
+  success: boolean;
+  error?: string;
+  sql_state?: string;
+  sql_rc?: number;
+}
+
+// Request IDs for prepare_sql, unique within the process
+let prepareCounter = 0;
+
 /** A request that did not answer within requestTimeout. The pool closes its job. */
 class RequestTimeoutError extends Error {}
 
@@ -294,6 +305,49 @@ export class JobPool implements DbPool {
           throw error;
         }
         throw toMapepireError(error);
+      }
+    } finally {
+      slot.active -= 1;
+      slot.lastUsed = Date.now();
+    }
+  }
+
+  /**
+   * Prepare a statement on a job without running it. mapepire-js has no
+   * wrapper, but the Mapepire server answers a `prepare_sql` request with
+   * Db2's error, the same SQLSTATE and SQLCODE as a failed query.
+   */
+  async prepare(sql: string): Promise<void> {
+    if (this.closed) {
+      throw new Error('Mapepire pool is closed');
+    }
+    const slot = this.pick();
+    slot.active += 1;
+    try {
+      let job: SQLJob;
+      try {
+        job = await slot.ready;
+      } catch (error) {
+        throw new Error(describeMapepireError(error), { cause: error });
+      }
+      prepareCounter += 1;
+      const id = `mcpprep${prepareCounter}`;
+      try {
+        const request = { id, type: 'prepare_sql', sql };
+        const response = await withTimeout(job.send<MapepireResponse>(request), this.options.requestTimeout);
+        // Release the prepared statement; nothing was run
+        void job.send({ id: `${id}c`, type: 'sqlclose', cont_id: id } as { id: string; type: string }).catch(() => undefined);
+        if (!response.success) {
+          throw toMapepireError(
+            new Error(`${response.error ?? 'The statement could not be prepared'}, ${response.sql_state}, ${response.sql_rc}`)
+          );
+        }
+      } catch (error) {
+        if (error instanceof RequestTimeoutError || !jobIsUsable(job)) {
+          this.drop(slot);
+          void job.close().catch(() => undefined);
+        }
+        throw error instanceof DbError ? error : toMapepireError(error);
       }
     } finally {
       slot.active -= 1;

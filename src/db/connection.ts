@@ -13,8 +13,8 @@ import type { DB2iConfig } from '../config.js';
 import { queryTimeoutMs } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
 import type { DbPool, DbRows, RowCursor } from './driver.js';
-import { loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
-import { DatabaseQueryError, explainSqlError } from './sqlErrorInfo.js';
+import { DbError, loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
+import { DatabaseQueryError, explainSqlError, LOOKUP_TIMEOUT_MS, type SqlErrorDetails } from './sqlErrorInfo.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger({ component: 'database' });
@@ -463,6 +463,68 @@ async function run(
     }
     const { message, details } = await explainSqlError(error, db, resolved.system);
     throw new DatabaseQueryError(`Database query failed: ${message}`, details, { cause: error });
+  } finally {
+    release();
+  }
+}
+
+/** Time limit for preparing a statement to learn why Db2 rejects it, as for the SQLCODE lookup. */
+export const PREPARE_TIMEOUT_MS = LOOKUP_TIMEOUT_MS;
+
+/**
+ * Why Db2 rejects a statement, found by preparing it on the read-only pool
+ * without running it. For a statement QSYS2.PARSE_STATEMENT could not parse,
+ * which gives no reason of its own.
+ *
+ * Never throws. Returns `{ accepted: true }` when Db2 prepares the statement
+ * without an error, and undefined when the driver cannot prepare without
+ * running (JT400), or when the prepare fails for a reason that is not a Db2
+ * error or takes longer than PREPARE_TIMEOUT_MS.
+ *
+ * @param sql - A statement that already passed the SQL validator
+ * @param target - Caller and system. Omit for the stdio default system.
+ * @returns The driver message and the SQLSTATE, SQLCODE, cause and recovery
+ */
+export async function explainUnparsedStatement(
+  sql: string,
+  target?: DbTarget
+): Promise<{ message: string; details: SqlErrorDetails } | { accepted: true } | undefined> {
+  let resolved: DbTarget;
+  try {
+    resolved = resolve(target);
+  } catch {
+    return undefined;
+  }
+  const slot = getSlot(resolved, false);
+  const release = markActive(resolved);
+  try {
+    const db = await acquire(slot, resolved);
+    if (!db.prepare) {
+      return undefined;
+    }
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<'timeout'>((done) => {
+      timer = setTimeout(() => done('timeout'), PREPARE_TIMEOUT_MS);
+      timer.unref();
+    });
+    const prepared = db.prepare(sql).then(
+      () => 'prepared' as const,
+      (error: unknown) => error
+    );
+    const outcome = await Promise.race([prepared, timedOut]).finally(() => clearTimeout(timer));
+    if (outcome === 'prepared') {
+      return { accepted: true };
+    }
+    if (!(outcome instanceof DbError)) {
+      if (outcome === 'timeout') {
+        log.debug({ ...logContext(resolved) }, 'Prepare to explain a parse failure timed out');
+      }
+      return undefined;
+    }
+    return await explainSqlError(outcome, db, resolved.system);
+  } catch (error) {
+    log.debug({ err: error, ...logContext(resolved) }, 'Prepare to explain a parse failure failed');
+    return undefined;
   } finally {
     release();
   }

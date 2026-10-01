@@ -7,12 +7,13 @@ vi.mock('../../src/db/connection.js', () => ({
 vi.mock('../../src/db/sqlServices.js', async (importOriginal) => ({
   checkParsedSchemas: (await importOriginal<typeof import('../../src/db/sqlServices.js')>()).checkParsedSchemas,
   parseStatement: vi.fn(async () => [{ statementType: 'QUERY' }]),
+  explainParseFailure: vi.fn(async () => ({ error: 'The statement could not be parsed.', details: {} })),
   isParseStatementMissing: vi.fn(() => false),
   PARSE_STATEMENT_UNAVAILABLE: 'QSYS2.PARSE_STATEMENT is not available on this system.',
 }));
 
 import { executeQuery } from '../../src/db/connection.js';
-import { isParseStatementMissing, parseStatement } from '../../src/db/sqlServices.js';
+import { explainParseFailure, isParseStatementMissing, parseStatement } from '../../src/db/sqlServices.js';
 import { executeCustomTool } from '../../src/customTools/execute.js';
 import { DatabaseQueryError } from '../../src/db/sqlErrorInfo.js';
 import type { StoredTool } from '../../src/customTools/loader.js';
@@ -206,6 +207,27 @@ describe('executeCustomTool', () => {
 
     expect(result.success).toBe(true);
     expect(executeQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns Db2's reason when the tool's statement does not parse, and caches it", async () => {
+    process.env.QUERY_PARSE_CHECK = 'true';
+    vi.mocked(parseStatement).mockResolvedValueOnce([]);
+    vi.mocked(explainParseFailure).mockResolvedValueOnce({
+      error: 'The statement could not be parsed: [42000] SQL0104 - Token EXISTS was not valid.',
+      details: { sqlstate: '42000', sqlcode: -104, cause: 'A syntax error.', recovery: 'Correct the syntax.' },
+    });
+
+    const first = await executeCustomTool(tool, { customer: '1001' });
+    const second = await executeCustomTool(tool, { customer: '1001' });
+
+    for (const result of [first, second]) {
+      expect(result.success).toBe(false);
+      expect(result.errorKind).toBe('parse_check');
+      expect(result.error).toContain('SQL0104');
+      expect(result).toMatchObject({ sqlstate: '42000', sqlcode: -104, cause: 'A syntax error.', recovery: 'Correct the syntax.' });
+    }
+    expect(explainParseFailure).toHaveBeenCalledTimes(1);
+    expect(executeQuery).not.toHaveBeenCalled();
   });
 
   it('parses the statement once and reuses the result', async () => {

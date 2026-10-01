@@ -40,7 +40,21 @@ const created = vi.hoisted(() => ({
   hanging: [] as Array<(rows: Record<string, unknown>[]) => void>,
   cancelFails: false,
   odbcCancels: 0,
+  // prepare(): statements prepared without running, and how Db2 answers them
+  prepared: [] as string[],
+  prepareFailure: undefined as { sqlstate: string; sqlcode: number; text: string } | undefined,
+  prepareHangs: false,
 }));
+
+/** Record a prepare-only call and answer it the way the test asked. */
+async function fakePrepare(sql: string): Promise<{ sqlstate: string; sqlcode: number; text: string } | undefined> {
+  created.prepared.push(sql);
+  if (created.prepareHangs) {
+    await new Promise(() => undefined);
+  }
+  // Only the statement under test fails; the SQLCODE lookup prepares too on odbc
+  return sql.includes('SQLCODE_INFO') ? undefined : created.prepareFailure;
+}
 
 const JOB_NAME = '123456/QUSER/QZDASOINIT';
 const CANCEL_REFUSED = '[42501] Not authorized to QSYS2.CANCEL_SQL';
@@ -162,14 +176,28 @@ vi.mock('odbc', () => ({
         async createStatement() {
           let sql = '';
           let params: unknown[] = [];
+          let executed = false;
           return {
             async prepare(text: string) {
               sql = text;
+              if (created.prepareFailure || created.prepareHangs) {
+                const failure = await fakePrepare(text);
+                if (failure && !executed) {
+                  throw Object.assign(new Error('[odbc] Error preparing the sql statement'), {
+                    odbcErrors: [{ state: failure.sqlstate, code: failure.sqlcode, message: failure.text }],
+                  });
+                }
+              } else {
+                created.prepared.push(text);
+              }
             },
             async bind(values: unknown[]) {
               params = values;
             },
-            execute: () => pool.query(sql, params),
+            execute: () => {
+              executed = true;
+              return pool.query(sql, params);
+            },
             async cancel() {
               created.odbcCancels += 1;
               if (created.cancelFails) {
@@ -223,6 +251,15 @@ vi.mock('@ibm/mapepire-js', () => ({
         },
         getStatus: () => status,
         getTransport: () => ({ isConnected: () => status === 'ready' }),
+        async send(request: { id: string; type: string; sql?: string }) {
+          if (request.type !== 'prepare_sql') {
+            return { id: request.id, success: true };
+          }
+          const failure = await fakePrepare(request.sql ?? '');
+          return failure
+            ? { id: request.id, success: false, error: failure.text, sql_state: failure.sqlstate, sql_rc: failure.sqlcode }
+            : { id: request.id, success: true };
+        },
         query(sql: string, opts: { parameters?: unknown[] }) {
           return {
             async execute() {
@@ -333,6 +370,9 @@ describe.each(probes)('driver contract: $name', (probe) => {
     created.hanging.length = 0;
     created.cancelFails = false;
     created.odbcCancels = 0;
+    created.prepared.length = 0;
+    created.prepareFailure = undefined;
+    created.prepareHangs = false;
     // connection.ts keeps module state, so each test gets a fresh copy.
     vi.resetModules();
     connection = await import('../../src/db/connection.js');
@@ -440,6 +480,62 @@ describe.each(probes)('driver contract: $name', (probe) => {
     });
     const lookup = pool.query.mock.calls.find(([sql]) => typeof sql === 'string' && sql.includes('SQLCODE_INFO'));
     expect(lookup?.[1]).toEqual([-204]);
+  });
+
+  it('explains a statement Db2 rejects by preparing it without running it', async () => {
+    connection.initializePool(baseConfig(probe.name));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    const [pool] = probe.pools();
+    pool.query.mockImplementation(async (sql: unknown) => {
+      if (typeof sql === 'string' && sql.includes('SQLCODE_INFO')) {
+        return [{ MESSAGE_SECOND_LEVEL_TEXT: 'Cause . . . . . :   A syntax error was detected at token &1. Recovery  . . . :   Correct the syntax.' }];
+      }
+      throw new Error(`unexpected statement: ${String(sql)}`);
+    });
+    created.prepareFailure = { sqlstate: '42000', sqlcode: -104, text: 'SQL0104 - Token EXISTS was not valid.' };
+    const statement = 'SELECT CASE WHEN EXISTS (SELECT 1 FROM MYLIB.ORDERS) THEN 1 END FROM SYSIBM.SYSDUMMY1';
+
+    const reason = await connection.explainUnparsedStatement(statement);
+
+    if (probe.name === 'jt400') {
+      // node-jt400 has no prepare-only call
+      expect(reason).toBeUndefined();
+      expect(created.prepared).toEqual([]);
+      return;
+    }
+    if (!reason || 'accepted' in reason) {
+      throw new Error(`expected Db2's reason, got ${JSON.stringify(reason)}`);
+    }
+    expect(reason.message).toMatch(/^\[42000\] .*SQL0104 - Token EXISTS was not valid\.$/);
+    expect(reason.details).toEqual({
+      sqlstate: '42000',
+      sqlcode: -104,
+      cause: 'A syntax error was detected at token &1.',
+      recovery: 'Correct the syntax.',
+    });
+    expect(created.prepared).toContain(statement);
+    // Only the SQLCODE lookup ran; the statement itself never did
+    expect(pool.query.mock.calls.map(([sql]) => sql).filter((sql) => sql === statement)).toEqual([]);
+  });
+
+  it('says when Db2 accepts the prepared statement', async () => {
+    connection.initializePool(baseConfig(probe.name));
+    const reason = await connection.explainUnparsedStatement('VALUES 1');
+    expect(reason).toEqual(probe.name === 'jt400' ? undefined : { accepted: true });
+  });
+
+  it('gives up on a prepare that takes longer than PREPARE_TIMEOUT_MS', async () => {
+    connection.initializePool(baseConfig(probe.name));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    created.prepareHangs = true;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = connection.explainUnparsedStatement('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      await vi.advanceTimersByTimeAsync(connection.PREPARE_TIMEOUT_MS + 1);
+      expect(await pending).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps the original error when the SQLCODE lookup fails', async () => {
