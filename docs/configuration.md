@@ -111,6 +111,7 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 | `QUERY_DEFAULT_LIMIT` | `1000` | Default number of rows returned by queries |
 | `QUERY_MAX_LIMIT` | `10000` | Maximum rows allowed (caps user-provided limits) |
 | `QUERY_TIMEOUT` | `120` | Seconds a statement may run before it is cancelled on the IBM i. Applies to every statement a tool runs, including catalog queries. `0` turns the limit off; at most `86400`. A profile's `queryTimeout` overrides it. How each driver cancels is in [Security](security.md#query-timeout) |
+| `QUERY_MAX_LENGTH` | `32768` | Longest SQL statement, in characters, that `execute_query`, `validate_query`, `export_query` and business SQL tools accept. From `1` to `2097152` |
 | `QUERY_PARSE_CHECK` | on | `execute_query` and business SQL tools parse the statement with `QSYS2.PARSE_STATEMENT` before running it. One extra round trip, often a few hundred milliseconds. Business tools cache that result. Set to `false` or `0` to turn the check off |
 
 ### Query exports

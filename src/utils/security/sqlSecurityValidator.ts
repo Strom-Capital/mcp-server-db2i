@@ -6,6 +6,7 @@
  */
 
 import nodeSqlParser from 'node-sql-parser';
+import { getQueryMaxLength } from '../../config.js';
 const { Parser } = nodeSqlParser;
 
 /**
@@ -123,16 +124,37 @@ const SIDE_EFFECT_FUNCTION_PREFIXES = [
 ] as const;
 
 /**
- * All dangerous operations combined
+ * All dangerous operations combined. Matched against the statement type the AST reports.
  */
 const ALL_DANGEROUS_OPERATIONS = [
   ...DANGEROUS_OPERATIONS,
   ...IBM_I_DANGEROUS_OPERATIONS,
 ] as const;
 
-/** Regex checks built once: [pattern, violation message]. */
+/** Words a read-only statement may start with, after any opening parentheses. */
+const QUERY_START_WORDS = ['SELECT', 'WITH', 'VALUES'] as const;
+
+/**
+ * Data-change statements, matched by their shape rather than by a single word, so a column
+ * named UPDATE or a call to REPLACE() is not mistaken for one. A data-change table reference
+ * such as FINAL TABLE (INSERT INTO ...) has the same shape and is caught too.
+ */
+const DATA_CHANGE_SHAPES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\bINSERT\s+INTO\b/i, 'INSERT'],
+  [/\bDELETE\s+FROM\b/i, 'DELETE'],
+  [/\bMERGE\s+INTO\b/i, 'MERGE'],
+  // UPDATE name [[AS] alias] SET
+  [/\bUPDATE\s+[\w$#@]+(?:\s*\.\s*[\w$#@]+)*(?:\s+(?:AS\s+)?[\w$#@]+)?\s+SET\b/i, 'UPDATE'],
+  // A data-change table reference in any form, e.g. OLD TABLE (DELETE MYLIB.ORDERS) without FROM
+  [/\bTABLE\W*\(\W*(?:INSERT|UPDATE|DELETE|MERGE)\b/i, 'data-change table reference'],
+];
+
+/**
+ * Name checks built once: [pattern, violation message]. They run on text with delimited
+ * identifiers unquoted, so QSYS2."QCMDEXC"(...) is still a QCMDEXC call.
+ */
 const REGEX_CHECKS: ReadonlyArray<readonly [RegExp, string]> = [
-  ...ALL_DANGEROUS_OPERATIONS.map((operation) =>
+  ...IBM_I_DANGEROUS_OPERATIONS.map((operation) =>
     [new RegExp(`\\b${operation}\\b`, 'i'), `Dangerous operation detected: ${operation}`] as const),
   ...DANGEROUS_FUNCTIONS.map((func) =>
     [new RegExp(`\\b${func}\\s*\\(`, 'i'), `Dangerous function call detected: ${func}`] as const),
@@ -140,8 +162,14 @@ const REGEX_CHECKS: ReadonlyArray<readonly [RegExp, string]> = [
     [new RegExp(`\\b(?:\\w+\\.)?${prefix}\\w*\\s*\\(`, 'i'), `Dangerous function call detected: ${prefix}`] as const),
 ];
 
+/** First word of a statement, after leading whitespace and opening parentheses. */
+function firstWord(text: string): string {
+  return /^[\s(]*([A-Za-z_]\w*)?/.exec(text)?.[1]?.toUpperCase() ?? '';
+}
+
 /** The operation or function a violation names, for de-duplicating AST and regex findings. */
 function violationSubject(violation: string): string {
+  if (violation.startsWith('Multiple statements')) return 'MULTIPLE STATEMENTS';
   const colon = violation.lastIndexOf(': ');
   return (colon >= 0 ? violation.slice(colon + 2) : violation).toUpperCase();
 }
@@ -166,13 +194,16 @@ export class SqlSecurityValidator {
     query: string,
     config: SecurityConfig = {}
   ): SecurityValidationResult {
-    const { readOnly = true, maxQueryLength = 10000, forbiddenKeywords = [] } = config;
+    const { readOnly = true, maxQueryLength = getQueryMaxLength(), forbiddenKeywords = [] } = config;
 
     const violations: string[] = [];
 
     // 1. Check query length
     if (query.length > maxQueryLength) {
-      violations.push(`Query exceeds maximum length of ${maxQueryLength} characters`);
+      violations.push(
+        `Query exceeds maximum length of ${maxQueryLength} characters (QUERY_MAX_LENGTH). ` +
+          'Split the work into smaller queries, or join to a table instead of listing many values inline.'
+      );
       return { isValid: false, violations, validationMethod: 'regex' };
     }
 
@@ -181,7 +212,13 @@ export class SqlSecurityValidator {
     // so a string or a quoted name earlier in the statement cannot hide a later call.
     if (readOnly) {
       const astResult = this.validateQueryAST(query);
-      const regexResult = this.validateQueryRegex(normalizeForScan(query));
+      const scanned = normalizeForScan(query);
+      if (scanned.unterminated) {
+        // The scan cannot tell code from text after an unclosed string or comment
+        violations.push(`Query has an unterminated ${scanned.unterminated}`);
+        return { isValid: false, violations, validationMethod: 'regex' };
+      }
+      const regexResult = this.validateQueryRegex(scanned.text, normalizeForScan(query, 'mask').text);
       
       // Combine violations from both methods
       violations.push(...astResult.violations);
@@ -198,7 +235,7 @@ export class SqlSecurityValidator {
 
     // 3. Check for custom forbidden keywords on the same normalized text
     if (forbiddenKeywords.length > 0) {
-      const keywordViolations = this.checkForbiddenKeywords(normalizeForScan(query), forbiddenKeywords);
+      const keywordViolations = this.checkForbiddenKeywords(normalizeForScan(query).text, forbiddenKeywords);
       violations.push(...keywordViolations);
     }
 
@@ -265,7 +302,7 @@ export class SqlSecurityValidator {
   /**
    * Validate SQL query using regex patterns (fallback)
    */
-  private static validateQueryRegex(query: string): SecurityValidationResult {
+  private static validateQueryRegex(query: string, masked: string): SecurityValidationResult {
     const violations: string[] = [];
 
     // query is already normalized: literals and comments are gone, delimited names are unquoted
@@ -275,15 +312,26 @@ export class SqlSecurityValidator {
       }
     }
 
-    // Check for semicolon followed by dangerous operation (multi-statement)
-    if (/;\s*(DROP|DELETE|INSERT|UPDATE|CREATE|ALTER|TRUNCATE)/i.test(query)) {
-      violations.push('Multiple statements with dangerous operation detected');
+    // A delimited identifier is never a keyword, so "DELETE" FROM is a column, not a statement.
+    // The shapes run on text where each delimited identifier is replaced by a placeholder name.
+    for (const [pattern, operation] of DATA_CHANGE_SHAPES) {
+      if (pattern.test(masked)) {
+        violations.push(`Dangerous operation detected: ${operation}`);
+      }
     }
 
-    // Verify query starts with SELECT or WITH (for CTEs)
-    const trimmedUpper = query.trim().toUpperCase();
-    if (!trimmedUpper.startsWith('SELECT') && !trimmedUpper.startsWith('WITH')) {
-      violations.push('Query must start with SELECT or WITH');
+    // Anything after a semicolon other than whitespace is a second statement
+    const semicolon = query.indexOf(';');
+    if (semicolon >= 0 && query.slice(semicolon + 1).trim() !== '') {
+      const next = firstWord(query.slice(semicolon + 1));
+      violations.push(`Multiple statements detected${next ? `: a second statement starts with ${next}` : ''}`);
+    }
+
+    // Only queries: the statement must start with SELECT, WITH or VALUES, optionally inside parentheses
+    const first = firstWord(query);
+    if (!(QUERY_START_WORDS as readonly string[]).includes(first)) {
+      // "...: WORD" so the AST's report of the same statement type is not repeated
+      violations.push(`Query must start with SELECT, WITH or VALUES${first ? `, not: ${first}` : ''}`);
     }
 
     return {
@@ -360,13 +408,37 @@ export class SqlSecurityValidator {
   }
 }
 
+/** Characters that separate tokens for Db2 for i but that \s may not match. */
+const DB2_SEPARATOR = /[\p{Cc}\p{Z}\u0085]/u;
+
+/**
+ * Characters that end a -- comment. Db2 for i ends one at a line feed or NEL (U+0085).
+ * The scan also ends it at the other line breaks: reading too much as code is safe,
+ * reading code as comment is not.
+ */
+const COMMENT_LINE_END = /[\n\r\v\f\u0085\u2028\u2029]/;
+
+interface ScanText {
+  /** Statement text with literals and comments replaced by spaces. */
+  text: string;
+  /** Set when a string, delimited identifier or block comment is never closed. */
+  unterminated?: 'string' | 'identifier' | 'comment';
+}
+
 /**
  * Remove text that must not affect keyword detection:
  * string literals (including '' escapes), -- and block comments, and the quotes
  * around delimited identifiers. "QCMDEXC" becomes QCMDEXC. Replaced regions become
  * a space so adjacent tokens are not glued together.
+ *
+ * Block comments nest, as they do in Db2 for i: in /* /* *\/ ' *\/ the quote is
+ * still inside the comment and does not start a string.
+ *
+ * With identifiers set to 'mask', each delimited identifier becomes the placeholder
+ * QUOTED_NAME instead, for checks where a quoted name must not read as a keyword.
+ * Control and Unicode separator characters outside literals become a space.
  */
-function normalizeForScan(query: string): string {
+function normalizeForScan(query: string, identifiers: 'unquote' | 'mask' = 'unquote'): ScanText {
   let out = '';
   let i = 0;
 
@@ -376,21 +448,33 @@ function normalizeForScan(query: string): string {
 
     if (current === '-' && next === '-') {
       i += 2;
-      while (i < query.length && query[i] !== '\n') i++;
+      while (i < query.length && !COMMENT_LINE_END.test(query[i])) i++;
       out += ' ';
       continue;
     }
 
     if (current === '/' && next === '*') {
       i += 2;
-      while (i < query.length && !(query[i] === '*' && query[i + 1] === '/')) i++;
-      if (i < query.length) i += 2;
+      let depth = 1;
+      while (i < query.length && depth > 0) {
+        if (query[i] === '/' && query[i + 1] === '*') {
+          depth++;
+          i += 2;
+        } else if (query[i] === '*' && query[i + 1] === '/') {
+          depth--;
+          i += 2;
+        } else {
+          i++;
+        }
+      }
+      if (depth > 0) return { text: out, unterminated: 'comment' };
       out += ' ';
       continue;
     }
 
     if (current === "'") {
       i++;
+      let closed = false;
       while (i < query.length) {
         if (query[i] === "'" && query[i + 1] === "'") {
           i += 2;
@@ -398,10 +482,12 @@ function normalizeForScan(query: string): string {
         }
         if (query[i] === "'") {
           i++;
+          closed = true;
           break;
         }
         i++;
       }
+      if (!closed) return { text: out, unterminated: 'string' };
       out += ' ';
       continue;
     }
@@ -409,6 +495,7 @@ function normalizeForScan(query: string): string {
     if (current === '"') {
       i++;
       let ident = '';
+      let closed = false;
       while (i < query.length) {
         if (query[i] === '"' && query[i + 1] === '"') {
           ident += '"';
@@ -417,20 +504,25 @@ function normalizeForScan(query: string): string {
         }
         if (query[i] === '"') {
           i++;
+          closed = true;
           break;
         }
         ident += query[i];
         i++;
       }
-      out += ident;
+      if (!closed) return { text: out, unterminated: 'identifier' };
+      // Spaces around the placeholder, so INTO"T" still reads as INTO QUOTED_NAME
+      out += identifiers === 'mask' ? ' QUOTED_NAME ' : ident;
       continue;
     }
 
-    out += current;
+    // Db2 for i reads NEL (U+0085) and other control and separator characters as
+    // whitespace, while \s in the patterns does not match all of them
+    out += DB2_SEPARATOR.test(current) ? ' ' : current;
     i++;
   }
 
-  return out;
+  return { text: out };
 }
 
 /**

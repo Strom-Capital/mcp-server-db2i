@@ -161,14 +161,19 @@ Queries are parsed into an Abstract Syntax Tree (AST) to verify:
 
 ### Regex Validation
 
-Additional regex patterns block:
+A text scan then rejects:
 
-- Command execution attempts
-- System procedure calls
+- A statement that does not start with `SELECT`, `WITH` or `VALUES`, optionally inside parentheses. This covers `CALL`, `SET`, `LOCK TABLE`, `COMMIT` and every DDL statement
+- A second statement after a `;`. A single trailing `;` is fine
+- A data-change statement anywhere in the text, recognized by its shape: `INSERT INTO`, `DELETE FROM`, `MERGE INTO`, and `UPDATE name SET`. This also catches a data-change table reference such as `FINAL TABLE (INSERT INTO ...)`
+- Command execution: `QCMDEXC` and `SQL_EXECUTE_IMMEDIATE`
 - Dangerous functions, including schema-qualified calls. The check uses the unqualified name
 - IBM i services that send data off the system or write outside the database: HTTP services, IFS write services, spreadsheet generation, and email
+- A statement longer than `QUERY_MAX_LENGTH` characters (default `32768`)
 
-Before the keyword scan, string literals, comments, and the quotes around delimited identifiers are removed. A literal or a quoted name earlier in the statement cannot hide a later call. Words that appear only inside a literal or a comment are ignored.
+Before the scan, string literals and comments are removed, so words that appear only inside them are ignored. The scan follows Db2 for i rules: block comments nest, a `--` comment ends at a line feed or NEL (U+0085), and control and Unicode separator characters count as spaces. A statement with an unterminated string, delimited identifier or block comment is rejected. For the function checks, the quotes around delimited identifiers are removed too, so `QSYS2."QCMDEXC"(...)` is still a `QCMDEXC` call. For the data-change shapes, a delimited identifier counts as a name, never as a keyword.
+
+Write keywords are not matched as single words, because Db2 for i uses many of them for other things: `REPLACE()` is a string function, `FOR UPDATE OF` is a query clause, and columns are often named `START` or `LOAD`. The read-only connection described next and the [statement parse check](#statement-parse-check), which requires the statement type to be a query, block writes regardless of the words they use.
 
 The driver connection is a second layer. JT400 and the Mapepire server (which uses JT400 on the IBM i) use `access=read only` unless `DB2I_JDBC_OPTIONS` sets `access`; the ODBC driver uses `CONNTYPE=2` unless `DB2I_ODBC_OPTIONS` sets `CONNTYPE`. An explicit override is logged at startup.
 

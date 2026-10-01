@@ -2,7 +2,7 @@
  * Tests for SQL Security Validator
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   SqlSecurityValidator,
   isReadOnlyQuery,
@@ -385,6 +385,110 @@ describe('SqlSecurityValidator', () => {
         maxQueryLength: 5,
       });
       expect(result.isValid).toBe(false);
+    });
+
+    describe('QUERY_MAX_LENGTH', () => {
+      const saved = process.env.QUERY_MAX_LENGTH;
+      afterEach(() => {
+        if (saved === undefined) delete process.env.QUERY_MAX_LENGTH;
+        else process.env.QUERY_MAX_LENGTH = saved;
+      });
+
+      it('accepts statements up to 32768 characters by default', () => {
+        delete process.env.QUERY_MAX_LENGTH;
+        const sql = 'SELECT ORDERNO FROM MYLIB.ORDERS WHERE ' + 'ORDERNO = 1 OR '.repeat(2000) + 'ORDERNO = 2';
+        expect(sql.length).toBeGreaterThan(10000);
+        expect(sql.length).toBeLessThanOrEqual(32768);
+        expect(validateQuery(sql).isValid).toBe(true);
+      });
+
+      it('uses QUERY_MAX_LENGTH and suggests how to shorten the query', () => {
+        process.env.QUERY_MAX_LENGTH = '20';
+        const result = validateQuery('SELECT ORDERNO FROM MYLIB.ORDERS');
+        expect(result.isValid).toBe(false);
+        expect(result.violations[0]).toContain('maximum length of 20 characters (QUERY_MAX_LENGTH)');
+        expect(result.violations[0]).toContain('Split the work into smaller queries');
+      });
+
+      it('rejects a value outside 1 to 2097152', () => {
+        process.env.QUERY_MAX_LENGTH = '0';
+        expect(() => validateQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1')).toThrow('QUERY_MAX_LENGTH must be at least 1');
+      });
+    });
+  });
+
+  describe('ALLOW - Db2 for i functions and names that share a word with a statement', () => {
+    it.each([
+      ["REPLACE()", "SELECT REPLACE(ITEMNO, '-', '') FROM MYLIB.ORDERS"],
+      ['columns named START, STOP, LOAD and LOCK', 'SELECT START, STOP, LOAD, LOCK FROM MYLIB.ORDERS'],
+      ['a quoted column named DELETE', 'SELECT "DELETE" FROM MYLIB.ORDERS'],
+      ['FOR UPDATE OF', 'SELECT ORDERNO FROM MYLIB.ORDERS FOR UPDATE OF ITEMNO'],
+      ['GROUPING SETS', 'SELECT ITEMNO, SUM(QTY) FROM MYLIB.ORDERS GROUP BY GROUPING SETS ((ITEMNO), ())'],
+      ['VALUES', 'VALUES 1'],
+      ['a parenthesized query', '(SELECT ORDERNO FROM MYLIB.ORDERS) UNION (SELECT ORDERNO FROM MYLIB.ORDERHDR)'],
+      ['a trailing semicolon', 'SELECT ORDERNO FROM MYLIB.ORDERS;  '],
+    ])('allows %s', (_label, sql) => {
+      const result = validateQuery(sql);
+      expect(result.violations).toEqual([]);
+      expect(result.isValid).toBe(true);
+    });
+  });
+
+  describe('BLOCK - data-change table references with any separator', () => {
+    const separators = [' ', '\t', '\n', '\r\n', '\u000b', '\u000c', '\u0085', '\u00a0', '\u2028', '\u3000', '/**/', ' -- x\n'];
+    const forms = [
+      (s: string) => `SELECT * FROM FINAL${s}TABLE${s}(${s}INSERT${s}INTO${s}MYLIB.ORDERS${s}VALUES${s}(1))`,
+      (s: string) => `SELECT * FROM OLD${s}TABLE${s}(${s}DELETE${s}FROM${s}MYLIB.ORDERS)`,
+      (s: string) => `SELECT * FROM OLD${s}TABLE${s}(${s}DELETE${s}MYLIB.ORDERS)`,
+      (s: string) => `SELECT * FROM OLD${s}TABLE${s}(${s}UPDATE${s}MYLIB.ORDERS${s}SET${s}ITEMNO = 1)`,
+      (s: string) => `SELECT * FROM FINAL${s}TABLE${s}(${s}INSERT${s}INTO"MYLIB"."ORDERS"${s}VALUES${s}(1))`,
+    ];
+    it.each(separators.flatMap((sep) => forms.map((form) => [JSON.stringify(sep), form(sep)] as const)))(
+      'blocks with separator %s: %s',
+      (_sep, sql) => {
+        expect(validateQuery(sql).isValid).toBe(false);
+      }
+    );
+  });
+
+  describe('BLOCK - comments and strings that end differently in Db2 for i', () => {
+    it.each([
+      ['a -- comment ended by NEL', 'SELECT * FROM --x\u0085FINAL TABLE (INSERT INTO MYLIB.ORDERS VALUES (1))'],
+      ['a -- comment ended by CR', 'SELECT * FROM --x\rFINAL TABLE (INSERT INTO MYLIB.ORDERS VALUES (1))'],
+      ['a nested block comment hiding a quote', "SELECT * FROM /* /* */ ' */ FINAL TABLE (INSERT INTO MYLIB.ORDERS VALUES (1)) -- '"],
+      ['an unterminated string', "SELECT 'x FROM SYSIBM.SYSDUMMY1"],
+      ['an unterminated block comment', 'SELECT 1 FROM SYSIBM.SYSDUMMY1 /* x'],
+      ['an unterminated delimited identifier', 'SELECT "X FROM SYSIBM.SYSDUMMY1'],
+    ])('blocks %s', (_label, sql) => {
+      expect(validateQuery(sql).isValid).toBe(false);
+    });
+
+    it('allows nested block comments that close', () => {
+      expect(validateQuery('SELECT ORDERNO /* a /* b */ c */ FROM MYLIB.ORDERS').isValid).toBe(true);
+    });
+  });
+
+  describe('BLOCK - writes recognized by their shape', () => {
+    it.each([
+      ['FINAL TABLE (INSERT INTO ...)', 'SELECT * FROM FINAL TABLE (INSERT INTO MYLIB.ORDERS (ORDERNO) VALUES (1))', 'INSERT'],
+      ['OLD TABLE (UPDATE ... SET)', "SELECT * FROM OLD TABLE (UPDATE MYLIB.ORDERS O SET ITEMNO = 'X')", 'UPDATE'],
+      ['OLD TABLE (DELETE FROM ...) in a CTE', 'WITH D AS (SELECT * FROM OLD TABLE (DELETE FROM MYLIB.ORDERS)) SELECT 1 FROM D', 'DELETE'],
+      ['a write inside parentheses', '(DELETE FROM MYLIB.ORDERS)', 'DELETE'],
+      ['NEL between the keywords', 'SELECT * FROM FINAL TABLE\u0085(INSERT\u0085INTO MYLIB.ORDERS VALUES (1))', 'INSERT'],
+      ['a quoted table right after INTO', 'SELECT * FROM FINAL TABLE (INSERT INTO"MYLIB"."ORDERS" VALUES (1))', 'INSERT'],
+      ['a quoted table right after UPDATE', 'SELECT * FROM OLD TABLE (UPDATE"MYLIB"."ORDERS"SET ITEMNO = 1)', 'UPDATE'],
+      ['no-break space and ideographic space', 'SELECT * FROM FINAL TABLE\u00a0(INSERT\u3000INTO MYLIB.ORDERS VALUES (1))', 'INSERT'],
+      ['a tab and a line separator', 'SELECT * FROM OLD TABLE\t(DELETE\u2028FROM MYLIB.ORDERS)', 'DELETE'],
+      ['OLD TABLE (DELETE without FROM)', 'SELECT * FROM OLD TABLE (DELETE MYLIB.ORDERS)', 'data-change table reference'],
+      ['OLD TABLE (UPDATE with a column list alias)', "SELECT * FROM OLD TABLE(UPDATE MYLIB.ORDERS O (A) SET A = 'X')", 'data-change table reference'],
+      ['MERGE', 'MERGE INTO MYLIB.ORDERS T USING MYLIB.ORDERHDR S ON T.ORDERNO = S.ORDERNO WHEN MATCHED THEN DELETE', 'MERGE'],
+      ['SET', 'SET CURRENT SCHEMA = OUTSIDELIB', 'SET'],
+      ['LOCK TABLE', 'LOCK TABLE MYLIB.ORDERS IN EXCLUSIVE MODE', 'LOCK'],
+      ['a second SELECT', 'SELECT 1 FROM SYSIBM.SYSDUMMY1; SELECT 2 FROM SYSIBM.SYSDUMMY1', 'Multiple statements'],
+    ])('blocks %s', (_label, sql, named) => {
+      const result = validateQuery(sql);
+      expect(result.isValid).toBe(false);
+      expect(result.violations.some((v) => v.includes(named))).toBe(true);
     });
   });
 
