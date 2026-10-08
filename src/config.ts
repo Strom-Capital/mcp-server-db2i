@@ -303,6 +303,8 @@ export interface MapepireSshSettings extends MapepireCommonSettings {
   hostKeyCheck: HostKeyCheck;
   /** Private key file for SSH login instead of the password. */
   privateKeyFile?: string;
+  /** Path to ssh-agent socket, or socket path from SSH_AUTH_SOCK when agent=true. */
+  agent?: string;
   /** Java binary on the IBM i. Unset means the mapepire-js default. */
   javaPath?: string;
   /** Server JAR already on the IBM i. Unset means the bundled JAR is installed privately. */
@@ -323,6 +325,7 @@ const MAPEPIRE_OPTION_KEYS = [
   'knownHostsFile',
   'insecureHostKey',
   'privateKeyFile',
+  'agent',
   'javaPath',
   'serverPath',
 ] as const;
@@ -413,6 +416,21 @@ export function resolveMapepireSettings(
     throw new Error(`${label}: set either hostKey or insecureHostKey=true, not both`);
   }
 
+  const rawAgent = mapepireOption(options, 'agent');
+  let agent: string | undefined;
+  if (rawAgent !== undefined) {
+    if (rawAgent.toLowerCase() === 'true' || rawAgent === '1') {
+      agent = process.env.SSH_AUTH_SOCK;
+      if (!agent) {
+        throw new Error(`${label}: agent=true requested, but SSH_AUTH_SOCK is not set in the environment`);
+      }
+    } else if (rawAgent.toLowerCase() === 'false' || rawAgent === '0') {
+      agent = undefined;
+    } else {
+      agent = rawAgent;
+    }
+  }
+
   return {
     transport,
     startupTimeout: mapepireInt(options, 'startupTimeout', 60_000, 1_000, label),
@@ -424,30 +442,38 @@ export function resolveMapepireSettings(
     knownHostsFile: mapepireOption(options, 'knownHostsFile') ?? defaultKnownHostsFile(),
     hostKeyCheck: insecureHostKey ? 'off' : hostKey !== undefined ? 'pinned' : 'known_hosts',
     privateKeyFile: mapepireOption(options, 'privateKeyFile'),
+    agent,
     javaPath: mapepireOption(options, 'javaPath'),
     serverPath: mapepireOption(options, 'serverPath'),
   };
 }
 
 /**
- * True when the mapepire driver logs in over SSH with a private key, so no
+ * True when the mapepire driver logs in over SSH with a private key or agent, so no
  * password is needed.
  */
 export function usesSshKeyLogin(
   driver: DbDriverName,
   mapepireOptions: Record<string, string> | undefined
 ): boolean {
-  return driver === 'mapepire' && mapepireOption(mapepireOptions ?? {}, 'privateKeyFile') !== undefined;
+  if (driver !== 'mapepire') {
+    return false;
+  }
+  const opts = mapepireOptions ?? {};
+  return mapepireOption(opts, 'privateKeyFile') !== undefined || mapepireOption(opts, 'agent') !== undefined;
 }
 
 /**
- * Mapepire options without `privateKeyFile`, so SSH logs in with the
+ * Mapepire options without `privateKeyFile` or `agent`, so SSH logs in with the
  * configured password. An HTTP /auth login checks the caller's password by
  * connecting, and the server's own key would let any password through.
  */
 export function withoutSshKeyLogin(mapepireOptions: Record<string, string> | undefined): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(mapepireOptions ?? {}).filter(([key]) => key.toLowerCase() !== 'privatekeyfile')
+    Object.entries(mapepireOptions ?? {}).filter(([key]) => {
+      const lower = key.toLowerCase();
+      return lower !== 'privatekeyfile' && lower !== 'agent';
+    })
   );
 }
 

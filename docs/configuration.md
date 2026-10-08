@@ -35,7 +35,7 @@ DB2I_PASSWORD=your-password
 |----------|----------|---------|-------------|
 | `DB2I_HOSTNAME` | Yes | - | IBM i hostname or IP address |
 | `DB2I_USERNAME` | Yes* | - | IBM i user profile |
-| `DB2I_PASSWORD` | Yes* | - | User password. Not needed with `DB2I_DRIVER=mapepire` and `privateKeyFile` in `DB2I_MAPEPIRE_OPTIONS` |
+| `DB2I_PASSWORD` | Yes* | - | User password. Not needed with `DB2I_DRIVER=mapepire` and `privateKeyFile` or `agent` in `DB2I_MAPEPIRE_OPTIONS` |
 | `DB2I_USERNAME_FILE` | No | - | Path to file containing username (overrides `DB2I_USERNAME`) |
 | `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
 | `DB2I_PORT` | No | `446` | Not used. The `odbc` and `jt400` drivers connect to the IBM i host servers (449 port mapper, 8476 sign-on and 8471 database, or 9476 and 9471 with TLS), not the DRDA port. `mapepire` uses SSH (`sshPort` in `DB2I_MAPEPIRE_OPTIONS`) |
@@ -388,6 +388,7 @@ If neither matches, the connection is refused and the error shows the key's fing
 | `knownHostsFile` | `~/.ssh/known_hosts` | known_hosts file to check the host key against when `hostKey` is not set |
 | `insecureHostKey` | `false` | `true` skips the host key check |
 | `privateKeyFile` | - | Private key for SSH login. When set, SSH does not use the password, and `DB2I_PASSWORD` can be left unset. The key must not have a passphrase. HTTP `/auth` logins ignore it and log in with the caller's password |
+| `agent` | - | SSH agent for authentication. On Linux/macOS: `true` or `1` (reads `SSH_AUTH_SOCK`), or a custom socket path. On Windows: `pageant` for PuTTY Pageant, or `\\.\pipe\openssh-ssh-agent` for Windows OpenSSH Authentication Agent. When set, `DB2I_PASSWORD` can be left unset. HTTP `/auth` logins ignore it and log in with the caller's password |
 | `javaPath` | mapepire-js default (`jdk80`) | Java binary on the IBM i |
 | `serverPath` | - | Path of an installed Mapepire server JAR. When set, the bundled JAR is not uploaded |
 | `maxJobs` | `2` | Most Mapepire jobs (JVMs) one pool runs at a time |
@@ -402,6 +403,18 @@ DB2I_USERNAME=MCPREAD
 DB2I_PASSWORD=your-password
 DB2I_MAPEPIRE_OPTIONS=hostKey=SHA256:abc...xyz;maxJobs=2
 ```
+
+> [!NOTE]
+> **SSH Agent on Windows**
+>
+> On Windows, two different SSH agents can be used:
+>
+> * **PuTTY Pageant**: Set `agent=pageant` in `DB2I_MAPEPIRE_OPTIONS`. Make sure Pageant is running and your private key (`.ppk`) is loaded.
+> * **Windows OpenSSH Authentication Agent (`ssh-agent` service)**: Unlike Unix, Windows does not define `SSH_AUTH_SOCK` by default. Either:
+>   - Set `agent=\\.\pipe\openssh-ssh-agent` in `DB2I_MAPEPIRE_OPTIONS`, or
+>   - Set `SSH_AUTH_SOCK=\\.\pipe\openssh-ssh-agent` in your `.env` file and use `agent=true`.
+>
+> *Note: Using `agent=true` on Windows without setting `SSH_AUTH_SOCK` in the environment will cause the server to fail at startup.*
 
 To remove the private install from the IBM i, delete `$HOME/.mapepire` in the user's home directory.
 
@@ -492,7 +505,7 @@ profiles:
 | `mapepireOptions` | No | - | Like `DB2I_MAPEPIRE_OPTIONS`, for this system |
 | `queryTimeout` | No | `QUERY_TIMEOUT` | Seconds a statement on this system may run before it is cancelled. `0` turns the limit off for this system |
 
-*Set `username` or `usernameFile`, and `password` or `passwordFile`. A `mapepire` profile with `privateKeyFile` in `mapepireOptions` needs no password. A path may itself be a `"${ENV_VAR}"` reference. Quote every reference: inside a `{ }` map YAML reads a bare `${...}` as another map.
+*Set `username` or `usernameFile`, and `password` or `passwordFile`. A `mapepire` profile with `privateKeyFile` or `agent` in `mapepireOptions` needs no password. A path may itself be a `"${ENV_VAR}"` reference. Quote every reference: inside a `{ }` map YAML reads a bare `${...}` as another map.
 
 How calls pick a system:
 

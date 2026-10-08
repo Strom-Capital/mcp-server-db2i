@@ -67,7 +67,7 @@
         },
         {
           "name": "DB2I_MAPEPIRE_OPTIONS",
-          "description": "SSH and Mapepire settings, semicolon-separated, e.g. hostKey=SHA256:...;maxJobs=2 (mapepire driver)",
+          "description": "SSH and Mapepire settings, semicolon-separated, e.g. hostKey=SHA256:...;agent=true;maxJobs=2 (mapepire driver)",
           "isRequired": false
         }
       ]

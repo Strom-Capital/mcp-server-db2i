@@ -711,8 +711,25 @@ describe('Config Module', () => {
       expect(() => resolveMapepireSettings({ hostKey: 'MD5:aa:bb' })).toThrow('hostKey must be an OpenSSH SHA256 fingerprint');
     });
 
-    it('should drop privateKeyFile in any case for a password login', () => {
-      expect(withoutSshKeyLogin({ PRIVATEKEYFILE: '/keys/id', maxJobs: '3' })).toEqual({ maxJobs: '3' });
+    it('should resolve agent option when configured', () => {
+      const origSock = process.env.SSH_AUTH_SOCK;
+      process.env.SSH_AUTH_SOCK = '/tmp/test-agent.sock';
+      try {
+        expect(resolveMapepireSettings({ agent: 'true' }).agent).toBe('/tmp/test-agent.sock');
+        expect(resolveMapepireSettings({ agent: '1' }).agent).toBe('/tmp/test-agent.sock');
+        expect(resolveMapepireSettings({ agent: 'false' }).agent).toBeUndefined();
+        expect(resolveMapepireSettings({ agent: '/custom/agent.sock' }).agent).toBe('/custom/agent.sock');
+      } finally {
+        if (origSock !== undefined) {
+          process.env.SSH_AUTH_SOCK = origSock;
+        } else {
+          delete process.env.SSH_AUTH_SOCK;
+        }
+      }
+    });
+
+    it('should drop privateKeyFile and agent in any case for a password login', () => {
+      expect(withoutSshKeyLogin({ PRIVATEKEYFILE: '/keys/id', agent: 'true', maxJobs: '3' })).toEqual({ maxJobs: '3' });
       expect(withoutSshKeyLogin(undefined)).toEqual({});
     });
 
@@ -781,6 +798,13 @@ describe('Config Module', () => {
 
       process.env.DB2I_DRIVER = 'odbc';
       expect(() => loadConfig()).toThrow('DB2I_PASSWORD environment variable is required');
+
+      process.env.DB2I_DRIVER = 'mapepire';
+      process.env.DB2I_MAPEPIRE_OPTIONS = 'agent=true';
+      const configWithAgent = loadConfig();
+      expect(configWithAgent.password).toBe('');
+      expect(configWithAgent.mapepireOptions).toEqual({ agent: 'true' });
+
       delete process.env.DB2I_DRIVER;
       delete process.env.DB2I_MAPEPIRE_OPTIONS;
     });
