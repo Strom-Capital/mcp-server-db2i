@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.6.0...v3.6.1) (2026-10-09)
+
+
+### Dependencies
+
+* bump the MCP SDK to 2.3.1 and fix the Dependabot alerts ([#281](https://github.com/Strom-Capital/mcp-server-db2i/issues/281)) ([e9a8a2a](https://github.com/Strom-Capital/mcp-server-db2i/commit/e9a8a2a0c2447ecc8b11fe752aa1aee80c1e7878))
+
 ## [3.6.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.5.0...v3.6.0) (2026-10-09)
 
 
