@@ -52,8 +52,8 @@
     "url": "https://github.com/sponsors/Strom-Capital"
   },
   "dependencies": {
-    "@modelcontextprotocol/node": "^2.1.0",
-    "@modelcontextprotocol/server": "^2.1.0",
+    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "fflate": "^0.8.3",
@@ -67,18 +67,18 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@ibm/mapepire-js": "^1.0.0",
-    "@modelcontextprotocol/client": "^2.1.0",
+    "@modelcontextprotocol/client": "^2.3.1",
     "@types/express": "^5.0.6",
     "@types/node": "^22.20.4",
     "@types/ssh2": "^1.15.6",
-    "@vitest/coverage-v8": "^5.0.1",
+    "@vitest/coverage-v8": "^5.0.3",
     "eslint": "^10.11.0",
     "node-jt400": "^7.0.1",
     "ssh2": "^1.17.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   },
   "engines": {
     "node": ">=22"
