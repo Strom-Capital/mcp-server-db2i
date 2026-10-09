@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.5.0...v3.6.0) (2026-10-09)
+
+
+### Features
+
+* **mapepire:** add SSH agent authentication support via agent option ([#270](https://github.com/Strom-Capital/mcp-server-db2i/issues/270)) ([9f8b184](https://github.com/Strom-Capital/mcp-server-db2i/commit/9f8b184868fa9727ded81953e6b9ccc5ab3dedb1))
+
 ## [3.5.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.4.0...v3.5.0) (2026-10-01)
 
 

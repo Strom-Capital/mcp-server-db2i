@@ -31,6 +31,7 @@ import {
   serializeOdbcConnectionString,
   assertExtendedMetadataAllowsMasking,
   resolveMapepireSettings,
+  usesSshKeyLogin,
   withoutSshKeyLogin,
   buildMapepireJdbcOptions,
   defaultKnownHostsFile,
@@ -661,6 +662,7 @@ describe('Config Module', () => {
         knownHostsFile: defaultKnownHostsFile(),
         hostKeyCheck: 'known_hosts',
         privateKeyFile: undefined,
+        agent: undefined,
         javaPath: undefined,
         serverPath: undefined,
       });
@@ -711,8 +713,75 @@ describe('Config Module', () => {
       expect(() => resolveMapepireSettings({ hostKey: 'MD5:aa:bb' })).toThrow('hostKey must be an OpenSSH SHA256 fingerprint');
     });
 
-    it('should drop privateKeyFile in any case for a password login', () => {
-      expect(withoutSshKeyLogin({ PRIVATEKEYFILE: '/keys/id', maxJobs: '3' })).toEqual({ maxJobs: '3' });
+    describe('agent', () => {
+      const origSock = process.env.SSH_AUTH_SOCK;
+
+      afterEach(() => {
+        if (origSock !== undefined) {
+          process.env.SSH_AUTH_SOCK = origSock;
+        } else {
+          delete process.env.SSH_AUTH_SOCK;
+        }
+      });
+
+      it('should read the agent socket from SSH_AUTH_SOCK for agent=true', () => {
+        process.env.SSH_AUTH_SOCK = '/tmp/test-agent.sock';
+        expect(resolveMapepireSettings({ agent: 'true' }).agent).toBe('/tmp/test-agent.sock');
+        expect(resolveMapepireSettings({ AGENT: 'TRUE' }).agent).toBe('/tmp/test-agent.sock');
+        expect(resolveMapepireSettings({ agent: 'false' }).agent).toBeUndefined();
+      });
+
+      it('should fail at startup when agent=true has no SSH_AUTH_SOCK', () => {
+        delete process.env.SSH_AUTH_SOCK;
+        expect(() => resolveMapepireSettings({ agent: 'true' })).toThrow(
+          'DB2I_MAPEPIRE_OPTIONS: agent=true needs SSH_AUTH_SOCK in the environment'
+        );
+        process.env.SSH_AUTH_SOCK = '  ';
+        expect(() => resolveMapepireSettings({ agent: 'true' }, 'Profile prod mapepireOptions')).toThrow(
+          'Profile prod mapepireOptions: agent=true needs SSH_AUTH_SOCK'
+        );
+      });
+
+      it('should accept pageant, a socket path and a Windows named pipe as given', () => {
+        expect(resolveMapepireSettings({ agent: 'Pageant' }).agent).toBe('pageant');
+        expect(resolveMapepireSettings({ agent: '/custom/agent.sock' }).agent).toBe('/custom/agent.sock');
+        expect(resolveMapepireSettings({ agent: '\\\\.\\pipe\\openssh-ssh-agent' }).agent).toBe(
+          '\\\\.\\pipe\\openssh-ssh-agent'
+        );
+        expect(resolveMapepireSettings({ agent: 'C:\\Users\\me\\agent.sock' }).agent).toBe('C:\\Users\\me\\agent.sock');
+      });
+
+      it('should reject a value that is not a known agent or an absolute path', () => {
+        for (const agent of ['yes', '1', 'on', 'agent.sock', '~/.ssh/agent.sock']) {
+          expect(() => resolveMapepireSettings({ agent })).toThrow(
+            `agent must be true, false, pageant or an absolute socket path, got "${agent}"`
+          );
+        }
+      });
+
+      it('should reject agent together with privateKeyFile', () => {
+        expect(() => resolveMapepireSettings({ agent: 'pageant', privateKeyFile: '/keys/id' })).toThrow(
+          'set either privateKeyFile or agent, not both'
+        );
+        expect(resolveMapepireSettings({ agent: 'false', privateKeyFile: '/keys/id' })).toMatchObject({
+          agent: undefined,
+          privateKeyFile: '/keys/id',
+        });
+      });
+    });
+
+    it('should need no password only for a real key or agent login', () => {
+      expect(usesSshKeyLogin('mapepire', { privateKeyFile: '/keys/id' })).toBe(true);
+      expect(usesSshKeyLogin('mapepire', { agent: 'true' })).toBe(true);
+      expect(usesSshKeyLogin('mapepire', { AGENT: 'pageant' })).toBe(true);
+      expect(usesSshKeyLogin('mapepire', { agent: 'false' })).toBe(false);
+      expect(usesSshKeyLogin('mapepire', { agent: 'FALSE' })).toBe(false);
+      expect(usesSshKeyLogin('mapepire', {})).toBe(false);
+      expect(usesSshKeyLogin('odbc', { agent: 'true' })).toBe(false);
+    });
+
+    it('should drop privateKeyFile and agent in any case for a password login', () => {
+      expect(withoutSshKeyLogin({ PRIVATEKEYFILE: '/keys/id', Agent: 'true', maxJobs: '3' })).toEqual({ maxJobs: '3' });
       expect(withoutSshKeyLogin(undefined)).toEqual({});
     });
 
@@ -781,6 +850,16 @@ describe('Config Module', () => {
 
       process.env.DB2I_DRIVER = 'odbc';
       expect(() => loadConfig()).toThrow('DB2I_PASSWORD environment variable is required');
+
+      process.env.DB2I_DRIVER = 'mapepire';
+      process.env.DB2I_MAPEPIRE_OPTIONS = 'agent=true';
+      const configWithAgent = loadConfig();
+      expect(configWithAgent.password).toBe('');
+      expect(configWithAgent.mapepireOptions).toEqual({ agent: 'true' });
+
+      process.env.DB2I_MAPEPIRE_OPTIONS = 'agent=false';
+      expect(() => loadConfig()).toThrow('DB2I_PASSWORD environment variable is required');
+
       delete process.env.DB2I_DRIVER;
       delete process.env.DB2I_MAPEPIRE_OPTIONS;
     });

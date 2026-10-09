@@ -597,7 +597,9 @@ export function createSshJobFactory(
     if (algorithms) {
       connectConfig.algorithms = { serverHostKey: algorithms as never };
     }
-    if (settings.privateKeyFile) {
+    if (settings.agent) {
+      connectConfig.agent = settings.agent;
+    } else if (settings.privateKeyFile) {
       connectConfig.privateKey = readFileSync(settings.privateKeyFile);
     } else {
       connectConfig.password = config.password;

@@ -8,12 +8,12 @@
     "source": "github"
   },
   "websiteUrl": "https://db2i-mcp.com",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-server-db2i",
-      "version": "3.5.0",
+      "version": "3.6.0",
       "transport": {
         "type": "stdio"
       },
@@ -67,7 +67,7 @@
         },
         {
           "name": "DB2I_MAPEPIRE_OPTIONS",
-          "description": "SSH and Mapepire settings, semicolon-separated, e.g. hostKey=SHA256:...;maxJobs=2 (mapepire driver)",
+          "description": "SSH and Mapepire settings, semicolon-separated, e.g. hostKey=SHA256:...;agent=true;maxJobs=2 (mapepire driver)",
           "isRequired": false
         }
       ]
