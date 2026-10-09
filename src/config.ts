@@ -303,6 +303,11 @@ export interface MapepireSshSettings extends MapepireCommonSettings {
   hostKeyCheck: HostKeyCheck;
   /** Private key file for SSH login instead of the password. */
   privateKeyFile?: string;
+  /**
+   * SSH agent for the login, passed to ssh2 as is: the agent socket path
+   * (from SSH_AUTH_SOCK when `agent=true`), a Windows named pipe, or `pageant`.
+   */
+  agent?: string;
   /** Java binary on the IBM i. Unset means the mapepire-js default. */
   javaPath?: string;
   /** Server JAR already on the IBM i. Unset means the bundled JAR is installed privately. */
@@ -323,6 +328,7 @@ const MAPEPIRE_OPTION_KEYS = [
   'knownHostsFile',
   'insecureHostKey',
   'privateKeyFile',
+  'agent',
   'javaPath',
   'serverPath',
 ] as const;
@@ -413,6 +419,12 @@ export function resolveMapepireSettings(
     throw new Error(`${label}: set either hostKey or insecureHostKey=true, not both`);
   }
 
+  const privateKeyFile = mapepireOption(options, 'privateKeyFile');
+  const agent = mapepireAgent(options, label);
+  if (privateKeyFile !== undefined && agent !== undefined) {
+    throw new Error(`${label}: set either privateKeyFile or agent, not both`);
+  }
+
   return {
     transport,
     startupTimeout: mapepireInt(options, 'startupTimeout', 60_000, 1_000, label),
@@ -423,31 +435,75 @@ export function resolveMapepireSettings(
     hostKey: hostKey?.replace(/=$/, ''),
     knownHostsFile: mapepireOption(options, 'knownHostsFile') ?? defaultKnownHostsFile(),
     hostKeyCheck: insecureHostKey ? 'off' : hostKey !== undefined ? 'pinned' : 'known_hosts',
-    privateKeyFile: mapepireOption(options, 'privateKeyFile'),
+    privateKeyFile,
+    agent,
     javaPath: mapepireOption(options, 'javaPath'),
     serverPath: mapepireOption(options, 'serverPath'),
   };
 }
 
+/** Mapepire options that make SSH log in with a key instead of the password. */
+const SSH_KEY_LOGIN_OPTIONS = ['privateKeyFile', 'agent'] as const;
+
 /**
- * True when the mapepire driver logs in over SSH with a private key, so no
- * password is needed.
+ * The SSH agent the `agent` option asks for. `true` reads SSH_AUTH_SOCK,
+ * `false` means none, `pageant` is PuTTY's agent on Windows, and anything
+ * else must be an absolute socket path or a Windows named pipe, so a typo
+ * fails at startup instead of on the first query.
+ */
+function mapepireAgent(options: Record<string, string>, label: string): string | undefined {
+  const raw = mapepireOption(options, 'agent');
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = raw.toLowerCase();
+  if (value === 'false') {
+    return undefined;
+  }
+  if (value === 'true') {
+    const socket = process.env.SSH_AUTH_SOCK?.trim();
+    if (!socket) {
+      throw new Error(
+        `${label}: agent=true needs SSH_AUTH_SOCK in the environment. Start ssh-agent, or set agent to the socket path`
+      );
+    }
+    return socket;
+  }
+  if (value === 'pageant') {
+    return 'pageant';
+  }
+  if (/^(\/|[A-Za-z]:[\\/]|\\\\[.?]\\pipe\\)/.test(raw)) {
+    return raw;
+  }
+  throw new Error(`${label}: agent must be true, false, pageant or an absolute socket path, got "${raw}"`);
+}
+
+/**
+ * True when the mapepire driver logs in over SSH with a private key or an
+ * agent, so no password is needed. Does not resolve the agent socket, so a
+ * missing SSH_AUTH_SOCK is reported by resolveMapepireSettings with its label.
  */
 export function usesSshKeyLogin(
   driver: DbDriverName,
   mapepireOptions: Record<string, string> | undefined
 ): boolean {
-  return driver === 'mapepire' && mapepireOption(mapepireOptions ?? {}, 'privateKeyFile') !== undefined;
+  if (driver !== 'mapepire') {
+    return false;
+  }
+  const options = mapepireOptions ?? {};
+  const agent = mapepireOption(options, 'agent')?.toLowerCase();
+  return mapepireOption(options, 'privateKeyFile') !== undefined || (agent !== undefined && agent !== 'false');
 }
 
 /**
- * Mapepire options without `privateKeyFile`, so SSH logs in with the
+ * Mapepire options without `privateKeyFile` or `agent`, so SSH logs in with the
  * configured password. An HTTP /auth login checks the caller's password by
- * connecting, and the server's own key would let any password through.
+ * connecting, and the server's own key or agent would let any password through.
  */
 export function withoutSshKeyLogin(mapepireOptions: Record<string, string> | undefined): Record<string, string> {
+  const dropped = new Set<string>(SSH_KEY_LOGIN_OPTIONS.map((key) => key.toLowerCase()));
   return Object.fromEntries(
-    Object.entries(mapepireOptions ?? {}).filter(([key]) => key.toLowerCase() !== 'privatekeyfile')
+    Object.entries(mapepireOptions ?? {}).filter(([key]) => !dropped.has(key.toLowerCase()))
   );
 }
 

@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-const started = vi.hoisted(() => ({ jobs: 0 }));
+const started = vi.hoisted(() => ({ jobs: 0, connects: [] as Record<string, unknown>[] }));
 
 vi.mock('@ibm/mapepire-js', () => ({
   default: {
@@ -34,7 +34,8 @@ vi.mock('ssh2', async () => {
     end() {
       setImmediate(() => this.emit('close'));
     }
-    connect() {
+    connect(config: Record<string, unknown>) {
+      started.connects.push(config);
       setImmediate(() => this.emit('ready'));
       return this;
     }
@@ -42,26 +43,40 @@ vi.mock('ssh2', async () => {
   return { default: { Client } };
 });
 
+const config = {
+  hostname: 'ibmi.example.com',
+  port: 446,
+  username: 'TESTUSER',
+  password: 'secret',
+  database: '*LOCAL',
+  schema: '',
+  driver: 'mapepire' as const,
+  jdbcOptions: {},
+  odbcOptions: {},
+  mapepireOptions: { insecureHostKey: 'true' },
+};
+
 describe('mapepire driver loading', () => {
   it('uses the default export when named exports are missing', async () => {
     const { mapepireDriver } = await import('../../src/db/drivers/mapepire.js');
+    const pool = await mapepireDriver.createPool(config, { readOnly: true });
+    await expect(pool.query('SELECT 1 AS N FROM SYSIBM.SYSDUMMY1', [])).resolves.toEqual([{ N: 1 }]);
+    expect(started.jobs).toBe(1);
+    expect(started.connects.at(-1)).toMatchObject({ username: 'TESTUSER', password: 'secret' });
+    expect(started.connects.at(-1)).not.toHaveProperty('agent');
+    await pool.close();
+  });
+
+  it('logs in over SSH with the agent instead of the password', async () => {
+    const { mapepireDriver } = await import('../../src/db/drivers/mapepire.js');
     const pool = await mapepireDriver.createPool(
-      {
-        hostname: 'ibmi.example.com',
-        port: 446,
-        username: 'TESTUSER',
-        password: 'secret',
-        database: '*LOCAL',
-        schema: '',
-        driver: 'mapepire',
-        jdbcOptions: {},
-        odbcOptions: {},
-        mapepireOptions: { insecureHostKey: 'true' },
-      },
+      { ...config, mapepireOptions: { ...config.mapepireOptions, agent: '/tmp/agent.sock' } },
       { readOnly: true }
     );
     await expect(pool.query('SELECT 1 AS N FROM SYSIBM.SYSDUMMY1', [])).resolves.toEqual([{ N: 1 }]);
-    expect(started.jobs).toBe(1);
+    expect(started.connects.at(-1)).toMatchObject({ username: 'TESTUSER', agent: '/tmp/agent.sock' });
+    expect(started.connects.at(-1)).not.toHaveProperty('password');
+    expect(started.connects.at(-1)).not.toHaveProperty('privateKey');
     await pool.close();
   });
 });

@@ -35,7 +35,7 @@ DB2I_PASSWORD=your-password
 |----------|----------|---------|-------------|
 | `DB2I_HOSTNAME` | Yes | - | IBM i hostname or IP address |
 | `DB2I_USERNAME` | Yes* | - | IBM i user profile |
-| `DB2I_PASSWORD` | Yes* | - | User password. Not needed with `DB2I_DRIVER=mapepire` and `privateKeyFile` in `DB2I_MAPEPIRE_OPTIONS` |
+| `DB2I_PASSWORD` | Yes* | - | User password. Not needed with `DB2I_DRIVER=mapepire` and `privateKeyFile` or `agent` in `DB2I_MAPEPIRE_OPTIONS` |
 | `DB2I_USERNAME_FILE` | No | - | Path to file containing username (overrides `DB2I_USERNAME`) |
 | `DB2I_PASSWORD_FILE` | No | - | Path to file containing password (overrides `DB2I_PASSWORD`) |
 | `DB2I_PORT` | No | `446` | Not used. The `odbc` and `jt400` drivers connect to the IBM i host servers (449 port mapper, 8476 sign-on and 8471 database, or 9476 and 9471 with TLS), not the DRDA port. `mapepire` uses SSH (`sshPort` in `DB2I_MAPEPIRE_OPTIONS`) |
@@ -388,6 +388,7 @@ If neither matches, the connection is refused and the error shows the key's fing
 | `knownHostsFile` | `~/.ssh/known_hosts` | known_hosts file to check the host key against when `hostKey` is not set |
 | `insecureHostKey` | `false` | `true` skips the host key check |
 | `privateKeyFile` | - | Private key for SSH login. When set, SSH does not use the password, and `DB2I_PASSWORD` can be left unset. The key must not have a passphrase. HTTP `/auth` logins ignore it and log in with the caller's password |
+| `agent` | - | SSH agent for the login, so the key can have a passphrase. `true` reads the socket path from `SSH_AUTH_SOCK`, or give the absolute socket path. On Windows: `pageant` for PuTTY Pageant, or `\\.\pipe\openssh-ssh-agent` for the Windows OpenSSH Authentication Agent. When set, `DB2I_PASSWORD` can be left unset. Not together with `privateKeyFile`. HTTP `/auth` logins ignore it and log in with the caller's password |
 | `javaPath` | mapepire-js default (`jdk80`) | Java binary on the IBM i |
 | `serverPath` | - | Path of an installed Mapepire server JAR. When set, the bundled JAR is not uploaded |
 | `maxJobs` | `2` | Most Mapepire jobs (JVMs) one pool runs at a time |
@@ -402,6 +403,12 @@ DB2I_USERNAME=MCPREAD
 DB2I_PASSWORD=your-password
 DB2I_MAPEPIRE_OPTIONS=hostKey=SHA256:abc...xyz;maxJobs=2
 ```
+
+With `agent=true`, the server reads the agent socket from `SSH_AUTH_SOCK` and refuses to start when it is not set. A shell session usually has it; a service, a launchd job or a Windows service usually does not, so set `SSH_AUTH_SOCK` in `.env` or give the socket path in `agent` instead.
+
+> **Note:** Windows has two SSH agents. For PuTTY Pageant, set `agent=pageant` and load the `.ppk` key into Pageant. For the Windows OpenSSH Authentication Agent (the `ssh-agent` service), set `agent=\\.\pipe\openssh-ssh-agent`, since Windows does not define `SSH_AUTH_SOCK`.
+
+> **Note:** HTTP `/auth` and OAuth sign-ins check the caller's password by logging in over SSH. On an IBM i whose sshd allows only public key login, they cannot work with the `mapepire` driver, whatever `agent` or `privateKeyFile` is set to.
 
 To remove the private install from the IBM i, delete `$HOME/.mapepire` in the user's home directory.
 
@@ -492,7 +499,7 @@ profiles:
 | `mapepireOptions` | No | - | Like `DB2I_MAPEPIRE_OPTIONS`, for this system |
 | `queryTimeout` | No | `QUERY_TIMEOUT` | Seconds a statement on this system may run before it is cancelled. `0` turns the limit off for this system |
 
-*Set `username` or `usernameFile`, and `password` or `passwordFile`. A `mapepire` profile with `privateKeyFile` in `mapepireOptions` needs no password. A path may itself be a `"${ENV_VAR}"` reference. Quote every reference: inside a `{ }` map YAML reads a bare `${...}` as another map.
+*Set `username` or `usernameFile`, and `password` or `passwordFile`. A `mapepire` profile with `privateKeyFile` or `agent` in `mapepireOptions` needs no password. A path may itself be a `"${ENV_VAR}"` reference. Quote every reference: inside a `{ }` map YAML reads a bare `${...}` as another map.
 
 How calls pick a system:
 
