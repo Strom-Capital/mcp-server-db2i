@@ -388,7 +388,7 @@ If neither matches, the connection is refused and the error shows the key's fing
 | `knownHostsFile` | `~/.ssh/known_hosts` | known_hosts file to check the host key against when `hostKey` is not set |
 | `insecureHostKey` | `false` | `true` skips the host key check |
 | `privateKeyFile` | - | Private key for SSH login. When set, SSH does not use the password, and `DB2I_PASSWORD` can be left unset. The key must not have a passphrase. HTTP `/auth` logins ignore it and log in with the caller's password |
-| `agent` | - | SSH agent for authentication. On Linux/macOS: `true` or `1` (reads `SSH_AUTH_SOCK`), or a custom socket path. On Windows: `pageant` for PuTTY Pageant, or `\\.\pipe\openssh-ssh-agent` for Windows OpenSSH Authentication Agent. When set, `DB2I_PASSWORD` can be left unset. HTTP `/auth` logins ignore it and log in with the caller's password |
+| `agent` | - | SSH agent for the login, so the key can have a passphrase. `true` reads the socket path from `SSH_AUTH_SOCK`, or give the absolute socket path. On Windows: `pageant` for PuTTY Pageant, or `\\.\pipe\openssh-ssh-agent` for the Windows OpenSSH Authentication Agent. When set, `DB2I_PASSWORD` can be left unset. Not together with `privateKeyFile`. HTTP `/auth` logins ignore it and log in with the caller's password |
 | `javaPath` | mapepire-js default (`jdk80`) | Java binary on the IBM i |
 | `serverPath` | - | Path of an installed Mapepire server JAR. When set, the bundled JAR is not uploaded |
 | `maxJobs` | `2` | Most Mapepire jobs (JVMs) one pool runs at a time |
@@ -404,17 +404,11 @@ DB2I_PASSWORD=your-password
 DB2I_MAPEPIRE_OPTIONS=hostKey=SHA256:abc...xyz;maxJobs=2
 ```
 
-> [!NOTE]
-> **SSH Agent on Windows**
->
-> On Windows, two different SSH agents can be used:
->
-> * **PuTTY Pageant**: Set `agent=pageant` in `DB2I_MAPEPIRE_OPTIONS`. Make sure Pageant is running and your private key (`.ppk`) is loaded.
-> * **Windows OpenSSH Authentication Agent (`ssh-agent` service)**: Unlike Unix, Windows does not define `SSH_AUTH_SOCK` by default. Either:
->   - Set `agent=\\.\pipe\openssh-ssh-agent` in `DB2I_MAPEPIRE_OPTIONS`, or
->   - Set `SSH_AUTH_SOCK=\\.\pipe\openssh-ssh-agent` in your `.env` file and use `agent=true`.
->
-> *Note: Using `agent=true` on Windows without setting `SSH_AUTH_SOCK` in the environment will cause the server to fail at startup.*
+With `agent=true`, the server reads the agent socket from `SSH_AUTH_SOCK` and refuses to start when it is not set. A shell session usually has it; a service, a launchd job or a Windows service usually does not, so set `SSH_AUTH_SOCK` in `.env` or give the socket path in `agent` instead.
+
+> **Note:** Windows has two SSH agents. For PuTTY Pageant, set `agent=pageant` and load the `.ppk` key into Pageant. For the Windows OpenSSH Authentication Agent (the `ssh-agent` service), set `agent=\\.\pipe\openssh-ssh-agent`, since Windows does not define `SSH_AUTH_SOCK`.
+
+> **Note:** HTTP `/auth` and OAuth sign-ins check the caller's password by logging in over SSH. On an IBM i whose sshd allows only public key login, they cannot work with the `mapepire` driver, whatever `agent` or `privateKeyFile` is set to.
 
 To remove the private install from the IBM i, delete `$HOME/.mapepire` in the user's home directory.
 
