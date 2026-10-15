@@ -263,8 +263,9 @@ vi.mock('@ibm/mapepire-js', () => ({
         query(sql: string, opts: { parameters?: unknown[] }) {
           return {
             async execute() {
-              const rows = await pool.query(sql, opts.parameters ?? []);
-              return { data: rows, is_done: true };
+              const rows = (await pool.query(sql, opts.parameters ?? [])) as Record<string, unknown>[];
+              const columns = Object.keys(rows[0] ?? {}).map((name) => ({ name, label: name, type: 'VARCHAR', precision: 0, scale: 0 }));
+              return { data: rows, is_done: true, metadata: { column_count: columns.length, columns } };
             },
             async fetchMore() {
               return { data: [], is_done: true };
@@ -405,6 +406,23 @@ describe.each(probes)('driver contract: $name', (probe) => {
     expect(result.rows).toEqual([{ SCHEMA_NAME: 'MYLIB', N: 1 }]);
     expect(Array.isArray(result.rows)).toBe(true);
     expect(Object.keys(result.rows)).toEqual(['0']);
+  });
+
+  it('returns the result columns with each query', async () => {
+    connection.initializePool(baseConfig(probe.name));
+    created.odbcColumns = [
+      { name: 'SCHEMA_NAME', dataType: 12, dataTypeName: 'VARCHAR', columnSize: 128, decimalDigits: 0, nullable: true },
+      { name: 'N', dataType: 4, dataTypeName: 'INTEGER', columnSize: 10, decimalDigits: 0, nullable: true },
+    ];
+    try {
+      const result = await connection.executeQuery('SELECT SCHEMA_NAME, N FROM QSYS2.SYSSCHEMAS');
+      expect(result.columns?.map((column) => column.name)).toEqual(['SCHEMA_NAME', 'N']);
+      if (probe.name === 'odbc') {
+        expect(result.columns?.map((column) => column.kind)).toEqual(['string', 'int']);
+      }
+    } finally {
+      created.odbcColumns = [];
+    }
   });
 
   it('opens the query connection read only and reuses it', async () => {

@@ -59,7 +59,8 @@ This uses `tsx` to run TypeScript directly. It does not restart on changes.
 | Script | Description |
 |--------|-------------|
 | `npm run dev` | Run the TypeScript source with `tsx` |
-| `npm run build` | Compile TypeScript to JavaScript |
+| `npm run build` | Build the result view, then compile TypeScript to JavaScript |
+| `npm run build:ui` | Build the result view only (`ui/result` to `src/ui/resultHtml.generated.ts`). `dev`, `test` and `typecheck` run it first |
 | `npm start` | Run production build |
 | `npm test` | Run tests |
 | `npm run test:watch` | Run tests in watch mode |
@@ -101,6 +102,7 @@ mcp-server-db2i/
 │   │   ├── routines.ts    # list_routines, describe_routine
 │   │   ├── profile.ts     # profile_table
 │   │   └── sqlServices.ts # validate_query, DDL, related objects, journals
+│   ├── ui/                # Result view: chart hints, result columns, ui://db2i/result
 │   ├── transports/        # HTTP transport
 │   │   ├── http.ts        # Express server and /auth
 │   │   ├── sessionAuth.ts # Session key per auth mode
@@ -111,6 +113,8 @@ mcp-server-db2i/
 │       ├── formatResult.ts # json, pretty, and markdown tool text
 │       ├── rateLimiter.ts # Rate limiting
 │       └── security/      # SQL validation and schema allowlist
+├── ui/result/             # Result view page (MCP Apps): grid and Chart.js charts
+├── scripts/build-ui.mjs   # Bundles ui/result into one HTML file for the server
 ├── tests/                 # Unit and integration tests (no IBM i needed)
 ├── examples/              # Business SQL tools and a profiles file
 ├── docs/                  # Documentation
@@ -283,6 +287,12 @@ describe('myTool', () => {
   });
 });
 ```
+
+## Result View
+
+The result view is a small web page in `ui/result/`: `data.ts` reads the tool result and gives each column a role (measure, time or category), `select.ts` picks the chart, `build.ts` turns it into a Chart.js config in the brand theme (`theme.ts`), and `bridge.ts` speaks the MCP Apps protocol with the host over `postMessage`. `scripts/build-ui.mjs` bundles it with esbuild into one HTML file with no external requests and writes it to `src/ui/resultHtml.generated.ts`, which is not committed. `src/ui/resultView.ts` serves that HTML as `ui://db2i/result`.
+
+To make a row-returning tool use the view, spread `resultViewFields(result.columns, maskedColumns, chart)` into its result, add `columns` (and `chart`, `chartError`) to its output schema, and set `_meta: resultViewMeta()` on the tool. The pure modules are tested in `tests/ui/view.test.ts`. Keep the page under 400 KB; a test checks it.
 
 ## Database Layer
 

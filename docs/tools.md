@@ -10,7 +10,7 @@ Every tool is read-only. Each one can be turned off with `MCP_TOOLS_DISABLED`, o
 
 | Tool | Description |
 |------|-------------|
-| `execute_query` | Execute read-only SELECT queries |
+| `execute_query` | Execute read-only SELECT queries, with an optional `chart` hint for the [result view](#result-view) |
 | `export_query` | Write every row of a read-only query to a CSV or XLSX file: a path over stdio, a short-lived download link over HTTP. Off unless `EXPORT_ENABLED` is set |
 | `list_schemas` | List schemas/libraries (with optional filter) |
 | `list_tables` | List tables in a schema (with optional filter) |
@@ -85,6 +85,55 @@ A successful `execute_query` or business SQL tool result can carry `warnings`, w
 - A query that reads an annotated table without using its row filter, such as the flag for deleted rows. The table is also listed in `skippedFilters`. See [Row filters](custom-tools.md#row-filters).
 - With the `odbc` driver, `DECIMAL` and `NUMERIC` columns whose values have more than 15 digits and were rounded. See [Values that differ by driver](configuration.md#values-that-differ-by-driver).
 
+### Result view
+
+`execute_query`, `profile_table` and business SQL tools point to the resource `ui://db2i/result` (an [MCP Apps](https://modelcontextprotocol.io/extensions/apps) view). Hosts that support MCP Apps, such as Claude and the [example web app](web-app.md), show the rows under the tool call as a chart and a sortable, filterable grid. Other hosts ignore it and show the text result. `MCP_UI_ENABLED=false` turns the view off.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/result-view-dark.png" />
+    <img src="assets/result-view.png" alt="Three result views: stacked bars of order lines by warehouse and status, a line chart of monthly totals for three statuses, and a doughnut of orders by status with the total in the middle" width="900" />
+  </picture>
+</p>
+
+Results with rows also carry `columns`, each column's `name` and `kind` (`int`, `bigint`, `decimal`, `float`, `string`, `date`, `time`, `timestamp`, `binary` or `other`), whatever the setting. A masked column is reported as `string`.
+
+`execute_query` takes an optional `chart` argument for when the user asks for a chart, or the answer is a trend, a ranking or a share:
+
+```json
+{
+  "sql": "SELECT STATUS, SUM(AMOUNT) AS TOTAL FROM MYLIB.ORDERS GROUP BY STATUS",
+  "chart": { "type": "pie", "x": "STATUS", "y": ["TOTAL"] }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `type` | `bar`, `line`, `area`, `pie`, `doughnut`, `scatter`, `pareto`, `waterfall`, `histogram`, `kpi`, or `table` for no chart |
+| `x` | Column for categories or time |
+| `y` | Measure columns, up to 8 |
+| `series` | Column whose values become separate series, such as `STATUS` |
+| `stacked`, `horizontal` | Stack bar or area series; draw bars horizontally |
+| `target` | Column with a target or budget, drawn as a line over the bars |
+| `title` | Chart title, up to 120 characters |
+
+Every field but `type` is optional, and the view fills in the rest. Column names match without regard to case and come back as the result spells them. When a column is not in the result, the rows are still returned, the hint is dropped, and `chartError` says why. A [business SQL tool](custom-tools.md#tools) can set the same object as its `chart:` block.
+
+Without a hint, the view picks a chart from the columns:
+
+| Result | Chart |
+|--------|-------|
+| One row of up to three numbers | KPI tiles |
+| A date or period column and numbers | Line, split by a category with up to six values |
+| Two category columns and a number | Stacked bars, the smaller category as the series |
+| One category column and a number | Bars, horizontal for more than 12 rows or long labels |
+| Two numbers and no category | Scatter |
+| One number over 10 rows or more | Histogram |
+
+Numeric codes such as `ORDERNO` or `ITEMNO` are labels, never summed. Dates stored as numbers, `YYYYMMDD` or `CYYMMDD` in a date-named column, are read as dates. Results with more than four columns, or that fit none of the rules, open on the grid, with the chart one click away. A user's choice in the view wins over a hint, a YAML `chart:` block wins over the rules.
+
+The view is one HTML page built into the server. It reads only the tool result the host gives it and makes no network requests.
+
 ### Query exports
 
 `export_query` is for results the user wants as a file, such as "all open orders for customer 1001 as a spreadsheet". It runs a SELECT with the same checks as `execute_query` and writes every row to a file on the server host, instead of returning the rows to the model. It is registered only when `EXPORT_ENABLED=true` and `EXPORT_DIR` are set. See [Query exports](configuration.md#query-exports) for the settings.
@@ -153,6 +202,7 @@ Clients that support MCP resources can read a table's context without a tool cal
 | `db2i://{schema}/{table}` | Columns from the catalog, plus the YAML business description, column notes, and relations | `describe_table` is enabled |
 | `db2i://{schema}/{table}/ddl` | SQL from `QSYS2.GENERATE_SQL` that recreates the table, view, or alias | `get_object_ddl` is enabled |
 | `db2i://business-context` | Every annotation loaded from `MCP_CUSTOM_TOOLS` | `get_business_context` is enabled |
+| `ui://db2i/result` | The [result view](#result-view): an HTML page (`text/html;profile=mcp-app`) that MCP Apps hosts show under tool results | `MCP_UI_ENABLED` is on and `execute_query`, `profile_table` or a business SQL tool is enabled |
 
 `resources/list` offers the annotated tables, for example `db2i://MYLIB/ORDERS`. Percent-encode `#` and other reserved characters in names (`ORD%23X` for `ORD#X`). A library outside `QUERY_ALLOWED_SCHEMAS` is rejected with the same message `execute_query` gives, and completion offers only allowed libraries. Reads and completions that query IBM i count against the rate limit, and reads are written to the audit log. Completion fetches a library's name list once and reuses it for 60 seconds, so typing a name costs one query rather than one per keystroke.
 

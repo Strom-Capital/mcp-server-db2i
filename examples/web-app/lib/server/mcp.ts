@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createMCPClient, type MCPClient } from '@ai-sdk/mcp';
+import { createMCPClient, mcpAppClientCapabilities, type MCPClient } from '@ai-sdk/mcp';
 import { getConfig } from './config';
 import { ensureAccessToken, SignInRequiredError } from './oauth';
 import { getSession, type AppSession } from './session';
@@ -44,6 +44,8 @@ export async function connectMcp(): Promise<McpConnection> {
       },
       clientName: CLIENT_NAME,
       version: CLIENT_VERSION,
+      // The chat renders the server's result view (MCP Apps) under tool calls
+      capabilities: mcpAppClientCapabilities,
     });
   } catch (error) {
     if (isUnauthorized(error)) {

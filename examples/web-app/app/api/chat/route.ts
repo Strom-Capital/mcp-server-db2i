@@ -1,3 +1,4 @@
+import { splitMCPAppTools } from '@ai-sdk/mcp';
 import { convertToModelMessages, isStepCount, streamText, type UIMessage } from 'ai';
 import { z } from 'zod';
 import { buildInstructions } from '@/lib/server/chat';
@@ -51,7 +52,8 @@ export async function POST(request: Request): Promise<Response> {
   const { client, close } = connection;
 
   try {
-    const tools = client.toolsFromDefinitions(await client.listTools());
+    const { modelVisible } = splitMCPAppTools(await client.listTools());
+    const tools = client.toolsFromDefinitions(modelVisible);
     const result = streamText({
       model,
       instructions: buildInstructions(client.instructions),

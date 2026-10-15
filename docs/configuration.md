@@ -182,6 +182,14 @@ The server reads these files before it accepts connections. A statement that is 
 
 `structuredContent` always holds the raw result object, whatever this setting is. Only the text content changes.
 
+### Result View (charts)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_UI_ENABLED` | `true` | Offer the result view, a grid and chart that MCP Apps hosts show under `execute_query`, `profile_table` and business SQL tool results. `false` leaves out the `ui://db2i/result` resource, the tool metadata that points to it, and the `chart` argument of `execute_query` |
+
+Hosts without MCP Apps support ignore the view and show the text result as before. See [Result view](tools.md#result-view).
+
 ### Rate Limiting
 
 | Variable | Default | Description |
@@ -272,6 +280,7 @@ QUERY_TIMEOUT=120
 # MCP_TOOLS_ENABLED=toolset:sales,get_business_context
 MCP_TOOLS_DISABLED=execute_query
 MCP_RESPONSE_FORMAT=json
+# MCP_UI_ENABLED=true
 
 # Rate limiting
 RATE_LIMIT_WINDOW_MS=900000

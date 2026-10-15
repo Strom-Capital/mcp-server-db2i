@@ -17,6 +17,7 @@ import { validateQuery } from '../utils/security/sqlSecurityValidator.js';
 import { PlaceholderError, rewriteNamedPlaceholders } from './params.js';
 import { checkMaskedColumns, columnsForTables, maskedTablesInSql, type MaskingMap } from './masking.js';
 import { emptyCustomTools } from './registry.js';
+import type { ChartSpec } from '../ui/chartSpec.js';
 import {
   customToolsFileSchema,
   formatSchemaIssues,
@@ -68,6 +69,8 @@ export interface StoredTool {
   maxRows?: number;
   /** System the tool always runs on. Unset means the caller's choice, or the default system. */
   system?: string;
+  /** How the result view charts the rows. */
+  chart?: ChartSpec;
   /** SQL with :name placeholders already rewritten to ? markers. */
   sql: string;
   /** Placeholder names in bind order. */
@@ -426,6 +429,7 @@ function checkTool(tool: ToolDef, file: string, options: LoadCustomToolsOptions)
     parameters,
     ...(tool.maxRows !== undefined ? { maxRows: tool.maxRows } : {}),
     ...(tool.system ? { system: tool.system } : {}),
+    ...(tool.chart ? { chart: tool.chart } : {}),
     sql: rewritten.sql,
     placeholderNames: rewritten.names,
     source: displayPath(file),

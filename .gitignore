@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+# The result view, built from ui/result by scripts/build-ui.mjs
+src/ui/resultHtml.generated.ts
 
 # Environment files
 .env

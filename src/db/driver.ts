@@ -28,9 +28,10 @@ export interface DbQueryOptions {
 
 /**
  * Rows from DbPool.query. `roundedColumns` names the columns whose values the
- * driver rounded, so the tool can say so.
+ * driver rounded, so the tool can say so. `columns` is the result set's columns
+ * in order, when the driver reported them.
  */
-export type DbRows = Record<string, unknown>[] & { roundedColumns?: string[] };
+export type DbRows = Record<string, unknown>[] & { roundedColumns?: string[]; columns?: DbColumn[] };
 
 /** How a column's values are written to a file. */
 export type ColumnKind =

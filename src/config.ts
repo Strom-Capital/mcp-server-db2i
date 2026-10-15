@@ -1260,6 +1260,16 @@ export function isToolIntentEnabled(): boolean {
 }
 
 /**
+ * MCP_UI_ENABLED: offer the result view (ui://db2i/result), a grid and chart
+ * that hosts with MCP Apps support show next to row results, and the
+ * execute_query `chart` argument. On unless set to false or 0.
+ */
+export function isUiEnabled(): boolean {
+  const value = process.env.MCP_UI_ENABLED?.trim().toLowerCase();
+  return value !== 'false' && value !== '0';
+}
+
+/**
  * Watching with no files is a startup error. A blank MCP_CUSTOM_TOOLS would
  * otherwise look like a successful watch of nothing.
  */

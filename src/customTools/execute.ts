@@ -23,6 +23,7 @@ import { cacheParse, cachedParse, type ParseOutcome } from './registry.js';
 import { maskRows } from './masking.js';
 import { formatSchemaIssues, inputSchemaFor, type ParameterDef } from './schema.js';
 import type { AuditErrorKind } from '../utils/auditLog.js';
+import { resultViewFields } from '../ui/chartSpec.js';
 
 const log = createChildLogger({ component: 'custom-tools' });
 
@@ -147,6 +148,7 @@ export async function executeCustomTool(
       limitApplied: effectiveLimit,
       truncated,
       ...(warnings.length > 0 ? { warnings } : {}),
+      ...resultViewFields(result.columns, new Set(maskRules.keys()), tool.chart),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';

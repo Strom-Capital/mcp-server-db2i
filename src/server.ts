@@ -16,7 +16,7 @@ import { CLIENT_INFO_META_KEY, McpServer, type RegisteredTool, type ServerContex
 import { z } from 'zod';
 
 import { serverIcons } from './branding.js';
-import { getEnabledTools, getExportConfig, getResponseFormat, isToolIntentEnabled } from './config.js';
+import { getEnabledTools, getExportConfig, getResponseFormat, isToolIntentEnabled, isUiEnabled } from './config.js';
 import { resolveTarget, STDIO_POOL_KEY, systemNames, type DbTarget, type SystemBinding } from './systems.js';
 import { executeQueryTool } from './tools/query.js';
 import { exportQueryTool } from './tools/exportQuery.js';
@@ -64,6 +64,8 @@ import {
 } from './utils/auditLog.js';
 import { formatToolText } from './utils/formatResult.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
+import { chartSpecSchema, resultColumnsSchema, type ChartSpec } from './ui/chartSpec.js';
+import { registerResultView, resultViewMeta } from './ui/resultView.js';
 
 export { SERVER_NAME, SERVER_VERSION } from './version.js';
 
@@ -128,6 +130,19 @@ function contextShape(): Record<never, never> {
 }
 
 /**
+ * The execute_query `chart` argument, when the result view is on. Typed as
+ * empty for the same reason as systemShape; the handler reads the value.
+ */
+function chartShape(ui: boolean): Record<never, never> {
+  if (!ui) {
+    return {};
+  }
+  return {
+    chart: chartSpecSchema.optional().describe('How to chart the rows. Column names must match the result columns.'),
+  };
+}
+
+/**
  * Standard tool result type
  */
 export interface ToolResult {
@@ -178,6 +193,9 @@ const queryOutputSchema = z.object({
   skippedFilters: z.array(z.string()).optional()
     .describe('Annotated tables whose row filter, such as leaving out deleted rows, the query does not use. See warnings'),
   warnings: z.array(z.string()).optional().describe('Tell the user these, such as columns the driver rounded'),
+  columns: resultColumnsSchema.optional().describe('Result columns in order, with the kind of value each holds'),
+  chart: chartSpecSchema.optional().describe('The chart the result view draws'),
+  chartError: z.string().optional().describe('Why the chart argument was not used'),
 });
 
 const exportOutputSchema = z.object({
@@ -503,6 +521,7 @@ const profileTableOutputSchema = z.object({
     statistics_updated: z.string().nullable().optional(),
     masked: z.enum(['redact', 'last4']).optional(),
   })).optional(),
+  columns: resultColumnsSchema.optional(),
   count: z.number().int().optional(),
   truncated: z.boolean().optional(),
   sql: z.string().optional(),
@@ -874,7 +893,9 @@ export function createServer(sessionContext?: SessionContext): McpServer {
   const common = { ...systemShape(sessionContext), ...contextShape() };
 
   if (enabledTools.has('execute_query')) {
-    const description = 'Execute a read-only SQL SELECT query against the IBM Db2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.';
+    const ui = isUiEnabled();
+    const description = 'Execute a read-only SQL SELECT query against the IBM Db2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.' +
+      (ui ? ' Pass chart when the user asks for a chart, or the answer is a trend, a ranking or a share.' : '');
     const registered = server.registerTool(
       'execute_query',
       {
@@ -886,8 +907,10 @@ export function createServer(sessionContext?: SessionContext): McpServer {
           sql: z.string().describe('SQL SELECT query to execute'),
           params: z.array(z.unknown()).optional().describe('Query parameters for prepared statement'),
           limit: z.number().int().positive().optional().describe('Maximum number of rows to return (default: QUERY_DEFAULT_LIMIT, max: QUERY_MAX_LIMIT)'),
+          ...chartShape(ui),
         }),
         outputSchema: queryOutputSchema,
+        _meta: resultViewMeta(),
       },
       withToolHandler(
         (args, target) => executeQueryTool({
@@ -897,6 +920,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
           target,
           defaultSchema: target.defaultSchema,
           describeTable: sessionTools.has('describe_table'),
+          chart: (args as { chart?: ChartSpec }).chart,
         }),
         'Query failed',
         sessionContext,
@@ -1444,6 +1468,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
           columns: z.array(z.string()).optional().describe(`Columns to profile. Defaults to every column (the first ${MAX_COMPUTED_COLUMNS} when compute is true).`),
         }),
         outputSchema: profileTableOutputSchema,
+        _meta: resultViewMeta(),
       },
       withToolHandler(
         (args, target) => profileTableTool({
@@ -1507,6 +1532,9 @@ export function createServer(sessionContext?: SessionContext): McpServer {
 
   registerResources(server, enabledTools, sessionContext);
   registerPrompts(server, enabledTools, sessionContext);
+  if (sessionTools.has('execute_query') || sessionTools.has('profile_table') || customRegistrations.size > 0) {
+    registerResultView(server);
+  }
 
   return server;
 }
@@ -1668,7 +1696,10 @@ export const TOOL_META_KEY = 'db2i-mcp/tool';
  * carry no such entry.
  */
 export function customToolMeta(tool: StoredTool): Record<string, unknown> {
-  return { [TOOL_META_KEY]: { kind: 'business', ...(tool.toolset ? { toolset: tool.toolset } : {}) } };
+  return {
+    [TOOL_META_KEY]: { kind: 'business', ...(tool.toolset ? { toolset: tool.toolset } : {}) },
+    ...resultViewMeta(),
+  };
 }
 
 function registerCustomTool(
@@ -1744,5 +1775,6 @@ function toolSignature(tool: StoredTool): string {
     sql: tool.sql,
     maxRows: tool.maxRows ?? null,
     system: tool.system ?? null,
+    chart: tool.chart ?? null,
   });
 }

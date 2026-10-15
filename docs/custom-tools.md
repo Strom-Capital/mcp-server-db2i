@@ -59,6 +59,7 @@ annotations:
 | `parameters` | no | Named arguments. Every parameter must appear as `:name` in the SQL, and every `:name` must be declared. |
 | `maxRows` | no | Row cap for this tool. The server also applies `QUERY_MAX_LIMIT`, and uses the smaller of the two. When `maxRows` is omitted, `QUERY_DEFAULT_LIMIT` is used. A result that stops at the cap has `truncated: true` and a warning. |
 | `system` | no | Profile from `DB2I_PROFILES` the tool always runs on. See [Running on one system](#running-on-one-system). |
+| `chart` | no | How the [result view](tools.md#result-view) charts the rows, for example `{ type: bar, x: STATUS, y: [TOTAL] }`. Same fields as the `chart` argument of `execute_query`. Column names are checked against each result. |
 | `sql` | yes | One read-only statement. It must start with `SELECT` or `WITH`. |
 
 Parameter types are `string` (optional `maxLength`), `integer`, `number`, `boolean`, `date`, and `enum`. A `string` parameter may also set `enum` to a list of allowed values. `date` values are `YYYY-MM-DD`.

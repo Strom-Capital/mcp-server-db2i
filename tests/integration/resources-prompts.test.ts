@@ -186,13 +186,23 @@ describe('MCP resources and prompts', () => {
       expect(resources.map((resource) => resource.uri)).not.toContain('db2i://business-context');
     });
 
-    it('registers no resources or prompts when only execute_query is enabled', async () => {
+    it('registers only the result view and no prompts when only execute_query is enabled', async () => {
       process.env.MCP_TOOLS_ENABLED = 'execute_query';
       await client.close();
       await connect();
 
-      expect(client.getServerCapabilities()?.resources).toBeUndefined();
+      const { resources } = await client.listResources();
+      expect(resources.map((resource) => resource.uri)).toEqual(['ui://db2i/result']);
       expect(client.getServerCapabilities()?.prompts).toBeUndefined();
+    });
+
+    it('registers no resources when only execute_query is enabled and MCP_UI_ENABLED=false', async () => {
+      process.env.MCP_TOOLS_ENABLED = 'execute_query';
+      process.env.MCP_UI_ENABLED = 'false';
+      await client.close();
+      await connect();
+
+      expect(client.getServerCapabilities()?.resources).toBeUndefined();
     });
 
     it('lists the three prompts', async () => {

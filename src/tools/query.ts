@@ -29,6 +29,7 @@ import {
 } from '../customTools/masking.js';
 import { applySqlRowLimit, rowLimitWarning, takeRowsWithinLimit } from './sqlLimit.js';
 import { withUnknownColumnHint } from './unknownColumnHint.js';
+import { resultViewFields, type ChartSpec, type ResultViewFields } from '../ui/chartSpec.js';
 
 const log = createChildLogger({ component: 'query-tool' });
 
@@ -45,6 +46,8 @@ export interface ExecuteQueryInput {
   defaultSchema?: string;
   /** False when describe_table is not registered, so an unknown-column hint does not name it. Defaults to true. */
   describeTable?: boolean;
+  /** Chart hint for the result view, checked against the result's columns. */
+  chart?: ChartSpec;
 }
 
 /** A statement that passed every read-only check, with the masks to apply and the row filters it leaves out. */
@@ -197,7 +200,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
   /** Annotated tables whose row filter the statement leaves out. The warnings say which filter. */
   skippedFilters?: string[];
   warnings?: string[];
-} & SqlErrorDetails> {
+} & ResultViewFields & SqlErrorDetails> {
   const { sql, params = [], target, defaultSchema } = input;
   const queryConfig = getQueryLimitConfig();
   const effectiveLimit = applyQueryLimit(input.limit, queryConfig);
@@ -238,6 +241,7 @@ export async function executeQueryTool(input: ExecuteQueryInput): Promise<{
       truncated,
       ...(prepared.filters.tables.length > 0 ? { skippedFilters: prepared.filters.tables } : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
+      ...resultViewFields(result.columns, new Set(prepared.maskRules.keys()), input.chart),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
