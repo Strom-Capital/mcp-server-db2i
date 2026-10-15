@@ -28,8 +28,8 @@ export interface Selection {
 /** Bar charts with more categories than this turn horizontal. */
 const MAX_VERTICAL_BARS = 12;
 
-/** Above this many columns the result is detail rows, so it opens on the grid. */
-const MAX_COLUMNS_FOR_CHART_FIRST = 4;
+/** Most measures a hint can draw side by side. */
+const MAX_MEASURES = 3;
 
 const byRole = (table: ResultTable, role: Column['role']): Column[] =>
   table.columns.filter((column) => column.role === role);
@@ -70,7 +70,7 @@ export function ruleChart(table: ResultTable): ChartPlan | null {
     if (series) {
       return { ...base, type: 'line', x, y: [measures[0].name], series: series.name };
     }
-    return { ...base, type: 'line', x, y: measures.slice(0, 4).map((m) => m.name) };
+    return { ...base, type: 'line', x, y: [measures[0].name] };
   }
   if (categories.length >= 2) {
     const [first, second] = [...categories].sort((a, b) => a.distinct - b.distinct);
@@ -80,9 +80,6 @@ export function ruleChart(table: ResultTable): ChartPlan | null {
   }
   if (categories.length >= 1) {
     const x = categories[0].name;
-    if (measures.length >= 2) {
-      return { ...base, type: 'bar', x, y: measures.slice(0, MAX_SERIES).map((m) => m.name) };
-    }
     const horizontal = rows > MAX_VERTICAL_BARS || averageLabelLength(table, x) > 14;
     return { ...base, type: 'bar', x, y: [measures[0].name], horizontal };
   }
@@ -106,8 +103,9 @@ export function planFromHint(table: ResultTable, hint: ChartHint): ChartPlan | n
   const measures = byRole(table, 'measure').map((c) => c.name);
   const axes = [...byRole(table, 'time'), ...byRole(table, 'category')].map((c) => c.name);
   const used = new Set([hint.x, hint.series, hint.target].filter((n): n is string => Boolean(n)));
-  const hinted = (hint.y ?? []).filter((name) => column(table, name));
-  const y = hinted.length > 0 ? hinted : measures.filter((name) => !used.has(name));
+  const hinted = (hint.y ?? []).filter((name) => column(table, name)).slice(0, MAX_MEASURES);
+  const unused = measures.filter((name) => !used.has(name));
+  const y = hinted.length > 0 ? hinted : unused.slice(0, 1);
   const plan: ChartPlan = {
     type: hint.type,
     y,
@@ -126,21 +124,26 @@ export function planFromHint(table: ResultTable, hint: ChartHint): ChartPlan | n
     }
     case 'histogram':
       return y.length > 0 ? { ...plan, y: [y[0]] } : null;
-    case 'kpi':
-      return y.length > 0 ? { ...plan, y: y.slice(0, 3) } : null;
+    case 'kpi': {
+      const tiles = hinted.length > 0 ? hinted : unused.slice(0, 3);
+      return tiles.length > 0 ? { ...plan, y: tiles } : null;
+    }
     default: {
       const x = hint.x ?? axes.find((name) => name !== hint.series);
       if (!x || y.length === 0) {
         return null;
       }
       const single = hint.type === 'pie' || hint.type === 'doughnut' || hint.type === 'pareto' || hint.type === 'waterfall';
-      return { ...plan, x, y: single ? [y[0]] : y.slice(0, MAX_SERIES) };
+      return { ...plan, x, y: single ? [y[0]] : y };
     }
   }
 }
 
 /**
- * The chart for a result, and whether the view opens on it.
+ * The chart for a result, and whether the view opens on it. It opens on the
+ * chart only for a hint, which the model sends when the user asks for a chart
+ * and a YAML tool sets with its `chart:` block. Otherwise the rules' chart
+ * waits behind the Chart tab.
  */
 export function selectChart(table: ResultTable): Selection {
   if (table.chart) {
@@ -149,9 +152,7 @@ export function selectChart(table: ResultTable): Selection {
       return { plan: plan ?? ruleChart(table), showChart: plan !== null };
     }
   }
-  const plan = ruleChart(table);
-  const chartable = table.columns.filter((c) => c.role !== 'none').length;
-  return { plan, showChart: plan !== null && chartable <= MAX_COLUMNS_FOR_CHART_FIRST };
+  return { plan: ruleChart(table), showChart: false };
 }
 
 /** Chart types the type menu offers for a result. */

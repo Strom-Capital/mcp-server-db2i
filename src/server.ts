@@ -895,7 +895,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
   if (enabledTools.has('execute_query')) {
     const ui = isUiEnabled();
     const description = 'Execute a read-only SQL SELECT query against the IBM Db2i database. Only SELECT statements are allowed for security. Results are limited by default to prevent large result sets.' +
-      (ui ? ' Pass chart when the user asks for a chart, or the answer is a trend, a ranking or a share.' : '');
+      (ui ? ' Pass chart only when the user asks for a chart or graph. Otherwise leave it out: the result opens as a table and the user can switch to a chart.' : '');
     const registered = server.registerTool(
       'execute_query',
       {

@@ -111,6 +111,22 @@ describe('ruleChart', () => {
     expect(ruleChart(table({ data }))).toMatchObject({ type: 'line', x: 'MONTH', y: ['TOTAL'], series: 'STATUS' });
   });
 
+  it('draws only the first measure when there are several', () => {
+    const data = ['2026-01-01', '2026-02-01', '2026-03-01'].map((MONTH, i) => ({ MONTH, TOTAL: 10 + i, PART: 5 + i }));
+    expect(ruleChart(table({ data }))).toMatchObject({ type: 'line', y: ['TOTAL'] });
+    const bars = ['A', 'B', 'C'].map((REGION, i) => ({ REGION, TOTAL: 10 + i, PART: 5 + i }));
+    expect(ruleChart(table({ data: bars }))).toMatchObject({ type: 'bar', y: ['TOTAL'] });
+  });
+
+  it('splits only by a category with four values or fewer', () => {
+    const months = ['2026-01-01', '2026-02-01', '2026-03-01'];
+    const split = (statuses: string[]) => ruleChart(table({
+      data: months.flatMap((MONTH) => statuses.map((STATUS, i) => ({ MONTH, STATUS, TOTAL: i + 1 }))),
+    }));
+    expect(split(['A', 'B', 'C', 'D'])).toMatchObject({ series: 'STATUS' });
+    expect(split(['A', 'B', 'C', 'D', 'E'])?.series).toBeUndefined();
+  });
+
   it('never splits a line by a column that is unique on each row', () => {
     const data = [1260105, 1260112, 1260119, 1260126].map((ORDDATE, i) => ({ ORDDATE, ORDERNO: 1001 + i, AMOUNT: 5 + i }));
     const plan = ruleChart(table({
@@ -144,12 +160,18 @@ describe('ruleChart', () => {
 describe('selectChart', () => {
   const ranking = Array.from({ length: 5 }, (_, i) => ({ STATUS: `S${i}`, TOTAL: i + 1 }));
 
-  it('opens on the chart for a small summary, and on the grid for detail rows', () => {
-    expect(selectChart(table({ data: ranking })).showChart).toBe(true);
-    const detail = ranking.map((row, i) => ({ ...row, A: 'x', B: 'y', C: 'z', ORDERNO: i }));
-    const selection = selectChart(table({ data: detail }));
-    expect(selection.plan).not.toBeNull();
+  it('opens on the grid without a hint, with the rules chart behind the tab', () => {
+    const selection = selectChart(table({ data: ranking }));
     expect(selection.showChart).toBe(false);
+    expect(selection.plan).toMatchObject({ type: 'bar', x: 'STATUS', y: ['TOTAL'] });
+  });
+
+  it('draws the first measure for a hint without y, and at most three named ones', () => {
+    const data = ranking.map((row) => ({ ...row, COUNT: 1, AVG: 2, MAX: 3 }));
+    expect(selectChart(table({ data, chart: { type: 'bar' } })).plan?.y).toEqual(['TOTAL']);
+    const named = selectChart(table({ data, chart: { type: 'bar', y: ['TOTAL', 'COUNT', 'AVG', 'MAX'] } }));
+    expect(named.plan?.y).toEqual(['TOTAL', 'COUNT', 'AVG']);
+    expect(selectChart(table({ data, chart: { type: 'kpi' } })).plan?.y).toEqual(['TOTAL', 'COUNT', 'AVG']);
   });
 
   it('follows a hint and fills in what it leaves out', () => {

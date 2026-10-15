@@ -258,14 +258,15 @@ function showResult(structured: unknown, text: string | undefined): void {
 
 function watchSize(bridge: Bridge): void {
   let last = 0;
+  // The page's scrollHeight never drops below the frame, so measure the content to let the frame shrink
   const report = (): void => {
-    const height = document.documentElement.scrollHeight;
+    const height = Math.ceil(root.getBoundingClientRect().height);
     if (Math.abs(height - last) > 1) {
       last = height;
       bridge.sizeChanged(height);
     }
   };
-  new ResizeObserver(report).observe(document.body);
+  new ResizeObserver(report).observe(root);
   report();
 }
 

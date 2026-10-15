@@ -87,7 +87,7 @@ graph LR
 - **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
 - **Business SQL tools** - Load read-only ERP queries and table notes from YAML, and check the files with `mcp-server-db2i validate-tools` before the server starts. See [Business SQL tools](docs/custom-tools.md)
 - **Server instructions** - Send the rules no query may miss, such as which flag marks a deleted row, to the model at the start of every session. See [Instructions](docs/custom-tools.md#instructions)
-- **Charts in the chat** - Hosts that support MCP Apps show query results as a chart and a sortable grid under the tool call. The model or a YAML tool can choose the chart; otherwise it is picked from the columns. See [Result view](docs/tools.md#result-view)
+- **Charts in the chat** - Hosts that support MCP Apps show query results as a sortable grid under the tool call, with a chart one click away. When the user asks for a chart, or a YAML tool sets one, it opens on the chart. See [Result view](docs/tools.md#result-view)
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens
 - **Statement checks and DDL** - Validate object names, return the SQL that recreates an object, and list what depends on a table
 - **Catalog search and profiling** - Find tables and columns across libraries, check journaling, and profile a table's row counts and value ranges
@@ -183,7 +183,7 @@ No MCP client? The [example web app](examples/web-app) is a browser chat with re
 | `get_business_context` | List business descriptions, row filters and relations loaded from YAML |
 | `search_ibmi_services` | Find IBM i services by keyword or category, with the release that added each one and an example query |
 
-In hosts that support [MCP Apps](https://modelcontextprotocol.io/extensions/apps), results from `execute_query`, `profile_table` and business SQL tools open as a chart and a grid under the tool call. See [Result view](docs/tools.md#result-view).
+In hosts that support [MCP Apps](https://modelcontextprotocol.io/extensions/apps), results from `execute_query`, `profile_table` and business SQL tools open as a grid and a chart under the tool call. See [Result view](docs/tools.md#result-view).
 
 <p align="center">
   <picture>

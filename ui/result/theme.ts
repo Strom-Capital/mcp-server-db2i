@@ -61,7 +61,7 @@ export function themeFor(mode: ThemeMode): Theme {
 }
 
 /** Most series a chart colors on its own. More fold into "Other". */
-export const MAX_SERIES = 6;
+export const MAX_SERIES = 4;
 
 /** Font families for canvas text, read from the page because canvas cannot resolve CSS variables. */
 export interface Fonts {

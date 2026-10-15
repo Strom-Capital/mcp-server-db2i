@@ -71,7 +71,7 @@ export const chartSpecSchema = z.strictObject({
       'kpi for a one-row result; table for no chart'
   ),
   x: columnName.optional().describe('Column for categories or time (the x axis)'),
-  y: z.array(columnName).min(1).max(8).optional().describe('Measure columns'),
+  y: z.array(columnName).min(1).max(3).optional().describe('Measure columns. Leave out to chart the first measure; name more only when the user asks to compare them'),
   series: columnName.optional().describe('Column whose values become separate series, such as STATUS'),
   stacked: z.boolean().optional().describe('Stack bar or area series'),
   horizontal: z.boolean().optional().describe('Horizontal bars, for long labels or rankings'),

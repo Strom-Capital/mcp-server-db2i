@@ -98,7 +98,7 @@ A successful `execute_query` or business SQL tool result can carry `warnings`, w
 
 Results with rows also carry `columns`, each column's `name` and `kind` (`int`, `bigint`, `decimal`, `float`, `string`, `date`, `time`, `timestamp`, `binary` or `other`), whatever the setting. A masked column is reported as `string`.
 
-`execute_query` takes an optional `chart` argument for when the user asks for a chart, or the answer is a trend, a ranking or a share:
+`execute_query` takes an optional `chart` argument. The model passes it only when the user asks for a chart or graph:
 
 ```json
 {
@@ -111,7 +111,7 @@ Results with rows also carry `columns`, each column's `name` and `kind` (`int`, 
 |-------|---------|
 | `type` | `bar`, `line`, `area`, `pie`, `doughnut`, `scatter`, `pareto`, `waterfall`, `histogram`, `kpi`, or `table` for no chart |
 | `x` | Column for categories or time |
-| `y` | Measure columns, up to 8 |
+| `y` | Measure columns, up to 3. Without it the chart draws the first measure |
 | `series` | Column whose values become separate series, such as `STATUS` |
 | `stacked`, `horizontal` | Stack bar or area series; draw bars horizontally |
 | `target` | Column with a target or budget, drawn as a line over the bars |
@@ -119,18 +119,18 @@ Results with rows also carry `columns`, each column's `name` and `kind` (`int`, 
 
 Every field but `type` is optional, and the view fills in the rest. Column names match without regard to case and come back as the result spells them. When a column is not in the result, the rows are still returned, the hint is dropped, and `chartError` says why. A [business SQL tool](custom-tools.md#tools) can set the same object as its `chart:` block.
 
-Without a hint, the view picks a chart from the columns:
+With a hint, from the model or a YAML `chart:` block, the view opens on the chart. Without one it opens on the grid, and the Chart tab holds a chart picked from the columns:
 
 | Result | Chart |
 |--------|-------|
 | One row of up to three numbers | KPI tiles |
-| A date or period column and numbers | Line, split by a category with up to six values |
-| Two category columns and a number | Stacked bars, the smaller category as the series |
-| One category column and a number | Bars, horizontal for more than 12 rows or long labels |
+| A date or period column and numbers | Line of the first number, split by a category with up to four values |
+| Two category columns and a number | Stacked bars, the smaller category as the series when it has up to four values |
+| One category column and numbers | Bars of the first number, horizontal for more than 12 rows or long labels |
 | Two numbers and no category | Scatter |
 | One number over 10 rows or more | Histogram |
 
-Numeric codes such as `ORDERNO` or `ITEMNO` are labels, never summed. Dates stored as numbers, `YYYYMMDD` or `CYYMMDD` in a date-named column, are read as dates. Results with more than four columns, or that fit none of the rules, open on the grid, with the chart one click away. A user's choice in the view wins over a hint, a YAML `chart:` block wins over the rules.
+A chart draws one measure unless the hint names more, up to three. A split shows the four largest series and sums the rest into "Other". Numeric codes such as `ORDERNO` or `ITEMNO` are labels, never summed. Dates stored as numbers, `YYYYMMDD` or `CYYMMDD` in a date-named column, are read as dates. A user's choice in the view wins over a hint, and a YAML `chart:` block wins over the rules.
 
 The view is one HTML page built into the server. It reads only the tool result the host gives it and makes no network requests.
 
