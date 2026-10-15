@@ -136,7 +136,6 @@ function ChatConversation({ chat, isNew = false }: { chat: Chat<UIMessage>; isNe
       <PromptInputFooter>
         <PromptInputTools className="min-w-0 text-muted-foreground text-xs">
           <EffortSelect variant="prompt" />
-          <span className="truncate px-1 max-sm:hidden">Queries run on the IBM i with your own authority.</span>
         </PromptInputTools>
         <PromptInputSubmit status={status} onStop={() => void stop()} disabled={!busy && (!draft.trim() || !session.signedIn)} />
       </PromptInputFooter>
