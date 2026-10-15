@@ -7,7 +7,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
@@ -71,7 +70,7 @@ interface ExportMenuProps {
   server: ReturnType<typeof useResultExport>;
 }
 
-/** Export button: the rows as CSV from the browser, or every row as Excel or CSV from the server. */
+/** Export button: every row as Excel or CSV from the server, or the rows as CSV from the browser when the server can't export them. */
 export function ExportMenu({ rows, filename, rowsLabel, server }: ExportMenuProps) {
   const running = server.state.status === 'running';
   return (
@@ -87,19 +86,9 @@ export function ExportMenu({ rows, filename, rowsLabel, server }: ExportMenuProp
           <ChevronDownIcon className="size-4 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuItem
-          onSelect={() => {
-            const names = inferColumns(rows).map((column) => column.name);
-            download(`${filename}.csv`, `\uFEFF${toCsv(names, rows)}`, 'text/csv;charset=utf-8');
-          }}
-        >
-          <FileTextIcon />
-          CSV of {rowsLabel ? `the ${countOf(rows.length, 'row')} ${rowsLabel}` : countOf(rows.length, 'row')}
-        </DropdownMenuItem>
-        {server.available && (
+      <DropdownMenuContent align="end" className="w-56">
+        {server.available ? (
           <>
-            <DropdownMenuSeparator />
             <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">Every row, from the server</DropdownMenuLabel>
             <DropdownMenuItem onSelect={() => void server.start('xlsx')}>
               <FileSpreadsheetIcon />
@@ -110,6 +99,16 @@ export function ExportMenu({ rows, filename, rowsLabel, server }: ExportMenuProp
               CSV
             </DropdownMenuItem>
           </>
+        ) : (
+          <DropdownMenuItem
+            onSelect={() => {
+              const names = inferColumns(rows).map((column) => column.name);
+              download(`${filename}.csv`, `\uFEFF${toCsv(names, rows)}`, 'text/csv;charset=utf-8');
+            }}
+          >
+            <FileTextIcon />
+            CSV of {rowsLabel ? `the ${countOf(rows.length, 'row')} ${rowsLabel}` : countOf(rows.length, 'row')}
+          </DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
