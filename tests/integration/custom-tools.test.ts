@@ -40,7 +40,7 @@ import { loadCustomTools } from '../../src/customTools/loader.js';
 import { getCustomTools, resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
 import type { DB2iConfig } from '../../src/config.js';
 import { initializePool } from '../../src/db/connection.js';
-import { createServer, type SessionContext } from '../../src/server.js';
+import { createServer, TOOL_META_KEY, type SessionContext } from '../../src/server.js';
 
 function textOf(result: CallToolResult): string {
   return (result.content[0] as { type: 'text'; text: string }).text;
@@ -114,6 +114,16 @@ describe('Custom ERP tools', () => {
     const search = tools.find((tool) => tool.name === 'search_sales_orders');
     expect(search?.annotations?.readOnlyHint).toBe(true);
     expect(search?.description).toContain('customer');
+  });
+
+  it('marks business tools and their toolset in _meta, and leaves built-in tools unmarked', async () => {
+    const { tools } = await client.listTools();
+
+    const search = tools.find((tool) => tool.name === 'search_sales_orders');
+    expect(search?._meta?.[TOOL_META_KEY]).toEqual({ kind: 'business', toolset: 'sales' });
+
+    const executeQuery = tools.find((tool) => tool.name === 'execute_query');
+    expect(executeQuery?._meta?.[TOOL_META_KEY]).toBeUndefined();
   });
 
   it('runs a sales-order search with bound parameters', async () => {
