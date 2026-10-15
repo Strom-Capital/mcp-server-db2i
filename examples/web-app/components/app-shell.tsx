@@ -9,6 +9,7 @@ import { PROVIDERS } from '@/lib/providers';
 import { AppSidebar } from './app-sidebar';
 import { useAppState } from './app-state';
 import { SettingsDialog } from './settings-dialog';
+import { ThemeMenu } from './theme-menu';
 
 /** The sidebar, the model button and the page. */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -32,6 +33,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="truncate">{model ?? 'Choose a model'}</span>
             <ChevronDownIcon className="text-muted-foreground" />
           </Button>
+          <div className="ml-auto">
+            <ThemeMenu />
+          </div>
         </header>
         {session.signInError && (
           <p role="alert" className="border-y bg-destructive/10 px-4 py-2 text-destructive text-sm">

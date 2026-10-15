@@ -2,23 +2,18 @@
 
 import {
   BookOpenIcon,
-  CheckIcon,
   DownloadIcon,
   LogInIcon,
   LogOutIcon,
-  MonitorIcon,
-  MoonIcon,
   MoreHorizontalIcon,
   ServerIcon,
   SquarePenIcon,
-  SunIcon,
   Trash2Icon,
   WrenchIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useTheme } from 'next-themes';
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useMemo, useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,30 +50,17 @@ const PAGES = [
   { href: '/context', label: 'Context', icon: BookOpenIcon },
 ];
 
-const SYSTEM_THEME = { id: 'system', label: 'System', icon: MonitorIcon };
-const THEMES = [
-  SYSTEM_THEME,
-  { id: 'light', label: 'Light', icon: SunIcon },
-  { id: 'dark', label: 'Dark', icon: MoonIcon },
-];
-
-const subscribeNothing = () => () => undefined;
-
-/** New chat, the other pages, saved chats with search, theme and sign-in. */
+/** New chat, the other pages, saved chats with search, and sign-in. */
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { session, signOut, dropChat } = useAppState();
   const { setOpenMobile } = useSidebar();
-  const { theme, setTheme } = useTheme();
   const { items: chats } = useChats();
   const [search, setSearch] = useState('');
   const now = useNow();
   const groups = useMemo(() => groupChats(chats.filter((chat) => chatMatches(chat, search)), now), [chats, search, now]);
   const close = () => setOpenMobile(false);
-  // The saved theme is only known in the browser
-  const hydrated = useSyncExternalStore(subscribeNothing, () => true, () => false);
-  const currentTheme = (hydrated && THEMES.find((item) => item.id === theme)) || SYSTEM_THEME;
 
   async function remove(id: string) {
     dropChat(id);
@@ -162,25 +144,6 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton>
-                  <currentTheme.icon />
-                  Theme: {currentTheme.label}
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-48">
-                {THEMES.map((item) => (
-                  <DropdownMenuItem key={item.id} onSelect={() => setTheme(item.id)}>
-                    <item.icon />
-                    {item.label}
-                    {item.id === currentTheme.id && <CheckIcon className="ml-auto" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
           {session.loaded && (
             <SidebarMenuItem>
               {session.signedIn ? (

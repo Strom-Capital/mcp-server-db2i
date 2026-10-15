@@ -25,7 +25,7 @@ The sidebar lists your chats, newest first and grouped by day, like ChatGPT or C
 | Exports | Files made by `export_query`, with row count, size, downloads allowed and time left before the link expires. Run an export again to get a fresh link |
 | Context | The business context loaded from YAML: what each table means, the filters most queries need, column notes and joins |
 
-The app follows the system's light or dark mode. The theme menu at the bottom of the sidebar overrides it.
+The app follows the system's light or dark mode. The theme button at the top right overrides it.
 
 The effort menu in the chat box sets how long a reasoning model thinks before it answers: Default, Off, Low, Medium, High, Extra high or Max. The app passes it to AI SDK's `reasoning` option, which each provider maps to its own setting (Anthropic thinking and effort, OpenAI reasoning effort, Gemini thinking level). Models without reasoning ignore it.
 
