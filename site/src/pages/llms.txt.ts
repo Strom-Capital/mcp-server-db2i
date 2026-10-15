@@ -31,6 +31,7 @@ export async function GET(context: APIContext) {
 - [HTTP transport and OAuth](${links.httpTransport}): remote clients and sign-in
 - [Custom tools](${links.customTools}): business SQL tools in YAML
 - [Use cases](${links.useCases}): example questions for ERP data on IBM i
+- [Example web app](${links.webApp}): a browser chat app with IBM i sign-in and a company or local model
 
 ## Site
 
