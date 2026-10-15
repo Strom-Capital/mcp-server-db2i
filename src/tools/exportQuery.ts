@@ -8,7 +8,12 @@
  * download link. The model gets a summary and a few sample rows.
  */
 
+import type { InputRequiredResult } from '@modelcontextprotocol/server';
+import { z } from 'zod';
+
 import { getExportConfig } from '../config.js';
+import type { Elicitor } from '../elicitation/elicitor.js';
+import type { AuditErrorKind } from '../utils/auditLog.js';
 import { openQueryCursor } from '../db/connection.js';
 import { CANCEL_GRACE_MS, type ColumnKind, type RowCursor } from '../db/driver.js';
 import { sqlErrorFields, type SqlErrorDetails } from '../db/sqlErrorInfo.js';
@@ -52,11 +57,14 @@ export interface ExportQueryInput {
   defaultSchema?: string;
   /** False when describe_table is not registered, so an unknown-column hint does not name it. Defaults to true. */
   describeTable?: boolean;
+  /** Asks the user before a large export (EXPORT_CONFIRM_ROWS). */
+  elicit?: Elicitor;
 }
 
 export type ExportQueryResult = SqlErrorDetails & {
   success: boolean;
   error?: string;
+  errorKind?: AuditErrorKind;
   violations?: string[];
   format?: ExportFormat;
   filename?: string;
@@ -177,13 +185,56 @@ function duplicateName(names: readonly string[]): string | undefined {
   return undefined;
 }
 
+const confirmAnswerSchema = z.object({ max_rows: z.number().int().positive() });
+
+/**
+ * Ask the user to confirm an export that can write more than EXPORT_CONFIRM_ROWS
+ * rows. The answer can only lower the cap. Without elicitation support the
+ * export goes ahead with the cap it has.
+ *
+ * @returns The row cap to use, the question to ask, or why the export did not start
+ */
+async function confirmRowCap(
+  elicit: Elicitor,
+  rowCap: number,
+  format: ExportFormat,
+): Promise<number | ExportQueryResult | InputRequiredResult> {
+  const answer = elicit.answer('export_rows');
+  if (!answer) {
+    if (!elicit.available) {
+      return rowCap;
+    }
+    return elicit.ask('export_rows', `Export up to ${rowCap.toLocaleString('en-US')} rows as ${format.toUpperCase()}?`, {
+      type: 'object',
+      properties: {
+        max_rows: {
+          type: 'integer',
+          title: 'Rows',
+          description: `Most rows to write, at most ${rowCap}`,
+          minimum: 1,
+          maximum: rowCap,
+          default: rowCap,
+        },
+      },
+      required: ['max_rows'],
+    });
+  }
+  if (answer.action !== 'accept') {
+    return { success: false, error: 'The user did not confirm the export, so it was not started.', errorKind: 'elicitation_declined' };
+  }
+  const parsed = confirmAnswerSchema.safeParse(answer.content);
+  return parsed.success ? Math.min(parsed.data.max_rows, rowCap) : rowCap;
+}
+
 /**
  * Run a read-only query and write its rows to an export file.
  *
  * @param input - SQL, format, delivery and the caller's target
- * @returns A summary with the path or link, or why the export failed
+ * @returns A summary with the path or link, why the export failed, or a question for the user
  */
-export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQueryResult> {
+export async function exportQueryTool(input: ExportQueryInput & { elicit?: undefined }): Promise<ExportQueryResult>;
+export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQueryResult | InputRequiredResult>;
+export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQueryResult | InputRequiredResult> {
   const config = getExportConfig();
   if (!config || !isExportStoreReady()) {
     return { success: false, error: 'Query exports are not enabled. Set EXPORT_ENABLED=true and EXPORT_DIR.' };
@@ -198,12 +249,20 @@ export async function exportQueryTool(input: ExportQueryInput): Promise<ExportQu
   const format = input.format ?? 'xlsx';
   const filename = exportFilename(input.filename, format);
   const formatCap = format === 'xlsx' ? XLSX_MAX_ROWS - 1 : Number.MAX_SAFE_INTEGER;
-  const rowCap = Math.min(input.maxRows ?? config.maxRows, config.maxRows, formatCap);
+  let rowCap = Math.min(input.maxRows ?? config.maxRows, config.maxRows, formatCap);
 
   const prepared = await prepareReadQuery({ sql: input.sql, target: input.target, defaultSchema: input.defaultSchema });
   if (!prepared.ok) {
     const { ok: _ok, ...rejection } = prepared;
     return { success: false, ...rejection };
+  }
+
+  if (input.elicit && config.confirmRows > 0 && rowCap > config.confirmRows) {
+    const confirmed = await confirmRowCap(input.elicit, rowCap, format);
+    if (typeof confirmed !== 'number') {
+      return confirmed;
+    }
+    rowCap = confirmed;
   }
 
   let slot;

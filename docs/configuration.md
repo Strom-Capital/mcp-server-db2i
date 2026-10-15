@@ -123,6 +123,7 @@ Over stdio, the server exits when its client goes away: when stdin closes, or wh
 | `EXPORT_ENABLED` | off | `true` or `1` registers `export_query` and, over HTTP, the `/exports/:id` download route |
 | `EXPORT_DIR` | - | Directory for export files. Created with mode `0700`; it must not be a symbolic link and must belong to the user the server runs as. Export files left by an earlier run are deleted at startup; other files are left alone |
 | `EXPORT_MAX_ROWS` | `100000` | Most rows per export. `max_rows` can only lower it |
+| `EXPORT_CONFIRM_ROWS` | `0` (off) | Ask the user before an export that may write more rows than this. The question shows the row cap (`max_rows`, or `EXPORT_MAX_ROWS`), not a count, and the user can lower it. See [Elicitation](#elicitation) |
 | `EXPORT_MAX_BYTES` | `104857600` | Largest export file in bytes (100 MB). The export stops after the batch that reaches it, and the result says `truncated: "bytes"` |
 | `EXPORT_TIMEOUT` | `QUERY_TIMEOUT` | Seconds an export may take, from the query to the last row. The statement is cancelled on the IBM i at the limit, as with `QUERY_TIMEOUT`. `0` turns the limit off |
 | `EXPORT_TTL_MINUTES` | `15` | Minutes a finished file is kept. Then the file and its link are gone |
@@ -167,8 +168,19 @@ Resources and prompts follow the tools they draw on. Disabling `describe_table` 
 |----------|---------|-------------|
 | `MCP_CUSTOM_TOOLS` | - | Comma-separated YAML files or directories. Each file defines read-only SQL tools, table annotations, or both. |
 | `MCP_CUSTOM_TOOLS_WATCH` | off | `true` or `1` re-reads those files when they change. A valid set replaces the running tools and the server sends `notifications/tools/list_changed`. An invalid set is logged and the last good set keeps serving. Watching with an empty `MCP_CUSTOM_TOOLS` stops startup. |
+| `MCP_CUSTOM_TOOLS_ASK` | on | Parameters marked `ask: true` are optional in `tools/list`, and the user is asked for any the model leaves out. `false` or `0` makes them ordinary parameters again. See [Asking the user](custom-tools.md#asking-the-user) |
 
 The server reads these files before it accepts connections. A statement that is not a query, or that names a library outside `QUERY_ALLOWED_SCHEMAS`, stops startup. See [Business SQL tools](custom-tools.md) for the file format, parameter binding, and the example ERP pack.
+
+### Elicitation
+
+Two tools can stop and ask the user a question in the client before they run: `export_query` with `EXPORT_CONFIRM_ROWS`, and business SQL tools with `ask` parameters. The question is an MCP form elicitation. It reaches clients on protocol `2026-07-28`, and 2025 clients over stdio or a stateful HTTP session, when the client says it supports form elicitation. Other clients get the same behavior as before: the export runs with its cap, and a missing `ask` parameter fails validation.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_ELICITATION_SECRET` | key from `MCP_OAUTH_SECRET`, else random per process | Key, at least 32 characters, that signs the state a client sends back with its answer. Set it, or `MCP_OAUTH_SECRET`, when more than one instance serves the same HTTP URL, so an answer can reach any instance |
+
+The client has 5 minutes to answer. See [Security](security.md#elicitation) for what the signed state protects.
 
 ### Response Format
 
