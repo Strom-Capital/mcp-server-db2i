@@ -23,15 +23,16 @@ Built with Next.js (App Router), [AI SDK](https://ai-sdk.dev) 7 and AI SDK UI, `
 
 ## How it works
 
-```text
-Browser ──── /api/chat ────▶ Next.js app ──── MCP over HTTP ────▶ mcp-server-db2i ──▶ IBM i
-   │                            │  (Bearer token from the session)
-   │  model key in a header     └──── model API (Anthropic, OpenAI, ...)
-   └── sign-in ──▶ server's OAuth sign-in page
+```mermaid
+graph LR
+    browser("Browser") -- "/api/chat" --> app["Next.js app"]
+    app -- "MCP over HTTP" --> server["mcp-server-db2i"]
+    server --> ibmi[("IBM i")]
+    app --> model("Model API")
 ```
 
 - **Sign-in** uses the server's built-in OAuth authorization server. The app registers itself as an OAuth client, sends the user to the server's sign-in page, and keeps the tokens in an encrypted, httpOnly session cookie. The browser never sees the IBM i password or the tokens. Every query runs with the signed-in user's own authority, and the server's checks (read-only validator, schema allowlist, row limits, audit log) apply as usual.
-- **Model keys** stay in the browser's `localStorage`. Each chat request sends the key in a header to this app, which passes it to the model provider. The app does not store or log it, and removes it from error messages.
+- **Model keys**: a key the user enters stays in the browser's `localStorage`. Each chat request sends it in a header to this app, which passes it to the model provider. Without one, the app uses the company key set on its server, which the browser never sees. The app does not store or log either key, and removes them from error messages.
 - **Chats** and the list of exports are kept in IndexedDB in the browser. A chat keeps its messages and tool results, result rows included, until it is deleted.
 - **Tool forms** call the tool directly through `/api/tools/run`, with the same checks as a call from the model. The form only offers tools the server lists for the signed-in user.
 - **Systems**: with `DB2I_PROFILES` on the server, the sign-in page asks which system to use, and the session stays on that system. To switch, sign out and sign in again.
