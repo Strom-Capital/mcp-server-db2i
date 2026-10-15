@@ -1,6 +1,7 @@
 'use client';
 
 import type { DynamicToolUIPart } from 'ai';
+import { useState } from 'react';
 import { CodeBlock } from '@/components/ai-elements/code-block';
 import { Tool, ToolContent, ToolHeader, ToolInput } from '@/components/ai-elements/tool';
 import { useDuration } from '@/lib/client/clock';
@@ -19,9 +20,12 @@ export function ToolCard({ part }: { part: DynamicToolUIPart }) {
   const sql = sqlOf(part.input);
   const args = argumentsOf(part.input);
   const summary = part.state === 'output-error' ? 'failed' : resultSummary(view, durationMs);
+  // A streamed call mounts before its result, so the card opens when the result arrives, until the user toggles it
+  const [toggled, setToggled] = useState<boolean>();
+  const open = toggled ?? (!!view?.rows?.length || !!view?.exportFile || failed);
 
   return (
-    <Tool defaultOpen={!!view?.rows?.length || !!view?.exportFile || failed} className="bg-card/60">
+    <Tool open={open} onOpenChange={setToggled} className="bg-card/60">
       <ToolHeader type="dynamic-tool" toolName={part.toolName} state={failed && done ? 'output-error' : part.state} summary={summary} />
       <ToolContent className="space-y-3 border-t">
         {sql && <CodeBlock code={sql} language="sql" />}
