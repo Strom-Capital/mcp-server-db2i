@@ -67,6 +67,8 @@ A parameter with a `default` may be omitted, and the default is bound. `required
 
 Boolean values bind as `1` and `0`.
 
+In `tools/list`, every business tool carries `_meta["db2i-mcp/tool"]` with `kind: "business"` and its `toolset`, when it has one. Built-in tools have no such entry. A client can use it to list business tools on their own, grouped by toolset.
+
 `:name` is replaced with a `?` marker. The same name may appear more than once, and the same value is bound each time. Placeholders inside string literals, quoted identifiers, and comments are left as text. A hand-written `?` is rejected so the bind order stays unambiguous.
 
 An optional filter has to survive a NULL. Compare a cast marker, then the column:

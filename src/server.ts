@@ -1608,6 +1608,7 @@ function syncOneServer(
       title: tool.title,
       description: tool.description,
       paramsSchema: customToolInputSchema(tool, live.sessionContext),
+      _meta: customToolMeta(tool),
       callback: customToolCallback(tool, live.sessionContext),
     });
     current.signature = signature;
@@ -1659,6 +1660,17 @@ function customToolInputSchema(tool: StoredTool, sessionContext: SessionContext 
   return params.extend({ ...system, ...context });
 }
 
+/** `_meta` key on business tools in `tools/list`, so clients can tell them from built-in tools. */
+export const TOOL_META_KEY = 'db2i-mcp/tool';
+
+/**
+ * Tool `_meta` for a business tool: its kind and YAML toolset. Built-in tools
+ * carry no such entry.
+ */
+export function customToolMeta(tool: StoredTool): Record<string, unknown> {
+  return { [TOOL_META_KEY]: { kind: 'business', ...(tool.toolset ? { toolset: tool.toolset } : {}) } };
+}
+
 function registerCustomTool(
   server: McpServer,
   tool: StoredTool,
@@ -1672,6 +1684,7 @@ function registerCustomTool(
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: customToolInputSchema(tool, sessionContext),
       outputSchema: queryOutputSchema,
+      _meta: customToolMeta(tool),
     },
     customToolCallback(tool, sessionContext),
   );
@@ -1725,6 +1738,7 @@ function withoutSystemArg(tool: StoredTool, args: unknown): Record<string, unkno
 function toolSignature(tool: StoredTool): string {
   return JSON.stringify({
     title: tool.title,
+    toolset: tool.toolset ?? null,
     description: tool.description,
     parameters: tool.parameters,
     sql: tool.sql,
