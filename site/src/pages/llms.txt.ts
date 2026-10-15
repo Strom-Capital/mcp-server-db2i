@@ -18,6 +18,7 @@ export async function GET(context: APIContext) {
 - Transports: stdio for local clients (Claude Desktop, Claude Code, Cursor) and Streamable HTTP for remote clients such as claude.ai connectors.
 - One server can reach several IBM i systems through connection profiles.
 - Teams can add their own business SQL tools and table notes in YAML.
+- In clients that support MCP Apps, results open as a sortable grid, and as a chart when the user asks for one.
 - It does not write to the database and does not replace governed financial reporting.
 
 ## Docs

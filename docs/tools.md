@@ -102,8 +102,8 @@ Results with rows also carry `columns`, each column's `name` and `kind` (`int`, 
 
 ```json
 {
-  "sql": "SELECT STATUS, SUM(AMOUNT) AS TOTAL FROM MYLIB.ORDERS GROUP BY STATUS",
-  "chart": { "type": "pie", "x": "STATUS", "y": ["TOTAL"] }
+  "sql": "SELECT MONTH(ORDDATE) AS MONTH, SUM(AMOUNT) AS TOTAL FROM MYLIB.ORDERS WHERE YEAR(ORDDATE) = 2026 GROUP BY MONTH(ORDDATE) ORDER BY 1",
+  "chart": { "type": "line", "x": "MONTH", "y": ["TOTAL"] }
 }
 ```
 
