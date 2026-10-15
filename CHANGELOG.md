@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.7.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.6.1...v3.7.0) (2026-10-15)
+
+
+### Features
+
+* add an example web app with bring-your-own-model chat, business tools and light and dark themes ([#287](https://github.com/Strom-Capital/mcp-server-db2i/issues/287)) ([ef4a262](https://github.com/Strom-Capital/mcp-server-db2i/commit/ef4a2629fedf1f4e704f739f82d747bf77c4d4ff))
+* let the example web app use a company model key set on its server ([#294](https://github.com/Strom-Capital/mcp-server-db2i/issues/294)) ([f9936a7](https://github.com/Strom-Capital/mcp-server-db2i/commit/f9936a7db662ac0164867e4ac4efe956ba87b89c))
+
+
+### Dependencies
+
+* bump the production group with 3 updates ([#290](https://github.com/Strom-Capital/mcp-server-db2i/issues/290)) ([4a3a714](https://github.com/Strom-Capital/mcp-server-db2i/commit/4a3a7143b5f85a1b8fc84bbbbb2b356beb8d0d2f))
+
 ## [3.6.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.6.0...v3.6.1) (2026-10-09)
 
 
