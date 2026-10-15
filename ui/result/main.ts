@@ -171,8 +171,11 @@ function renderChart(container: HTMLElement, table: ResultTable, plan: ChartPlan
     return;
   }
   if (built.kind === 'kpi') {
+    const frame = document.createElement('div');
+    frame.className = 'kpis';
     const tiles = document.createElement('div');
-    tiles.className = 'kpis';
+    tiles.className = 'kpi-row';
+    frame.append(tiles);
     if (built.title) {
       const title = document.createElement('h2');
       title.textContent = built.title;
@@ -190,7 +193,7 @@ function renderChart(container: HTMLElement, table: ResultTable, plan: ChartPlan
       tile.append(label, value);
       tiles.append(tile);
     }
-    container.append(tiles);
+    container.append(frame);
     return;
   }
   const box = document.createElement('div');

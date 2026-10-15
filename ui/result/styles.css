@@ -63,11 +63,13 @@ html, body {
 
 .chart { position: relative; height: 320px; }
 
-.kpis { display: flex; flex-wrap: wrap; gap: 0; border-top: 1px solid var(--v-ink); }
-.kpi { flex: 1 1 160px; padding: 14px 16px 16px 0; }
-.kpi + .kpi { padding-left: 16px; border-left: 1px solid var(--v-line); }
+/* Every tile has a divider and indent; the row is pulled left and clipped, so the first tile on each line starts flush */
+.kpis { overflow: hidden; border-top: 1px solid var(--v-ink); }
+.kpi-row { display: flex; flex-wrap: wrap; margin-left: -17px; }
+.kpi { flex: 1 1 100px; padding: 12px 16px 14px; border-left: 1px solid var(--v-line); }
 .kpi-label { font: 500 11px var(--v-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--v-muted); }
-.kpi-value { font: 400 40px/1.1 var(--v-sans); letter-spacing: -0.03em; margin-top: 10px; font-variant-numeric: tabular-nums; }
+.kpi-value { font: 400 26px/1.15 var(--v-sans); letter-spacing: -0.02em; margin-top: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kpi:only-child .kpi-value { font-size: 44px; letter-spacing: -0.03em; margin-top: 8px; }
 h2 { font: 500 14px var(--v-sans); margin: 0 0 10px; }
 
 .grid-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
