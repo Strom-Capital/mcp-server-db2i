@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { compareCells, csvField, formatCell, groupDigits, inferColumns, toCsv, toTsv } from '@/lib/format';
-import { readToolResult } from '@/lib/results';
+import { exportSourceOf, readToolResult } from '@/lib/results';
+
+describe('exportSourceOf', () => {
+  it('takes the SQL and parameters of an execute_query call', () => {
+    expect(exportSourceOf('execute_query', { sql: ' SELECT ORDERNO FROM MYLIB.ORDERS WHERE CUSTNO = ? ', params: [42], limit: 100 })).toEqual({
+      sql: 'SELECT ORDERNO FROM MYLIB.ORDERS WHERE CUSTNO = ?',
+      params: [42],
+    });
+    expect(exportSourceOf('execute_query', { sql: 'SELECT 1 FROM SYSIBM.SYSDUMMY1', params: [] })).toEqual({ sql: 'SELECT 1 FROM SYSIBM.SYSDUMMY1' });
+  });
+
+  it('has nothing for other tools or an empty query', () => {
+    expect(exportSourceOf('list_sales_orders', { customer: 1001 })).toBeUndefined();
+    expect(exportSourceOf('validate_query', { sql: 'SELECT 1 FROM SYSIBM.SYSDUMMY1' })).toBeUndefined();
+    expect(exportSourceOf('execute_query', { sql: '  ' })).toBeUndefined();
+    expect(exportSourceOf(undefined, undefined)).toBeUndefined();
+  });
+});
 
 describe('inferColumns', () => {
   it('treats numbers and decimal strings as numbers, and ignores nulls', () => {

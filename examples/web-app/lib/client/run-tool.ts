@@ -5,6 +5,8 @@ import { addExport } from './store';
 
 /** What one direct tool run returned. */
 export interface ToolRun {
+  /** The arguments the tool ran with. */
+  input: Record<string, unknown>;
   output: unknown;
   durationMs?: number;
 }
@@ -41,5 +43,5 @@ export async function runTool(name: string, args: Record<string, unknown>): Prom
   if (view.exportFile) {
     void addExport({ ...view.exportFile, at: Date.now(), tool: name, sql: sqlOf(args), input: args });
   }
-  return { output: body.result, durationMs: body.durationMs };
+  return { input: args, output: body.result, durationMs: body.durationMs };
 }

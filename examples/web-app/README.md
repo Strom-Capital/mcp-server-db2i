@@ -6,7 +6,7 @@ It is an example: a starting point to read, run and change. It is not published 
 
 - **Chat** with Anthropic, OpenAI, Google Gemini or any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM). Answers are rendered as markdown. **Load models** lists the provider's models in a searchable picker, and the effort menu in the chat box sets how long a reasoning model thinks.
 - **Saved chats** in a sidebar, grouped by day, as in ChatGPT or Claude. Search them by text or by the SQL they ran. Each chat has its own link and stays in the browser.
-- **Result tables** for every query: sort by a column, filter rows, resize columns, scroll through thousands of rows, copy for Excel and download as CSV. Long decimals keep every digit.
+- **Result tables** for every query: sort by a column, filter rows, resize columns, scroll through thousands of rows, copy for Excel and export. Export saves the rows shown as CSV, or for an `execute_query` result has the server write every row to Excel or CSV with `export_query`. Long decimals keep every digit.
 - **Tools**: every tool the server lists, with business SQL tools grouped by toolset. Each one has a form built from its input schema, so you can run it without the model, or send it to the chat.
 - **Exports**: `export_query` results show a download button with the row count, size and expiry. The Exports page lists them all, and runs an export again when its link has expired.
 - **Context**: the business context from the server's YAML files, with table descriptions, the filters most queries need, column notes and joins.

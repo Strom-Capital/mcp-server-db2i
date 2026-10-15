@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAppState } from '@/components/app-state';
-import { formatBytes } from '@/components/tool-result';
+import { formatBytes } from '@/components/result-parts';
 import { useNow } from '@/lib/client/clock';
 import { runTool, SignInNeededError } from '@/lib/client/run-tool';
 import { clearExpiredExports, useExports, type ExportEntry } from '@/lib/client/store';

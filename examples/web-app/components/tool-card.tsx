@@ -27,7 +27,7 @@ export function ToolCard({ part }: { part: DynamicToolUIPart }) {
         {sql && <CodeBlock code={sql} language="sql" />}
         {Object.keys(args).length > 0 && <ToolInput input={args} />}
         {part.state === 'output-error' && <p className="text-destructive text-sm">{part.errorText || 'The tool call failed.'}</p>}
-        {done && <ToolResultBody output={part.output} filename={part.toolName} />}
+        {done && <ToolResultBody output={part.output} tool={part.toolName} input={part.input} />}
       </ToolContent>
     </Tool>
   );

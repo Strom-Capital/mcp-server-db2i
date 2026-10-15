@@ -179,7 +179,7 @@ export function ToolForm({ tool }: { tool: ToolSummary }) {
           {state.error}
         </p>
       )}
-      {state.run && <ToolResultBody output={state.run.output} filename={tool.name} />}
+      {state.run && <ToolResultBody output={state.run.output} tool={tool.name} input={state.run.input} />}
     </div>
   );
 }

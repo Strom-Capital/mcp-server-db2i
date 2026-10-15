@@ -186,6 +186,28 @@ export function sqlOf(input: unknown): string | undefined {
   return isRecord(input) && typeof input.sql === 'string' ? input.sql : undefined;
 }
 
+/** SQL and parameters that export_query can run again to get every row. */
+export interface ExportSource {
+  sql: string;
+  params?: unknown[];
+}
+
+/**
+ * The query behind a result, when export_query can run it. Only execute_query
+ * results qualify: a business SQL tool's call holds its arguments, not its SQL.
+ *
+ * @param tool - Name of the tool that returned the result
+ * @param input - Its arguments
+ * @returns The SQL and parameters, or undefined
+ */
+export function exportSourceOf(tool: string | undefined, input: unknown): ExportSource | undefined {
+  const sql = tool === 'execute_query' ? sqlOf(input)?.trim() : undefined;
+  if (!sql || !isRecord(input)) {
+    return undefined;
+  }
+  return Array.isArray(input.params) && input.params.length > 0 ? { sql, params: input.params } : { sql };
+}
+
 /**
  * Tool arguments other than SQL and the audit-only `context`, for display.
  *
