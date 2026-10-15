@@ -87,7 +87,7 @@ Instead of each user pasting a key, set one on the app's server. Everyone who si
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...      # or OPENAI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY
 DEFAULT_PROVIDER=anthropic
-DEFAULT_MODEL=claude-sonnet-4-5   # new users start here, without opening Settings
+DEFAULT_MODEL=claude-sonnet-5-5   # new users start here, without opening Settings
 ```
 
 The key stays on the app's server: the browser only learns that the provider has one. It is used only for signed-in users, and it is kept out of error messages. A key a user enters in Settings is used instead of it. Set a spending limit on the provider account to cap the cost. The [app's README](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/web-app#readme) lists every setting.

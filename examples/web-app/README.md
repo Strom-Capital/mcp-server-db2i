@@ -91,7 +91,7 @@ Each user can bring their own key, but you can also set one key on the app's ser
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
 DEFAULT_PROVIDER=anthropic
-DEFAULT_MODEL=claude-sonnet-4-5
+DEFAULT_MODEL=claude-sonnet-5-5
 ```
 
 The key is used only for signed-in users: a request without an IBM i sign-in is refused before the provider is called. Users can't read it, and it is kept out of error messages. Every chat still runs with the signed-in user's own IBM i authority. To see and cap the cost, set a spending limit on the provider account the key belongs to.
