@@ -20,19 +20,19 @@ function joinText(join: Record<string, string>): string {
 function AnnotationCard({ annotation, onAsk }: { annotation: Annotation; onAsk: () => void }) {
   const columns = Object.entries(annotation.columns ?? {});
   return (
-    <li className="rounded-sm border border-line bg-surface/60">
+    <li className="rounded-sm border border-border bg-card/60">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
         <code className="font-medium">{annotation.table}</code>
-        {annotation.entity && <span className="rounded-sm border border-line px-1.5 text-xs text-muted-foreground">{annotation.entity}</span>}
+        {annotation.entity && <span className="rounded-sm border border-border px-1.5 text-xs text-muted-foreground">{annotation.entity}</span>}
         <span className="flex-1" />
-        <button type="button" onClick={onAsk} className="rounded-sm px-2 py-1 text-sm hover:bg-bg">
+        <button type="button" onClick={onAsk} className="rounded-sm px-2 py-1 text-sm hover:bg-background">
           Ask about this table
         </button>
       </div>
       <div className="flex flex-col gap-3 px-3 pb-3 text-sm">
         {annotation.description && <p>{annotation.description}</p>}
         {annotation.filters && annotation.filters.length > 0 && (
-          <div className="rounded-sm border border-accent/40 bg-accent/5 px-3 py-2">
+          <div className="rounded-sm border border-primary/40 bg-primary/5 px-3 py-2">
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Most queries need</p>
             <ul className="mt-1 flex flex-col gap-1">
               {annotation.filters.map((filter) => (
@@ -48,15 +48,15 @@ function AnnotationCard({ annotation, onAsk }: { annotation: Annotation; onAsk: 
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="text-xs text-muted-foreground">
-                <th className="w-48 border-b border-line py-1 pr-3 font-medium">Column</th>
-                <th className="border-b border-line py-1 font-medium">Meaning</th>
+                <th className="w-48 border-b border-border py-1 pr-3 font-medium">Column</th>
+                <th className="border-b border-border py-1 font-medium">Meaning</th>
               </tr>
             </thead>
             <tbody>
               {columns.map(([name, note]) => (
                 <tr key={name}>
-                  <td className="border-b border-line py-1 pr-3 align-top font-mono text-xs">{name}</td>
-                  <td className="border-b border-line py-1">{note}</td>
+                  <td className="border-b border-border py-1 pr-3 align-top font-mono text-xs">{name}</td>
+                  <td className="border-b border-border py-1">{note}</td>
                 </tr>
               ))}
             </tbody>
@@ -153,13 +153,13 @@ export default function ContextPage() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search tables, entities and columns"
             aria-label="Search business context"
-            className="h-9 w-72 rounded-sm border border-line bg-surface px-2 outline-none focus:border-accent"
+            className="h-9 w-72 rounded-sm border border-border bg-card px-2 outline-none focus:border-ring"
           />
         )}
       </div>
 
       {state.status === 'loading' && <p className="mt-10 text-center text-muted-foreground">Loading...</p>}
-      {state.status === 'error' && <p className="mt-10 text-center text-error">{state.error}</p>}
+      {state.status === 'error' && <p className="mt-10 text-center text-destructive">{state.error}</p>}
       {state.status === 'ready' && !state.context?.available && (
         <p className="mt-10 text-center text-muted-foreground">The server does not offer business context to this user.</p>
       )}

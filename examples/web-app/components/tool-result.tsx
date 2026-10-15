@@ -26,7 +26,7 @@ export function ExportCard({ file }: { file: ExportFile }) {
   const now = useNow();
   const expired = file.expiresAt && now > 0 ? Date.parse(file.expiresAt) < now : false;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-sm border border-line bg-surface px-3 py-2 text-sm">
+    <div className="flex flex-wrap items-center gap-3 rounded-sm border border-border bg-card px-3 py-2 text-sm">
       <span className="font-medium">{file.filename}</span>
       <span className="text-muted-foreground tabular">
         {[
@@ -38,14 +38,14 @@ export function ExportCard({ file }: { file: ExportFile }) {
           .filter(Boolean)
           .join(' \u00b7 ')}
       </span>
-      {file.truncated && <span className="text-error">Stopped at the {file.truncated === 'rows' ? 'row' : 'size'} limit</span>}
+      {file.truncated && <span className="text-destructive">Stopped at the {file.truncated === 'rows' ? 'row' : 'size'} limit</span>}
       <span className="flex-1" />
       {expired ? (
         <span className="text-muted-foreground">Link expired</span>
       ) : (
         <a
           href={file.url}
-          className="rounded-sm bg-accent px-3 py-1.5 font-medium text-on-accent hover:bg-accent-strong"
+          className="rounded-sm bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:bg-primary/90"
           rel="noreferrer"
         >
           Download
@@ -58,8 +58,8 @@ export function ExportCard({ file }: { file: ExportFile }) {
 /** A tool error with the Db2 SQLSTATE, cause and recovery text when the server sent them. */
 export function ToolErrorBox({ error }: { error: ToolError }) {
   return (
-    <div className="rounded-sm border border-error/40 bg-error/5 px-3 py-2 text-sm">
-      <p className="font-medium text-error">{error.message}</p>
+    <div className="rounded-sm border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+      <p className="font-medium text-destructive">{error.message}</p>
       {(error.sqlstate || error.sqlcode !== undefined) && (
         <p className="mt-1 font-mono text-xs text-muted-foreground">
           {[error.sqlcode !== undefined ? `SQLCODE ${error.sqlcode}` : undefined, error.sqlstate ? `SQLSTATE ${error.sqlstate}` : undefined]
@@ -102,7 +102,7 @@ export function ToolResultBody({ output, filename }: { output: unknown; filename
     <div className="flex flex-col gap-2">
       {view.error && <ToolErrorBox error={view.error} />}
       {view.warnings.length > 0 && (
-        <ul className="rounded-sm border border-line bg-bg px-3 py-2 text-sm">
+        <ul className="rounded-sm border border-border bg-background px-3 py-2 text-sm">
           {view.warnings.map((warning) => (
             <li key={warning}>{warning}</li>
           ))}
@@ -111,7 +111,7 @@ export function ToolResultBody({ output, filename }: { output: unknown; filename
       {view.exportFile && <ExportCard file={view.exportFile} />}
       {view.rows && <ResultTable rows={view.rows} filename={filename} />}
       {!view.rows && !view.error && view.text && (
-        <pre className="max-h-80 overflow-auto rounded-sm border border-line bg-surface p-3 font-mono text-xs whitespace-pre-wrap">
+        <pre className="max-h-80 overflow-auto rounded-sm border border-border bg-card p-3 font-mono text-xs whitespace-pre-wrap">
           {view.text}
         </pre>
       )}

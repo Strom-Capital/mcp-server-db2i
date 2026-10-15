@@ -2,22 +2,8 @@
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { useCallback, useEffect, useState } from 'react';
+import type { ChatRecord } from '../chats';
 import type { ExportFile } from '../results';
-
-/** One tool call that ran. Result rows are not kept; "run again" fetches them fresh. */
-export interface HistoryEntry {
-  /** The tool call ID, or a random ID for a direct run. */
-  id: string;
-  at: number;
-  tool: string;
-  input: Record<string, unknown>;
-  ok: boolean;
-  rowCount?: number;
-  truncated?: boolean;
-  durationMs?: number;
-  error?: string;
-  source: 'chat' | 'direct';
-}
 
 /** An export_query file, with the time it was created. */
 export interface ExportEntry extends ExportFile {
@@ -29,19 +15,28 @@ export interface ExportEntry extends ExportFile {
 }
 
 interface AppDb extends DBSchema {
-  history: { key: string; value: HistoryEntry; indexes: { at: number } };
+  chats: { key: string; value: ChatRecord; indexes: { updatedAt: number } };
   exports: { key: string; value: ExportEntry; indexes: { at: number } };
 }
 
-const HISTORY_LIMIT = 1000;
+const CHAT_LIMIT = 500;
 const changeListeners = new Set<() => void>();
 let dbPromise: Promise<IDBPDatabase<AppDb>> | undefined;
 
 function db(): Promise<IDBPDatabase<AppDb>> {
-  dbPromise ??= openDB<AppDb>('db2i-web-app', 1, {
-    upgrade(database) {
-      database.createObjectStore('history', { keyPath: 'id' }).createIndex('at', 'at');
-      database.createObjectStore('exports', { keyPath: 'url' }).createIndex('at', 'at');
+  dbPromise ??= openDB<AppDb>('db2i-web-app', 2, {
+    upgrade(database, oldVersion) {
+      if (oldVersion < 1) {
+        database.createObjectStore('exports', { keyPath: 'url' }).createIndex('at', 'at');
+      }
+      if (oldVersion < 2) {
+        // Version 1 kept a query history, which saved chats replace
+        const untyped = database as unknown as IDBPDatabase;
+        if (untyped.objectStoreNames.contains('history')) {
+          untyped.deleteObjectStore('history');
+        }
+        database.createObjectStore('chats', { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
+      }
     },
   });
   return dbPromise;
@@ -54,19 +49,39 @@ function changed(): void {
 }
 
 /**
- * Save a history entry, keeping at most the newest HISTORY_LIMIT.
+ * Save a chat, keeping at most the newest CHAT_LIMIT.
  *
- * @param entry - The entry; an existing ID is replaced
+ * @param chat - The chat; an existing ID is replaced
  */
-export async function addHistory(entry: HistoryEntry): Promise<void> {
+export async function saveChat(chat: ChatRecord): Promise<void> {
   const database = await db();
-  await database.put('history', entry);
-  const count = await database.count('history');
-  if (count > HISTORY_LIMIT) {
-    const oldest = await database.getAllKeysFromIndex('history', 'at', null, count - HISTORY_LIMIT);
-    const tx = database.transaction('history', 'readwrite');
+  await database.put('chats', chat);
+  const count = await database.count('chats');
+  if (count > CHAT_LIMIT) {
+    const oldest = await database.getAllKeysFromIndex('chats', 'updatedAt', null, count - CHAT_LIMIT);
+    const tx = database.transaction('chats', 'readwrite');
     await Promise.all([...oldest.map((key) => tx.store.delete(key)), tx.done]);
   }
+  changed();
+}
+
+/**
+ * Read one saved chat.
+ *
+ * @param id - The chat ID
+ * @returns The chat, or undefined when there is none
+ */
+export async function loadChat(id: string): Promise<ChatRecord | undefined> {
+  return (await db()).get('chats', id);
+}
+
+/**
+ * Delete a saved chat.
+ *
+ * @param id - The chat ID
+ */
+export async function deleteChat(id: string): Promise<void> {
+  await (await db()).delete('chats', id);
   changed();
 }
 
@@ -77,12 +92,6 @@ export async function addHistory(entry: HistoryEntry): Promise<void> {
  */
 export async function addExport(entry: ExportEntry): Promise<void> {
   await (await db()).put('exports', entry);
-  changed();
-}
-
-/** Delete every history entry. */
-export async function clearHistory(): Promise<void> {
-  await (await db()).clear('history');
   changed();
 }
 
@@ -117,16 +126,16 @@ function useStore<T>(load: () => Promise<T>, initial: T): { items: T; loading: b
   return { items, loading, reload };
 }
 
-const loadHistory = async () => (await (await db()).getAllFromIndex('history', 'at')).reverse();
+const loadChats = async () => (await (await db()).getAllFromIndex('chats', 'updatedAt')).reverse();
 const loadExports = async () => (await (await db()).getAllFromIndex('exports', 'at')).reverse();
 
 /**
- * History entries, newest first, updated when one is added.
+ * Saved chats, newest first, updated when one is saved or deleted.
  *
- * @returns The entries and a loading flag
+ * @returns The chats and a loading flag
  */
-export function useHistory() {
-  return useStore<HistoryEntry[]>(loadHistory, []);
+export function useChats() {
+  return useStore<ChatRecord[]>(loadChats, []);
 }
 
 /**

@@ -38,7 +38,7 @@ export default function ToolsPage() {
 
   return (
     <div className="flex h-full flex-col md:flex-row">
-      <aside className="flex max-h-72 shrink-0 flex-col border-b border-line md:max-h-none md:w-80 md:border-r md:border-b-0">
+      <aside className="flex max-h-72 shrink-0 flex-col border-b border-border md:max-h-none md:w-80 md:border-r md:border-b-0">
         <div className="flex flex-col gap-2 p-3">
           <div className="flex items-baseline justify-between">
             <h1 className="font-semibold">Tools</h1>
@@ -54,15 +54,15 @@ export default function ToolsPage() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search tools"
             aria-label="Search tools"
-            className="h-9 rounded-sm border border-line bg-surface px-2 text-sm outline-none focus:border-accent"
+            className="h-9 rounded-sm border border-border bg-card px-2 text-sm outline-none focus:border-ring"
           />
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3" aria-label="Tools">
           {catalog.status === 'loading' && <p className="px-2 text-sm text-muted-foreground">Loading tools...</p>}
           {catalog.status === 'error' && (
             <div className="px-2 text-sm">
-              <p className="text-error">{catalog.error}</p>
-              <button type="button" onClick={() => void loadCatalog(true)} className="mt-2 rounded-sm border border-line px-2 py-1 hover:border-fg">
+              <p className="text-destructive">{catalog.error}</p>
+              <button type="button" onClick={() => void loadCatalog(true)} className="mt-2 rounded-sm border border-border px-2 py-1 hover:border-foreground">
                 Try again
               </button>
             </div>
@@ -79,7 +79,7 @@ export default function ToolsPage() {
                       onClick={() => setPicked(tool.name)}
                       aria-current={selected?.name === tool.name ? 'true' : undefined}
                       className={`flex w-full flex-col rounded-sm px-2 py-1.5 text-left ${
-                        selected?.name === tool.name ? 'bg-surface' : 'hover:bg-surface/60'
+                        selected?.name === tool.name ? 'bg-card' : 'hover:bg-card/60'
                       }`}
                     >
                       <span className="truncate text-sm">{tool.title ?? tool.name}</span>
@@ -100,7 +100,7 @@ export default function ToolsPage() {
               <div className="flex flex-wrap items-baseline gap-x-3">
                 <h2 className="text-xl font-semibold">{selected.title ?? selected.name}</h2>
                 <code className="text-sm text-muted-foreground">{selected.name}</code>
-                <span className="rounded-sm border border-line px-1.5 text-xs text-muted-foreground">
+                <span className="rounded-sm border border-border px-1.5 text-xs text-muted-foreground">
                   {selected.kind === 'business' ? `Business${selected.toolset ? `: ${selected.toolset}` : ''}` : 'Built-in'}
                 </span>
               </div>

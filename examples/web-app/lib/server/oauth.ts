@@ -134,18 +134,16 @@ export class SessionOAuthProvider implements OAuthClientProvider {
 }
 
 /**
- * Start the OAuth sign-in: register the app as a client if needed and build
- * the authorization URL with PKCE and state.
+ * Start the OAuth sign-in: register the app as a client and build the
+ * authorization URL with PKCE and state.
  *
  * @param session - The browser's session; saved by the caller
  * @returns The URL to send the browser to, or undefined when already signed in
  */
 export async function startSignIn(session: AppSession): Promise<URL | undefined> {
-  // A fresh sign-in starts from scratch: no half-finished flow or stale tokens
-  if (session.oauth) {
-    delete session.oauth.tokens;
-    delete session.oauth.expiresAt;
-  }
+  // Register again on every sign-in: a client from before a server restart with
+  // a new MCP_OAUTH_SECRET is rejected at the authorize step, where the app never sees the error
+  delete session.oauth;
   const provider = new SessionOAuthProvider(session);
   const result = await auth(provider, { serverUrl: getConfig().mcpEndpoint });
   return result === 'REDIRECT' ? provider.authorizationUrl : undefined;

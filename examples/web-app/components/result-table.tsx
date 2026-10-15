@@ -112,7 +112,7 @@ export function ResultTable({ rows, filename = 'result' }: { rows: Row[]; filena
           onChange={(event) => table.setGlobalFilter(event.target.value)}
           placeholder="Filter rows"
           aria-label="Filter rows"
-          className="h-8 w-48 rounded-sm border border-line bg-surface px-2 outline-none focus:border-accent"
+          className="h-8 w-48 rounded-sm border border-border bg-card px-2 outline-none focus:border-ring"
         />
         <span className="text-muted-foreground tabular">
           {visibleRows.length === rows.length ? countOf(rows.length, 'row') : `${groupDigits(String(visibleRows.length))} of ${countOf(rows.length, 'row')}`}
@@ -120,7 +120,7 @@ export function ResultTable({ rows, filename = 'result' }: { rows: Row[]; filena
         <span className="flex-1" />
         <button
           type="button"
-          className="h-8 rounded-sm border border-line px-2 hover:border-fg"
+          className="h-8 rounded-sm border border-border px-2 hover:border-foreground"
           onClick={() => {
             void navigator.clipboard.writeText(toTsv(names, shownRows())).then(() => {
               setCopied(true);
@@ -132,14 +132,14 @@ export function ResultTable({ rows, filename = 'result' }: { rows: Row[]; filena
         </button>
         <button
           type="button"
-          className="h-8 rounded-sm border border-line px-2 hover:border-fg"
+          className="h-8 rounded-sm border border-border px-2 hover:border-foreground"
           onClick={() => download(`${filename}.csv`, `\uFEFF${toCsv(names, shownRows())}`, 'text/csv;charset=utf-8')}
         >
           Download CSV
         </button>
       </div>
 
-      <div ref={scrollRef} className="overflow-auto rounded-sm border border-line bg-surface" style={{ maxHeight: MAX_HEIGHT }}>
+      <div ref={scrollRef} className="overflow-auto rounded-sm border border-border bg-card" style={{ maxHeight: MAX_HEIGHT }}>
         <table className="border-separate border-spacing-0 text-sm" style={{ width: totalWidth, tableLayout: 'fixed' }}>
           <colgroup>
             {table.getFlatHeaders().map((header) => (
@@ -157,13 +157,13 @@ export function ResultTable({ rows, filename = 'result' }: { rows: Row[]; filena
                       key={header.id}
                       scope="col"
                       aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'}
-                      className={`relative select-none border-b border-line bg-bg px-2 py-1.5 font-medium ${
+                      className={`relative select-none border-b border-border bg-background px-2 py-1.5 font-medium ${
                         kind === 'number' ? 'text-right' : 'text-left'
                       } ${index === 0 ? 'sticky left-0 z-30 border-r' : ''}`}
                     >
                       <button
                         type="button"
-                        className="w-full truncate text-inherit hover:text-accent"
+                        className="w-full truncate text-inherit hover:text-primary"
                         style={{ textAlign: 'inherit' }}
                         onClick={header.column.getToggleSortingHandler()}
                         title={`Sort by ${String(header.column.columnDef.header)}`}
@@ -178,7 +178,7 @@ export function ResultTable({ rows, filename = 'result' }: { rows: Row[]; filena
                         onMouseDown={header.getResizeHandler()}
                         onTouchStart={header.getResizeHandler()}
                         onDoubleClick={() => header.column.resetSize()}
-                        className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-accent"
+                        className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-primary"
                       />
                     </th>
                   );
@@ -207,9 +207,9 @@ export function ResultTable({ rows, filename = 'result' }: { rows: Row[]; filena
                       <td
                         key={cell.id}
                         title={text.length > 30 ? text : undefined}
-                        className={`truncate border-b border-line px-2 group-hover:bg-bg ${
+                        className={`truncate border-b border-border px-2 group-hover:bg-background ${
                           kind === 'number' ? 'text-right font-mono tabular' : ''
-                        } ${index === 0 ? 'sticky left-0 z-10 border-r bg-surface' : ''}`}
+                        } ${index === 0 ? 'sticky left-0 z-10 border-r bg-card' : ''}`}
                       >
                         {value === null || value === undefined ? <span className="text-muted-foreground">NULL</span> : text}
                       </td>

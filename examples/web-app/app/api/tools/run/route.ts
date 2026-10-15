@@ -11,7 +11,7 @@ const bodySchema = z.object({
   arguments: z.record(z.string(), z.unknown()).default({}),
 });
 
-/** Run one MCP tool directly, without a model: history re-runs and the business tool forms. */
+/** Run one MCP tool directly, without a model: the tool forms and exports run again. */
 export async function POST(request: Request): Promise<Response> {
   const refused = checkOrigin(request);
   if (refused) {

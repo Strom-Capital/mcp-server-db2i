@@ -1,7 +1,7 @@
 'use client';
 
 import { readToolResult, sqlOf } from '../results';
-import { addExport, addHistory } from './store';
+import { addExport } from './store';
 
 /** What one direct tool run returned. */
 export interface ToolRun {
@@ -18,8 +18,8 @@ export class SignInNeededError extends Error {
 }
 
 /**
- * Run one tool without a model, and record it in the history, and in the
- * exports list when it wrote a file.
+ * Run one tool without a model, and record it in the exports list when it
+ * wrote a file.
  *
  * @param name - Tool name
  * @param args - Tool arguments
@@ -38,21 +38,8 @@ export async function runTool(name: string, args: Record<string, unknown>): Prom
     throw body.signIn ? new SignInNeededError(message) : new Error(message);
   }
   const view = readToolResult(body.result);
-  const at = Date.now();
-  void addHistory({
-    id: crypto.randomUUID(),
-    at,
-    tool: name,
-    input: args,
-    ok: view.ok,
-    rowCount: view.rowCount,
-    truncated: view.truncated,
-    durationMs: body.durationMs,
-    error: view.error?.message,
-    source: 'direct',
-  });
   if (view.exportFile) {
-    void addExport({ ...view.exportFile, at, tool: name, sql: sqlOf(args), input: args });
+    void addExport({ ...view.exportFile, at: Date.now(), tool: name, sql: sqlOf(args), input: args });
   }
   return { output: body.result, durationMs: body.durationMs };
 }

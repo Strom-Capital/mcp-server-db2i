@@ -2,20 +2,21 @@
 
 A chat app for [mcp-server-db2i](../../README.md) that runs in the browser. Users sign in with their own IBM i user profile and bring their own model API key, so they can ask questions about IBM i data without a Claude or ChatGPT subscription.
 
-It is an example: a starting point to read, run and change. It is not published to npm and has no release of its own.
+It is an example: a starting point to read, run and change. It is not published to npm.
 
 - **Chat** with Anthropic, OpenAI, Google Gemini or any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM). Answers are rendered as markdown.
+- **Saved chats** in a sidebar, grouped by day, as in ChatGPT or Claude. Search them by text or by the SQL they ran. Each chat has its own link and stays in the browser.
 - **Result tables** for every query: sort by a column, filter rows, resize columns, scroll through thousands of rows, copy for Excel and download as CSV. Long decimals keep every digit.
 - **Tools**: every tool the server lists, with business SQL tools grouped by toolset. Each one has a form built from its input schema, so you can run it without the model, or send it to the chat.
 - **Exports**: `export_query` results show a download button with the row count, size and expiry. The Exports page lists them all, and runs an export again when its link has expired.
 - **Context**: the business context from the server's YAML files, with table descriptions, the filters most queries need, column notes and joins.
-- **History** of the queries the model or a form ran, kept in the browser. Search it, copy the SQL, run a query again, or ask a follow-up about it.
+- **Light and dark themes**, following the system setting unless you pick one.
 
-![Chat with a result table and a markdown answer](../../docs/assets/web-app-chat.png)
+![Chat with saved chats in the sidebar, a result table and a markdown answer](../../docs/assets/web-app-chat.png)
 
 More screenshots and an overview are in the [docs](../../docs/web-app.md).
 
-Built with Next.js (App Router), [AI SDK](https://ai-sdk.dev) 7 and AI SDK UI, `@ai-sdk/mcp`, TanStack Table and Streamdown.
+Built with Next.js (App Router), [AI SDK](https://ai-sdk.dev) 7 and AI SDK UI, `@ai-sdk/mcp`, [AI Elements](https://ai-sdk.dev/elements), shadcn/ui, TanStack Table and Streamdown.
 
 ## How it works
 
@@ -28,7 +29,7 @@ Browser ──── /api/chat ────▶ Next.js app ──── MCP over
 
 - **Sign-in** uses the server's built-in OAuth authorization server. The app registers itself as an OAuth client, sends the user to the server's sign-in page, and keeps the tokens in an encrypted, httpOnly session cookie. The browser never sees the IBM i password or the tokens. Every query runs with the signed-in user's own authority, and the server's checks (read-only validator, schema allowlist, row limits, audit log) apply as usual.
 - **Model keys** stay in the browser's `localStorage`. Each chat request sends the key in a header to this app, which passes it to the model provider. The app does not store or log it, and removes it from error messages.
-- **History** and the list of exports are kept in IndexedDB in the browser. History holds the SQL, the row count and the timing, not the result rows.
+- **Chats** and the list of exports are kept in IndexedDB in the browser. A chat keeps its messages and tool results, result rows included, until it is deleted.
 - **Tool forms** call the tool directly through `/api/tools/run`, with the same checks as a call from the model. The form only offers tools the server lists for the signed-in user.
 - **Systems**: with `DB2I_PROFILES` on the server, the sign-in page asks which system to use, and the session stays on that system. To switch, sign out and sign in again.
 
@@ -111,9 +112,12 @@ The layout:
 - `app/api/chat/route.ts` streams the chat with `streamText` and the server's MCP tools.
 - `lib/server/oauth.ts` is the OAuth client: registration, sign-in, token refresh and revoke.
 - `lib/server/mcp.ts` opens an MCP client with the session's access token.
+- `components/chat-view.tsx` is the chat, `components/app-sidebar.tsx` the sidebar with saved chats, and `components/tool-card.tsx` a tool call in the chat.
+- `components/ai-elements/` and `components/ui/` are copied from the AI Elements and shadcn/ui registries. Add more with `npx ai-elements@latest add <name>` or `npx shadcn@latest add <name>`.
 - `components/result-table.tsx` is the result table.
 - `lib/schema-form.ts` turns a tool's input schema into form fields and arguments, and `components/tool-form.tsx` renders them.
 - `lib/server/tools.ts` lists the tools, runs one, and reads the business context.
-- `lib/client/store.ts` keeps the history and exports in IndexedDB.
+- `lib/client/store.ts` keeps the chats and exports in IndexedDB, and `lib/chats.ts` titles, searches and groups the chats.
+- `app/globals.css` holds the light and dark colors as shadcn theme variables.
 
 Tests mock the MCP server and the model, so they need neither an IBM i nor an API key.

@@ -9,7 +9,7 @@ import { readToolResult } from '@/lib/results';
 import { useAppState } from './app-state';
 import { ToolResultBody, resultSummary } from './tool-result';
 
-const INPUT = 'w-full rounded-sm border border-line bg-bg px-2 py-1.5 outline-none focus:border-accent';
+const INPUT = 'w-full rounded-sm border border-border bg-background px-2 py-1.5 outline-none focus:border-ring';
 
 function FieldInput({ field, value, onChange }: { field: FormField; value: string; onChange: (value: string) => void }) {
   const id = `field-${field.name}`;
@@ -21,7 +21,7 @@ function FieldInput({ field, value, onChange }: { field: FormField; value: strin
           type="checkbox"
           checked={value === 'true'}
           onChange={(event) => onChange(event.target.checked ? 'true' : '')}
-          className="size-4 accent-accent"
+          className="size-4 accent-primary"
         />
       );
     case 'enum':
@@ -141,7 +141,7 @@ export function ToolForm({ tool }: { tool: ToolSummary }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-3 rounded-sm border border-line bg-surface p-4">
+      <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-3 rounded-sm border border-border bg-card p-4">
         {fields.length === 0 && <p className="text-sm text-muted-foreground">This tool takes no arguments.</p>}
         {fields.map((field) => (
           <div key={field.name} className={field.kind === 'boolean' ? 'flex items-center gap-2' : 'flex flex-col gap-1'}>
@@ -150,24 +150,24 @@ export function ToolForm({ tool }: { tool: ToolSummary }) {
             )}
             <label htmlFor={`field-${field.name}`} className="text-sm">
               <span className="font-mono font-medium">{field.name}</span>
-              {field.required && <span className="text-error"> *</span>}
+              {field.required && <span className="text-destructive"> *</span>}
               {field.description && <span className="text-muted-foreground"> {field.description}</span>}
             </label>
             {field.kind !== 'boolean' && (
               <FieldInput field={field} value={values[field.name] ?? ''} onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))} />
             )}
-            {errors[field.name] && <span className="text-xs text-error">{errors[field.name]}</span>}
+            {errors[field.name] && <span className="text-xs text-destructive">{errors[field.name]}</span>}
           </div>
         ))}
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="submit"
             disabled={state.loading}
-            className="rounded-sm bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-strong disabled:opacity-50"
+            className="rounded-sm bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {state.loading ? 'Running' : 'Run'}
           </button>
-          <button type="button" onClick={askInChat} className="rounded-sm border border-line px-3 py-1.5 text-sm hover:border-fg">
+          <button type="button" onClick={askInChat} className="rounded-sm border border-border px-3 py-1.5 text-sm hover:border-foreground">
             Ask in chat
           </button>
           <span className="flex-1" />
@@ -175,7 +175,7 @@ export function ToolForm({ tool }: { tool: ToolSummary }) {
         </div>
       </form>
       {state.error && (
-        <p role="alert" className="rounded-sm border border-error/40 bg-error/5 px-3 py-2 text-sm text-error">
+        <p role="alert" className="rounded-sm border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {state.error}
         </p>
       )}
