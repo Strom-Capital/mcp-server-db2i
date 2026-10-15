@@ -28,6 +28,25 @@ updates:
         dependency-type: development
         update-types: [minor, patch]
 
+  # The example web app has its own lockfile and is not part of the npm package
+  - package-ecosystem: npm
+    directory: /examples/web-app
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(web-app)
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      ai-sdk:
+        patterns: ["ai", "@ai-sdk/*"]
+      next:
+        patterns: ["next", "eslint-config-next", "react", "react-dom", "@types/react", "@types/react-dom"]
+      web-app:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

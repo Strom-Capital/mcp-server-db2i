@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+@source "../node_modules/streamdown/dist/*.js";
+
+/*
+ * Brand tokens from site/src/styles/tokens.css. Dark mode follows the system.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #f3f1eb;
+  --surface: #faf9f6;
+  --fg: #161716;
+  --muted: #666962;
+  --line: #d8d6cf;
+  --accent: #3159e8;
+  --accent-strong: #2447c9;
+  --on-accent: #ffffff;
+  --error: #b42318;
+  --font-sans: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121312;
+    --surface: #181918;
+    --fg: #ecebe4;
+    --muted: #9c9e97;
+    --line: #2e302d;
+    --accent: #7d97ff;
+    --accent-strong: #a3b6ff;
+    --on-accent: #0d1330;
+    --error: #f97066;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-fg: var(--fg);
+  --color-muted-foreground: var(--muted);
+  --color-line: var(--line);
+  /* The names Streamdown's tables and code blocks use. */
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-muted: var(--surface);
+  --color-border: var(--line);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--on-accent);
+  --color-sidebar: var(--surface);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-on-accent: var(--on-accent);
+  --color-error: var(--error);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
