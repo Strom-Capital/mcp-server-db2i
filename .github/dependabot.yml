@@ -38,6 +38,9 @@ updates:
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # typescript-eslint (via eslint-config-next) does not support TypeScript 7
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       ai-sdk:
         patterns: ["ai", "@ai-sdk/*"]
