@@ -239,6 +239,12 @@ describe('buildChart', () => {
     expect(built).toMatchObject({ kind: 'kpi', items: [{ label: 'ORDERS' }] });
   });
 
+  it('rounds KPI values of a thousand or more to whole numbers', () => {
+    const t = table({ data: [{ REVENUE: '2381920.55', AVG_LINES: '3.45' }] });
+    const built = buildChart(t, { type: 'kpi', y: ['REVENUE', 'AVG_LINES'], stacked: false, horizontal: false }, { ...ctx, locale: 'en-US' });
+    expect(built).toMatchObject({ kind: 'kpi', items: [{ value: '2,381,921' }, { value: '3.45' }] });
+  });
+
   it('ends a waterfall with a total bar', () => {
     const data = [{ STEP: 'Start', AMOUNT: 100 }, { STEP: 'Sales', AMOUNT: 40 }, { STEP: 'Returns', AMOUNT: -15 }];
     const built = buildChart(table({ data }), { type: 'waterfall', x: 'STEP', y: ['AMOUNT'], stacked: false, horizontal: false }, ctx);
