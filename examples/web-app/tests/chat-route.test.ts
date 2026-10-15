@@ -2,6 +2,7 @@ import { MockLanguageModelV4 } from 'ai/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const KEY = 'sk-test-0123456789abcdef-secret';
+const SERVER_KEY = 'sk-ant-server-fedcba9876543210-secret';
 
 const close = vi.fn(async () => undefined);
 const fakeClient = {
@@ -20,7 +21,14 @@ vi.mock('@/lib/server/models', async (importOriginal) => ({
   createModel: (...args: unknown[]) => createModel(...args),
 }));
 
+let session: { oauth?: { tokens: { access_token: string; token_type: string; refresh_token?: string } } } = {};
+vi.mock('@/lib/server/session', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/server/session')>()),
+  getSession: vi.fn(async () => session),
+}));
+
 const { POST } = await import('@/app/api/chat/route');
+const { resetConfig } = await import('@/lib/server/config');
 
 function chatRequest(headers: Record<string, string> = {}, choice: Record<string, unknown> = {}): Request {
   return new Request('http://localhost:3001/api/chat', {
@@ -50,6 +58,9 @@ describe('POST /api/chat', () => {
     vi.restoreAllMocks();
     createModel.mockReset();
     close.mockClear();
+    delete process.env.ANTHROPIC_API_KEY;
+    resetConfig();
+    session = {};
   });
 
   it('passes the key to the model factory, and keeps it out of the response and the logs when the provider fails', async () => {
@@ -114,5 +125,58 @@ describe('POST /api/chat', () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  describe('with a key set on the server', () => {
+    beforeEach(() => {
+      process.env.ANTHROPIC_API_KEY = SERVER_KEY;
+      resetConfig();
+    });
+
+    it('uses it for a signed-in user who sent no key, and keeps it out of the response and the logs', async () => {
+      session = { oauth: { tokens: { access_token: 'access', token_type: 'Bearer', refresh_token: 'refresh' } } };
+      createModel.mockImplementation(
+        () =>
+          new MockLanguageModelV4({
+            doStream: async () => {
+              throw new Error(`Provider refused the key ${SERVER_KEY}`);
+            },
+          }),
+      );
+
+      const response = await POST(chatRequest({ 'x-model-api-key': '' }));
+      const body = await response.text();
+
+      expect(createModel).toHaveBeenCalledWith({ provider: 'anthropic', model: 'test-model' }, SERVER_KEY);
+      expect(body).not.toContain(SERVER_KEY);
+      expect(JSON.stringify(logged)).not.toContain(SERVER_KEY);
+    });
+
+    it('refuses to use it without a sign-in', async () => {
+      const response = await POST(chatRequest({ 'x-model-api-key': '' }));
+
+      expect(response.status).toBe(400);
+      expect(await response.text()).not.toContain(SERVER_KEY);
+      expect(createModel).not.toHaveBeenCalled();
+    });
+
+    it("uses the user's own key instead when one is sent", async () => {
+      createModel.mockImplementation(() => new MockLanguageModelV4({ doStream: async () => Promise.reject(new Error('stop')) }));
+
+      const response = await POST(chatRequest());
+      await response.text();
+
+      expect(createModel).toHaveBeenCalledWith({ provider: 'anthropic', model: 'test-model' }, KEY);
+    });
+
+    it('is not used for another provider', async () => {
+      session = { oauth: { tokens: { access_token: 'access', token_type: 'Bearer', refresh_token: 'refresh' } } };
+      createModel.mockImplementation(() => new MockLanguageModelV4({ doStream: async () => Promise.reject(new Error('stop')) }));
+
+      const response = await POST(chatRequest({ 'x-model-api-key': '' }, { provider: 'openai' }));
+      await response.text();
+
+      expect(createModel).toHaveBeenCalledWith({ provider: 'openai', model: 'test-model' }, '');
+    });
   });
 });
