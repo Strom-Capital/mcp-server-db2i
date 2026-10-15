@@ -464,9 +464,14 @@ function kpi(table: ResultTable, plan: ChartPlan, ctx: BuildContext): BuiltChart
     return { kind: 'empty', reason: 'No rows.' };
   }
   const fmt = formatter(ctx.locale);
+  // A tile is read at a glance; the table keeps the exact value
+  const whole = new Intl.NumberFormat(ctx.locale, { maximumFractionDigits: 0 });
   const items = plan.y.map((name) => {
     const value = numberOf(row[name]);
-    return { label: name, value: value === null ? String(row[name] ?? '') : fmt.full(value) };
+    if (value === null) {
+      return { label: name, value: String(row[name] ?? '') };
+    }
+    return { label: name, value: Math.abs(value) >= 1000 ? whole.format(value) : fmt.full(value) };
   });
   return { kind: 'kpi', items, ...(plan.title ? { title: plan.title } : {}) };
 }
