@@ -22,6 +22,7 @@ export const links = {
   oauth: `${DOCS}/http-transport#remote-clients-oauth`,
   docker: `${DOCS}/docker`,
   useCases: `${DOCS}/use-cases`,
+  webApp: `${DOCS}/web-app`,
   github: GITHUB,
   issues: `${GITHUB}/issues`,
   newIssue: `${GITHUB}/issues/new`,
