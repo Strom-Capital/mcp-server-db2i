@@ -23,6 +23,7 @@ export const links = {
   docker: `${DOCS}/docker`,
   useCases: `${DOCS}/use-cases`,
   webApp: `${DOCS}/web-app`,
+  resultView: `${DOCS}/tools#result-view`,
   github: GITHUB,
   issues: `${GITHUB}/issues`,
   newIssue: `${GITHUB}/issues/new`,
