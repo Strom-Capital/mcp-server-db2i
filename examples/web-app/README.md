@@ -1,6 +1,6 @@
 # Example web app
 
-A chat app for [mcp-server-db2i](../../README.md) that runs in the browser. It shows how to build your own web app on top of the MCP server, so people can ask questions about IBM i data without a Claude, ChatGPT or other AI subscription per user. Users sign in with their own IBM i user profile, and the model is a pay-as-you-go API key or a local model that keeps questions and results inside your network.
+A chat app for [mcp-server-db2i](../../README.md) that runs in the browser. It shows how to build your own web app on top of the MCP server, so people can ask questions about IBM i data without a Claude, ChatGPT or other AI subscription per user. Users sign in with their own IBM i user profile. The model is a pay-as-you-go API key, either one company key set on the app's server or each user's own, or a local model that keeps questions and results inside your network.
 
 It is an example: a starting point to read, run and change. It is not published to npm.
 
@@ -71,7 +71,7 @@ You need Node 22 or newer and a running mcp-server-db2i in HTTP mode with OAuth 
    npm run dev
    ```
 
-4. Open http://localhost:3001, choose **Sign in to IBM i**, then **Choose a model** to pick a provider, paste a key and choose a model.
+4. Open http://localhost:3001, choose **Sign in to IBM i**, then **Choose a model** to pick a provider, paste a key (unless the app has its own) and choose a model.
 
 ### Settings
 
@@ -81,6 +81,20 @@ You need Node 22 or newer and a running mcp-server-db2i in HTTP mode with OAuth 
 | `APP_URL` | Yes | Origin of this app as users open it, such as `http://localhost:3001`. The OAuth callback is `<APP_URL>/oauth/callback`, and requests from any other origin are refused |
 | `SESSION_SECRET` | Yes | Key that encrypts the session cookie, at least 32 characters. Changing it signs everyone out |
 | `CUSTOM_MODEL_BASE_URLS` | No | Comma-separated base URLs users may pick for an OpenAI-compatible provider. Default `http://localhost:11434/v1` (Ollama). The app only calls URLs on this list |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY` | No | A company key for that provider, used for signed-in users who don't enter their own. It stays on the app's server; the browser only learns that a key exists. A key a user enters in Settings is used instead |
+| `DEFAULT_PROVIDER`, `DEFAULT_MODEL` | No | The provider (`anthropic`, `openai`, `google` or `openai-compatible`) and model a new user starts with, so they can ask a question without opening Settings. Saved settings in the browser win. Without `DEFAULT_PROVIDER`, a new user starts on the first provider with a server key |
+
+### One key for the whole company
+
+Each user can bring their own key, but you can also set one key on the app's server and let everyone use it. The provider bills per use, so a team shares one API account instead of a subscription per person:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+DEFAULT_PROVIDER=anthropic
+DEFAULT_MODEL=claude-sonnet-4-5
+```
+
+The key is used only for signed-in users: a request without an IBM i sign-in is refused before the provider is called. Users can't read it, and it is kept out of error messages. Every chat still runs with the signed-in user's own IBM i authority. To see and cap the cost, set a spending limit on the provider account the key belongs to.
 
 ### Local models
 

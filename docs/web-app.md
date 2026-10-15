@@ -1,12 +1,12 @@
 ---
 title: "Example web app"
-description: "A browser chat app for mcp-server-db2i: sign in with an IBM i user profile, bring your own model API key, and browse result tables, exports, business SQL tools and business context."
+description: "A browser chat app for mcp-server-db2i: sign in with an IBM i user profile, use a company or personal model API key or a local model, and browse result tables, exports, business SQL tools and business context."
 ---
 
 The repository includes an example web app in [`examples/web-app`](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/web-app). It shows how to build your own web app on top of mcp-server-db2i, so people can ask questions about IBM i data in the browser without a Claude, ChatGPT or other AI subscription per user, and without installing an MCP client.
 
 - Users sign in with their own IBM i user profile, through the server's [OAuth sign-in page](http-transport.md#remote-clients-oauth). Every query runs with that user's authority.
-- The model is your choice: a pay-as-you-go API key from Anthropic, OpenAI or Google Gemini, or a local model through an OpenAI-compatible endpoint such as Ollama or LM Studio. With a local model, questions and results never leave your network.
+- The model is your choice: a pay-as-you-go API key from Anthropic, OpenAI or Google Gemini, or a local model through an OpenAI-compatible endpoint such as Ollama or LM Studio. One company key on the app's server can serve everyone, or each user enters their own. With a local model, questions and results never leave your network.
 
 It is an example to read, run and change, built with Next.js, [AI SDK](https://ai-sdk.dev) 7, `@ai-sdk/mcp`, [AI Elements](https://ai-sdk.dev/elements) and shadcn/ui. It is not published to npm.
 
@@ -78,7 +78,19 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3001`, choose **Sign in to IBM i**, then **Choose a model** to pick a provider, paste a key and choose a model. The [app's README](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/web-app#readme) lists every setting.
+Open `http://localhost:3001`, choose **Sign in to IBM i**, then **Choose a model** to pick a provider, paste a key and choose a model.
+
+### One key for the whole company
+
+Instead of each user pasting a key, set one on the app's server. Everyone who signs in uses it, and the provider bills the one account per use:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...      # or OPENAI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY
+DEFAULT_PROVIDER=anthropic
+DEFAULT_MODEL=claude-sonnet-4-5   # new users start here, without opening Settings
+```
+
+The key stays on the app's server: the browser only learns that the provider has one. It is used only for signed-in users, and it is kept out of error messages. A key a user enters in Settings is used instead of it. Set a spending limit on the provider account to cap the cost. The [app's README](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/web-app#readme) lists every setting.
 
 Loopback redirect URIs are always accepted, so local development needs no change to `MCP_OAUTH_REDIRECT_URIS`. For a deployed app, add its callback to the list, and keep the clients you still use, because setting it replaces the defaults:
 
@@ -94,6 +106,7 @@ With [`DB2I_PROFILES`](http-transport.md#multiple-systems) set, the sign-in page
 
 - **The IBM i password** goes only to the server's sign-in page. The app never sees it.
 - **OAuth tokens** stay on the app's server, in an encrypted, httpOnly session cookie. The browser cannot read them.
-- **The model API key** stays in the browser's `localStorage`. Each chat request sends it to the app, which passes it to the provider and does not store or log it.
+- **A user's model API key** stays in the browser's `localStorage`. Each chat request sends it to the app, which passes it to the provider and does not store or log it.
+- **A company key** set on the app's server (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY`) never reaches the browser.
 - **Chats and the list of exports** stay in the browser, in IndexedDB. A saved chat keeps its messages and tool results, so result rows stay on that computer until the chat is deleted.
 - **Query results** go to the model provider the user picked, as with any assistant. See [Where data goes](security.md#where-data-goes). With a local model on Ollama, results stay on your network.

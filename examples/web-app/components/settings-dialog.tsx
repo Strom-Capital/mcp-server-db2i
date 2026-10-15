@@ -12,7 +12,7 @@ import { useAppState } from './app-state';
 import { EffortSelect } from './effort-select';
 import { ModelPicker } from './model-picker';
 
-/** Model provider, API key and model, kept in this browser only. */
+/** Model provider, API key and model, kept in this browser only. The app's own keys are used when no key is entered. */
 export function SettingsDialog() {
   const { settingsOpen, setSettingsOpen, session } = useAppState();
   const settings = useSettings();
@@ -26,6 +26,8 @@ export function SettingsDialog() {
   const key = settings.keys[provider] ?? '';
   const model = settings.models[provider] ?? '';
   const baseUrls = session.customModelBaseUrls;
+  const serverKey = session.serverKeys.includes(provider);
+  const keyNeeded = entry.needsKey && !serverKey;
 
   async function loadModels() {
     setLoading(true);
@@ -64,8 +66,8 @@ export function SettingsDialog() {
           <DialogHeader>
             <DialogTitle>Model settings</DialogTitle>
             <DialogDescription>
-              Your key stays in this browser. It is sent only with your own chat requests to this app, which passes it to the
-              provider and does not store or log it.
+              A key you enter stays in this browser. It is sent only with your own chat requests to this app, which passes it to
+              the provider and does not store or log it.
             </DialogDescription>
           </DialogHeader>
 
@@ -105,7 +107,7 @@ export function SettingsDialog() {
           )}
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="api-key">API key{entry.needsKey ? '' : ' (optional)'}</Label>
+            <Label htmlFor="api-key">API key{keyNeeded ? '' : ' (optional)'}</Label>
             <div className="flex gap-2">
               <Input
                 id="api-key"
@@ -124,6 +126,11 @@ export function SettingsDialog() {
                 </Button>
               )}
             </div>
+            {serverKey && (
+              <span className="text-muted-foreground text-xs">
+                This app has its own key for {entry.label}, so you can leave this empty. A key you enter here is used instead.
+              </span>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">
@@ -135,7 +142,7 @@ export function SettingsDialog() {
                 models={models}
                 onChange={(next) => updateSettings((current) => ({ models: { ...current.models, [provider]: next } }))}
               />
-              <Button type="button" variant="outline" disabled={loading || (entry.needsKey && !key)} onClick={() => void loadModels()}>
+              <Button type="button" variant="outline" disabled={loading || (keyNeeded && !key)} onClick={() => void loadModels()}>
                 {loading ? 'Loading' : 'Load models'}
               </Button>
             </div>

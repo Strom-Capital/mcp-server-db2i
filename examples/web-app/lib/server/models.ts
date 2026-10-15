@@ -7,6 +7,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModel } from 'ai';
 import { providerNeedsKey, type ModelChoice, type ProviderId } from '../providers';
 import { getConfig } from './config';
+import { getSession, isSignedIn } from './session';
 
 /** A model request the app refuses before calling anyone. */
 export class ModelChoiceError extends Error {
@@ -36,6 +37,30 @@ export function allowedBaseUrl(baseUrl: string | undefined): string {
   return chosen;
 }
 
+/**
+ * The key for one request: the user's own key, or else the key set on the
+ * server for that provider. The server key is used only for a signed-in
+ * session, so nobody can spend it without an IBM i sign-in.
+ *
+ * @param provider - Provider ID
+ * @param userKey - The key the browser sent, possibly empty
+ * @returns The key to call the provider with, possibly empty
+ * @throws ModelChoiceError when only the server key could be used and the user is not signed in
+ */
+export async function resolveKey(provider: ProviderId, userKey: string): Promise<string> {
+  if (userKey) {
+    return userKey;
+  }
+  const serverKey = getConfig().serverModelKeys[provider];
+  if (!serverKey) {
+    return '';
+  }
+  if (!isSignedIn(await getSession())) {
+    throw new ModelChoiceError('Sign in to use the model key set on this app.');
+  }
+  return serverKey;
+}
+
 function requireKey(provider: ProviderId, apiKey: string): string {
   if (providerNeedsKey(provider) && !apiKey) {
     throw new ModelChoiceError('Enter an API key for this provider in Settings.');
@@ -48,7 +73,7 @@ function requireKey(provider: ProviderId, apiKey: string): string {
  * The key is only passed to the provider client; it is never stored or logged.
  *
  * @param choice - Provider, model ID and optional base URL
- * @param apiKey - The user's key for that provider, possibly empty
+ * @param apiKey - The key for that provider from resolveKey, possibly empty
  * @returns The model
  * @throws ModelChoiceError when the key or base URL is missing or not allowed
  */
@@ -74,7 +99,7 @@ export function createModel(choice: ModelChoice, apiKey: string): LanguageModel 
  * List the model IDs the key can use, from the provider's models endpoint.
  *
  * @param provider - Provider ID
- * @param apiKey - The user's key
+ * @param apiKey - The key from resolveKey
  * @param baseUrl - Base URL for the OpenAI-compatible provider
  * @returns Model IDs, sorted
  * @throws ModelChoiceError or a fetch error when the provider refuses

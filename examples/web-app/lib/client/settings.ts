@@ -66,6 +66,19 @@ export function forgetKey(provider: ProviderId): void {
   });
 }
 
+/**
+ * Start a browser that has no saved settings on the app's default provider
+ * and model, so a user can chat without opening Settings. Saved settings win.
+ *
+ * @param defaults - DEFAULT_PROVIDER and DEFAULT_MODEL from the app, or the first provider with a server key
+ */
+export function applyDefaults(defaults: { provider: ProviderId; model?: string } | undefined): void {
+  if (!defaults || window.localStorage.getItem(STORAGE_KEY) !== null) {
+    return;
+  }
+  updateSettings({ provider: defaults.provider, models: defaults.model ? { [defaults.provider]: defaults.model } : {} });
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   const onStorage = (event: StorageEvent) => {

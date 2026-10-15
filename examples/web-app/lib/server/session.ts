@@ -50,3 +50,14 @@ export function sessionOptions(): SessionOptions {
 export async function getSession(): Promise<AppSession> {
   return getIronSession<SessionData>(await cookies(), sessionOptions());
 }
+
+/**
+ * Whether a session holds tokens that still work or can be refreshed.
+ *
+ * @param session - Session data
+ * @returns True when the user is signed in
+ */
+export function isSignedIn(session: SessionData): boolean {
+  const oauth = session.oauth;
+  return !!oauth?.tokens && (!!oauth.tokens.refresh_token || (oauth.expiresAt ?? Infinity) > Date.now());
+}

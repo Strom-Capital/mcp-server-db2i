@@ -5,9 +5,9 @@ import { DefaultChatTransport, type UIMessage } from 'ai';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { chatTitle } from '@/lib/chats';
 import { setDuration } from '@/lib/client/clock';
-import { currentSettings } from '@/lib/client/settings';
+import { applyDefaults, currentSettings } from '@/lib/client/settings';
 import { addExport, saveChat } from '@/lib/client/store';
-import { MODEL_KEY_HEADER, providerNeedsKey } from '@/lib/providers';
+import { MODEL_KEY_HEADER, providerNeedsKey, type ProviderId } from '@/lib/providers';
 import { readToolResult, sqlOf } from '@/lib/results';
 
 interface SessionState {
@@ -15,6 +15,9 @@ interface SessionState {
   signedIn: boolean;
   server?: string;
   customModelBaseUrls: string[];
+  /** Providers the app has its own key for, so users need not enter one. */
+  serverKeys: ProviderId[];
+  defaultModel?: { provider: ProviderId; model?: string };
   signInError?: string;
 }
 
@@ -44,8 +47,8 @@ interface AppState {
    */
   send: (chat: Chat<UIMessage>, text: string) => Promise<boolean>;
   /**
-   * Whether a model and, where the provider needs one, a key are set. Opens
-   * Settings when they are not.
+   * Whether a model and, where the provider needs one, a key (the user's or
+   * the app's) are set. Opens Settings when they are not.
    */
   ensureModel: () => boolean;
   /** Save an open chat now, for example as soon as a question is asked. */
@@ -113,7 +116,7 @@ export function useToolTracking(messages: UIMessage[]): void {
 
 /** Keeps the sign-in state and the open chats across page changes. */
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionState>({ loaded: false, signedIn: false, customModelBaseUrls: [] });
+  const [session, setSession] = useState<SessionState>({ loaded: false, signedIn: false, customModelBaseUrls: [], serverKeys: [] });
   const [draft, setDraft] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [draftId, setDraftId] = useState(() => crypto.randomUUID());
@@ -133,7 +136,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     fetch('/api/session', { cache: 'no-store' })
       .then((response) => response.json() as Promise<Omit<SessionState, 'loaded'>>)
-      .then((data) => setSession((current) => ({ ...current, ...data, signInError, loaded: true })))
+      .then((data) => {
+        const provider = data.defaultModel?.provider ?? data.serverKeys?.[0];
+        applyDefaults(provider ? { provider, model: data.defaultModel?.provider === provider ? data.defaultModel.model : undefined } : undefined);
+        setSession((current) => ({ ...current, ...data, signInError, loaded: true }));
+      })
       .catch(() => setSession((current) => ({ ...current, signInError, loaded: true })));
   }, []);
 
@@ -190,14 +197,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const newDraft = useCallback(() => setDraftId(crypto.randomUUID()), []);
 
+  const serverKeys = session.serverKeys;
   const ensureModel = useCallback(() => {
     const settings = currentSettings();
-    const ready = !!settings.models[settings.provider] && (!providerNeedsKey(settings.provider) || !!settings.keys[settings.provider]);
+    const hasKey =
+      !providerNeedsKey(settings.provider) || !!settings.keys[settings.provider] || serverKeys.includes(settings.provider);
+    const ready = !!settings.models[settings.provider] && hasKey;
     if (!ready) {
       setSettingsOpen(true);
     }
     return ready;
-  }, []);
+  }, [serverKeys]);
 
   const send = useCallback(
     async (chat: Chat<UIMessage>, text: string) => {
