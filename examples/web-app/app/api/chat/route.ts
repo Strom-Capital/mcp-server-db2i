@@ -54,6 +54,7 @@ export async function POST(request: Request): Promise<Response> {
       instructions: buildInstructions(client.instructions),
       messages: await convertToModelMessages(messages, { ignoreIncompleteToolCalls: true }),
       tools,
+      reasoning: choice.effort,
       stopWhen: isStepCount(MAX_STEPS),
       abortSignal: request.signal,
       onEnd: () => close(),

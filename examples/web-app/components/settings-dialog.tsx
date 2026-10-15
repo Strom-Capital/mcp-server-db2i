@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { forgetKey, updateSettings, useSettings } from '@/lib/client/settings';
 import { MODEL_KEY_HEADER, PROVIDERS, type ProviderId } from '@/lib/providers';
 import { useAppState } from './app-state';
+import { EffortSelect } from './effort-select';
+import { ModelPicker } from './model-picker';
 
 /** Model provider, API key and model, kept in this browser only. */
 export function SettingsDialog() {
@@ -127,26 +129,25 @@ export function SettingsDialog() {
           <div className="flex flex-col gap-2">
             <Label htmlFor="model">Model</Label>
             <div className="flex gap-2">
-              <Input
+              <ModelPicker
                 id="model"
-                list="model-options"
-                placeholder="Model ID"
                 value={model}
-                onChange={(event) =>
-                  updateSettings((current) => ({ models: { ...current.models, [provider]: event.target.value.trim() } }))
-                }
+                models={models}
+                onChange={(next) => updateSettings((current) => ({ models: { ...current.models, [provider]: next } }))}
               />
               <Button type="button" variant="outline" disabled={loading || (entry.needsKey && !key)} onClick={() => void loadModels()}>
                 {loading ? 'Loading' : 'Load models'}
               </Button>
             </div>
-            <datalist id="model-options">
-              {models.map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
-            {models.length > 0 && <span className="text-muted-foreground text-xs">{models.length} models available. Pick one or type an ID.</span>}
             {loadError && <span className="text-destructive text-xs">{loadError}</span>}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="effort">Reasoning effort</Label>
+            <EffortSelect id="effort" className="w-full" />
+            <span className="text-muted-foreground text-xs">
+              How long the model thinks before it answers. Higher is slower and costs more. Models without reasoning ignore it.
+            </span>
           </div>
 
           <DialogFooter>

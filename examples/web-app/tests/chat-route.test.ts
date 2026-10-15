@@ -22,14 +22,14 @@ vi.mock('@/lib/server/models', async (importOriginal) => ({
 
 const { POST } = await import('@/app/api/chat/route');
 
-function chatRequest(headers: Record<string, string> = {}): Request {
+function chatRequest(headers: Record<string, string> = {}, choice: Record<string, unknown> = {}): Request {
   return new Request('http://localhost:3001/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: 'http://localhost:3001', 'x-model-api-key': KEY, ...headers },
     body: JSON.stringify({
       id: 'main',
       messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Show the orders' }] }],
-      choice: { provider: 'anthropic', model: 'test-model' },
+      choice: { provider: 'anthropic', model: 'test-model', ...choice },
     }),
   });
 }
@@ -70,6 +70,31 @@ describe('POST /api/chat', () => {
     expect(body).toContain('[redacted]');
     expect(JSON.stringify(logged)).not.toContain(KEY);
     await vi.waitFor(() => expect(close).toHaveBeenCalled());
+  });
+
+  it('passes the chosen effort to the model as the reasoning option', async () => {
+    const reasoning: unknown[] = [];
+    createModel.mockImplementation(
+      () =>
+        new MockLanguageModelV4({
+          doStream: async (options) => {
+            reasoning.push(options.reasoning);
+            throw new Error('stop');
+          },
+        }),
+    );
+
+    const response = await POST(chatRequest({}, { effort: 'high' }));
+    await response.text();
+
+    expect(reasoning).toEqual(['high']);
+  });
+
+  it('refuses an unknown effort', async () => {
+    const response = await POST(chatRequest({}, { effort: 'extreme' }));
+
+    expect(response.status).toBe(400);
+    expect(createModel).not.toHaveBeenCalled();
   });
 
   it('refuses a request from another origin before reading the key', async () => {

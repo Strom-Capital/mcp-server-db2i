@@ -27,6 +27,8 @@ The sidebar lists your chats, newest first and grouped by day, like ChatGPT or C
 
 The app follows the system's light or dark mode. The theme menu at the bottom of the sidebar overrides it.
 
+The effort menu in the chat box sets how long a reasoning model thinks before it answers: Default, Off, Low, Medium, High, Extra high or Max. The app passes it to AI SDK's `reasoning` option, which each provider maps to its own setting (Anthropic thinking and effort, OpenAI reasoning effort, Gemini thinking level). Models without reasoning ignore it.
+
 Result tables can be sorted by any column, filtered, resized and scrolled through thousands of rows. **Copy for Excel** copies the rows as tab-separated text, and **Download CSV** saves them. Decimals keep every digit the server returned.
 
 <p align="center">

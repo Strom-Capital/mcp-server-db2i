@@ -14,6 +14,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@/components/ai-elements/prompt-input';
+import { EffortSelect } from '@/components/effort-select';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion';
@@ -133,8 +134,9 @@ function ChatConversation({ chat, isNew = false }: { chat: Chat<UIMessage>; isNe
         />
       </PromptInputBody>
       <PromptInputFooter>
-        <PromptInputTools className="px-2 text-muted-foreground text-xs">
-          Queries run on the IBM i with your own authority.
+        <PromptInputTools className="min-w-0 text-muted-foreground text-xs">
+          <EffortSelect variant="prompt" />
+          <span className="truncate px-1 max-sm:hidden">Queries run on the IBM i with your own authority.</span>
         </PromptInputTools>
         <PromptInputSubmit status={status} onStop={() => void stop()} disabled={!busy && (!draft.trim() || !session.signedIn)} />
       </PromptInputFooter>

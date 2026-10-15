@@ -211,7 +211,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         { text },
         {
           headers: { [MODEL_KEY_HEADER]: apiKey },
-          body: { choice: { provider: settings.provider, model, baseUrl: settings.baseUrl } },
+          body: {
+            choice: { provider: settings.provider, model, baseUrl: settings.baseUrl, effort: settings.efforts?.[settings.provider] },
+          },
         },
       );
       return true;

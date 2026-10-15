@@ -4,7 +4,7 @@ A chat app for [mcp-server-db2i](../../README.md) that runs in the browser. User
 
 It is an example: a starting point to read, run and change. It is not published to npm.
 
-- **Chat** with Anthropic, OpenAI, Google Gemini or any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM). Answers are rendered as markdown.
+- **Chat** with Anthropic, OpenAI, Google Gemini or any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM). Answers are rendered as markdown. **Load models** lists the provider's models in a searchable picker, and the effort menu in the chat box sets how long a reasoning model thinks.
 - **Saved chats** in a sidebar, grouped by day, as in ChatGPT or Claude. Search them by text or by the SQL they ran. Each chat has its own link and stays in the browser.
 - **Result tables** for every query: sort by a column, filter rows, resize columns, scroll through thousands of rows, copy for Excel and download as CSV. Long decimals keep every digit.
 - **Tools**: every tool the server lists, with business SQL tools grouped by toolset. Each one has a form built from its input schema, so you can run it without the model, or send it to the chat.

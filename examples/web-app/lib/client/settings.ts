@@ -1,7 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
-import type { ProviderId } from '../providers';
+import type { Effort, ProviderId } from '../providers';
 
 /** Settings kept in this browser's localStorage. Keys never leave the browser except in chat requests to this app. */
 export interface Settings {
@@ -12,6 +12,8 @@ export interface Settings {
   keys: Partial<Record<ProviderId, string>>;
   /** Base URL for the OpenAI-compatible provider. */
   baseUrl?: string;
+  /** Reasoning effort per provider; unset means the provider's default. */
+  efforts?: Partial<Record<ProviderId, Effort>>;
 }
 
 const STORAGE_KEY = 'db2i-web-settings';
