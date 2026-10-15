@@ -1,18 +1,21 @@
 # Example web app
 
-A chat app for [mcp-server-db2i](../../README.md) that runs in the browser. Users sign in with their own IBM i user profile and bring their own model API key, so they can ask questions about IBM i data without a Claude or ChatGPT subscription.
+A chat app for [mcp-server-db2i](../../README.md) that runs in the browser. It shows how to build your own web app on top of the MCP server, so people can ask questions about IBM i data without a Claude, ChatGPT or other AI subscription per user. Users sign in with their own IBM i user profile, and the model is a pay-as-you-go API key or a local model that keeps questions and results inside your network.
 
 It is an example: a starting point to read, run and change. It is not published to npm.
 
-- **Chat** with Anthropic, OpenAI, Google Gemini or any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM). Answers are rendered as markdown. **Load models** lists the provider's models in a searchable picker, and the effort menu in the chat box sets how long a reasoning model thinks.
+- **Chat** with Anthropic, OpenAI, Google Gemini or any OpenAI-compatible endpoint, including local models in Ollama, LM Studio or vLLM. Answers are rendered as markdown. **Load models** lists the provider's models in a searchable picker, and the effort menu in the chat box sets how long a reasoning model thinks.
 - **Saved chats** in a sidebar, grouped by day, as in ChatGPT or Claude. Search them by text or by the SQL they ran. Each chat has its own link and stays in the browser.
-- **Result tables** for every query: sort by a column, filter rows, resize columns, scroll through thousands of rows, copy for Excel and export. Export saves the rows shown as CSV, or for an `execute_query` result has the server write every row to Excel or CSV with `export_query`. Long decimals keep every digit.
+- **Result tables** for every query: sort by a column, filter rows, resize columns, scroll through thousands of rows, copy for Excel and export. For an `execute_query` result, Export in the tool card header has the server write every row to Excel or CSV with `export_query`; otherwise it saves the rows the chat holds as CSV. Long decimals keep every digit.
 - **Tools**: every tool the server lists, with business SQL tools grouped by toolset. Each one has a form built from its input schema, so you can run it without the model, or send it to the chat.
 - **Exports**: `export_query` results show a download button with the row count, size and expiry. The Exports page lists them all, and runs an export again when its link has expired.
 - **Context**: the business context from the server's YAML files, with table descriptions, the filters most queries need, column notes and joins.
 - **Light and dark themes**, following the system setting unless you pick one.
 
-![Chat with saved chats in the sidebar, a result table and a markdown answer](../../docs/assets/web-app-chat.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/web-app-chat-dark.png" />
+  <img src="../../docs/assets/web-app-chat.png" alt="Chat with saved chats in the sidebar, a tool card with an Export button and a markdown answer" />
+</picture>
 
 More screenshots and an overview are in the [docs](../../docs/web-app.md).
 

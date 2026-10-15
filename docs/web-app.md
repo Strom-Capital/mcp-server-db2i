@@ -3,15 +3,18 @@ title: "Example web app"
 description: "A browser chat app for mcp-server-db2i: sign in with an IBM i user profile, bring your own model API key, and browse result tables, exports, business SQL tools and business context."
 ---
 
-The repository includes an example web app in [`examples/web-app`](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/web-app). It gives people a chat in the browser for questions about IBM i data, without a Claude or ChatGPT subscription and without installing an MCP client.
+The repository includes an example web app in [`examples/web-app`](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/web-app). It shows how to build your own web app on top of mcp-server-db2i, so people can ask questions about IBM i data in the browser without a Claude, ChatGPT or other AI subscription per user, and without installing an MCP client.
 
 - Users sign in with their own IBM i user profile, through the server's [OAuth sign-in page](http-transport.md#remote-clients-oauth). Every query runs with that user's authority.
-- Users bring their own model API key: Anthropic, OpenAI, Google Gemini, or an OpenAI-compatible endpoint such as Ollama or LM Studio.
+- The model is your choice: a pay-as-you-go API key from Anthropic, OpenAI or Google Gemini, or a local model through an OpenAI-compatible endpoint such as Ollama or LM Studio. With a local model, questions and results never leave your network.
 
 It is an example to read, run and change, built with Next.js, [AI SDK](https://ai-sdk.dev) 7, `@ai-sdk/mcp`, [AI Elements](https://ai-sdk.dev/elements) and shadcn/ui. It is not published to npm.
 
 <p align="center">
-  <img src="assets/web-app-chat.png" alt="Chat in the light theme: a sidebar with saved chats grouped by day, a question about the 20 most recent orders in MYLIB.ORDERS, an execute_query tool card with the SQL and a sortable result table, and the answer below" width="900" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/web-app-chat-dark.png" />
+    <img src="assets/web-app-chat.png" alt="Chat: a sidebar with saved chats grouped by day, a question about the 20 most recent orders in MYLIB.ORDERS, a collapsed execute_query tool card with 20 rows and an Export button, and the answer with a table of orders per warehouse" width="900" />
+  </picture>
 </p>
 
 ## What it does
@@ -34,13 +37,19 @@ Result tables can be sorted by any column, filtered, resized and scrolled throug
 Tool calls in the chat stay collapsed. A call that returned rows has an **Export** menu in its header, so you can export without opening it. For an `execute_query` result it offers **Excel** and **CSV** of every row from the server, through `export_query`. That gets past the row limit, and the file appears on the Exports page. When the server can't export, because `EXPORT_ENABLED` is off or the result came from a business SQL tool (the app knows its arguments but not the SQL behind it), the menu instead saves the rows the chat holds as CSV in the browser.
 
 <p align="center">
-  <img src="assets/web-app-tools.png" alt="Tools page in the dark theme: business SQL tools grouped by toolset, and the list_sales_orders tool with its description and a form with customer, order type, from date and status fields" width="900" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/web-app-tools-dark.png" />
+    <img src="assets/web-app-tools.png" alt="Tools page: business SQL tools grouped by toolset, and the list_sales_orders tool with its description and a form with customer, order type, from date and status fields" width="900" />
+  </picture>
 </p>
 
 The Tools page lists what the signed-in user can call, so it follows `MCP_TOOLS_ENABLED`, `MCP_CUSTOM_TOOLS` and the profile the user signed in to. A form run is a normal tool call: it goes through the same validator, schema allowlist, rate limit and audit log as a call from the model. **Ask in chat** puts a request for the tool, with the arguments you filled in, into the chat box instead.
 
 <p align="center">
-  <img src="assets/web-app-context.png" alt="Context page in the dark theme: cards for MYLIB.BOMHDR, MYLIB.BOMCOMP, MYLIB.GLACCT and MYLIB.GLTRANS with their descriptions, column notes and joins" width="900" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/web-app-context-dark.png" />
+    <img src="assets/web-app-context.png" alt="Context page: cards for MYLIB.BOMHDR, MYLIB.BOMCOMP, MYLIB.GLACCT, MYLIB.GLTRANS and MYLIB.MOHDR with their descriptions, column notes and joins" width="900" />
+  </picture>
 </p>
 
 The Context page reads the `db2i://business-context` resource, so it shows exactly what the model gets from `get_business_context`. It stays empty until the server loads table annotations from [`MCP_CUSTOM_TOOLS`](custom-tools.md). **Ask about this table** puts a question about the table in the chat box.
