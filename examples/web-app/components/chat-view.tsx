@@ -17,19 +17,11 @@ import {
 import { EffortSelect } from '@/components/effort-select';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning';
 import { Shimmer } from '@/components/ai-elements/shimmer';
-import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion';
 import { Button } from '@/components/ui/button';
 import { loadChat } from '@/lib/client/store';
 import { useAppState, useToolTracking } from './app-state';
 import { Logo } from './logo';
 import { ToolCard } from './tool-card';
-
-const EXAMPLES = [
-  'Which libraries can I query, and what are they for?',
-  'Find the tables that hold customer orders and describe how they join.',
-  'Show the 20 most recent orders in MYLIB.ORDERS.',
-  'Export every open order to an Excel file.',
-];
 
 function errorText(error: Error): string {
   try {
@@ -171,11 +163,6 @@ function ChatConversation({ chat, isNew = false }: { chat: Chat<UIMessage>; isNe
           prompt
         )}
         {alert}
-        <Suggestions className="w-full flex-wrap justify-center">
-          {EXAMPLES.map((example) => (
-            <Suggestion key={example} suggestion={example} onClick={setDraft} />
-          ))}
-        </Suggestions>
       </div>
     );
   }
