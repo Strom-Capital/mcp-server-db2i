@@ -31,7 +31,7 @@ The effort menu in the chat box sets how long a reasoning model thinks before it
 
 Result tables can be sorted by any column, filtered, resized and scrolled through thousands of rows. **Copy for Excel** copies the rows as tab-separated text. Decimals keep every digit the server returned.
 
-The **Export** menu saves the rows shown as CSV in the browser. For an `execute_query` result it also offers **Excel** and **CSV** of every row from the server, through `export_query`. That gets past the row limit, and the file appears on the Exports page. The server options need `EXPORT_ENABLED=true`. Business SQL tool results have only the browser CSV, because the app knows their arguments but not the SQL behind them.
+Tool calls in the chat stay collapsed. A call that returned rows has an **Export** menu in its header, so you can export without opening it. The menu saves the rows as CSV in the browser. For an `execute_query` result it also offers **Excel** and **CSV** of every row from the server, through `export_query`. That gets past the row limit, and the file appears on the Exports page. The server options need `EXPORT_ENABLED=true`. Business SQL tool results have only the browser CSV, because the app knows their arguments but not the SQL behind them.
 
 <p align="center">
   <img src="assets/web-app-tools.png" alt="Tools page in the dark theme: business SQL tools grouped by toolset, and the list_sales_orders tool with its description and a form with customer, order type, from date and status fields" width="900" />

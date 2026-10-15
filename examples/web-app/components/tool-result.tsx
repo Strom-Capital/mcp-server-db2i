@@ -21,7 +21,18 @@ export function resultSummary(view: ToolResultView | undefined, durationMs?: num
 }
 
 /** Everything a tool result shows: error, warnings, export download and table. */
-export function ToolResultBody({ output, tool, input }: { output: unknown; tool?: string; input?: unknown }) {
+export function ToolResultBody({
+  output,
+  tool,
+  input,
+  showExport = true,
+}: {
+  output: unknown;
+  tool?: string;
+  input?: unknown;
+  /** Show the table's Export menu. Off when the tool card header has it. */
+  showExport?: boolean;
+}) {
   const view = readToolResult(output);
   return (
     <div className="flex flex-col gap-2">
@@ -35,7 +46,7 @@ export function ToolResultBody({ output, tool, input }: { output: unknown; tool?
       )}
       {view.exportFile && <ExportCard file={view.exportFile} />}
       {view.rows && (
-        <ResultTable rows={view.rows} filename={tool} truncated={view.truncated} exportSource={exportSourceOf(tool, input)} />
+        <ResultTable rows={view.rows} filename={tool} truncated={view.truncated} exportSource={exportSourceOf(tool, input)} showExport={showExport} />
       )}
       {!view.rows && !view.error && view.text && (
         <pre className="max-h-80 overflow-auto rounded-sm border border-border bg-card p-3 font-mono text-xs whitespace-pre-wrap">

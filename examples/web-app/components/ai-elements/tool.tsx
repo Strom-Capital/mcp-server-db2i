@@ -36,6 +36,8 @@ export type ToolHeaderProps = {
   title?: string;
   /** Shown after the status badge, such as the row count and duration. */
   summary?: ReactNode;
+  /** Controls next to the chevron, outside the toggle, so they work while the card is closed. */
+  actions?: ReactNode;
   className?: string;
 } & (
   | { type: ToolUIPart["type"]; state: ToolUIPart["state"]; toolName?: never }
@@ -77,6 +79,7 @@ export const ToolHeader = ({
   className,
   title,
   summary,
+  actions,
   type,
   state,
   toolName,
@@ -86,14 +89,8 @@ export const ToolHeader = ({
     type === "dynamic-tool" ? toolName : type.split("-").slice(1).join("-");
 
   return (
-    <CollapsibleTrigger
-      className={cn(
-        "flex w-full items-center justify-between gap-4 p-3",
-        className
-      )}
-      {...props}
-    >
-      <div className="flex min-w-0 items-center gap-2">
+    <div className={cn("flex w-full items-center gap-2 pr-3", className)} {...props}>
+      <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 p-3 text-left">
         <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="font-medium font-mono text-sm">{title ?? derivedName}</span>
         {getStatusBadge(state)}
@@ -102,9 +99,12 @@ export const ToolHeader = ({
             {summary}
           </span>
         )}
-      </div>
-      <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-    </CollapsibleTrigger>
+      </CollapsibleTrigger>
+      {actions}
+      <CollapsibleTrigger aria-label="Show details" className="rounded-sm p-1 hover:bg-accent">
+        <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+    </div>
   );
 };
 
