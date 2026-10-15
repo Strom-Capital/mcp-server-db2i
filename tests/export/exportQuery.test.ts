@@ -12,6 +12,7 @@ vi.mock('../../src/db/connection.js', () => ({
 import { executeQuery, openQueryCursor } from '../../src/db/connection.js';
 import type { DbColumn, RowCursor } from '../../src/db/driver.js';
 import { DatabaseQueryError } from '../../src/db/sqlErrorInfo.js';
+import type { ElicitationAnswer, Elicitor } from '../../src/elicitation/elicitor.js';
 import { resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
 import {
   closeExportStore,
@@ -59,7 +60,7 @@ function rows(count: number, start = 1001): unknown[][] {
   return Array.from({ length: count }, (_, i) => [start + i, `Order ${start + i}`]);
 }
 
-function input(overrides: Partial<ExportQueryInput> = {}): ExportQueryInput {
+function input(overrides: Partial<ExportQueryInput> & { elicit?: undefined } = {}): ExportQueryInput & { elicit?: undefined } {
   return {
     sql: 'SELECT ORDERNO, NOTE FROM MYLIB.ORDERS',
     delivery: 'path',
@@ -407,5 +408,77 @@ describe('export store', () => {
     process.env.EXPORT_DIR = join(dir, 'link');
 
     await expect(initExportStore()).rejects.toThrow(/symbolic link/);
+  });
+});
+
+describe('exportQueryTool confirmation (EXPORT_CONFIRM_ROWS)', () => {
+  function elicitor(available: boolean, answer?: ElicitationAnswer): Elicitor {
+    return {
+      available,
+      answer: vi.fn(() => answer),
+      ask: vi.fn(async () => ({ resultType: 'input_required', inputRequests: {}, requestState: 'state' })),
+    } as unknown as Elicitor;
+  }
+
+  beforeEach(() => {
+    process.env.EXPORT_CONFIRM_ROWS = '10';
+  });
+
+  it('asks before an export that can write more rows, without opening a cursor', async () => {
+    const elicit = elicitor(true);
+
+    const result = await exportQueryTool({ ...input({ maxRows: 50 }), elicit });
+
+    expect(result).toMatchObject({ resultType: 'input_required' });
+    expect(elicit.ask).toHaveBeenCalledWith('export_rows', 'Export up to 50 rows as CSV?', expect.objectContaining({
+      properties: { max_rows: expect.objectContaining({ maximum: 50, default: 50 }) },
+    }));
+    expect(openCursor).not.toHaveBeenCalled();
+    expect(await exportFiles()).toEqual([]);
+  });
+
+  it('lets the answer lower the row cap but never raise it', async () => {
+    openCursor.mockResolvedValueOnce(fakeCursor(COLUMNS, [rows(30)]));
+    const lowered = await exportQueryTool({ ...input({ maxRows: 50 }), elicit: elicitor(true, { action: 'accept', content: { max_rows: 20 } }) });
+    expect(lowered).toMatchObject({ success: true, rowCount: 20, truncated: 'rows' });
+
+    openCursor.mockResolvedValueOnce(fakeCursor(COLUMNS, [rows(60)]));
+    const raised = await exportQueryTool({ ...input({ maxRows: 50 }), elicit: elicitor(true, { action: 'accept', content: { max_rows: 5000 } }) });
+    expect(raised).toMatchObject({ success: true, rowCount: 50, truncated: 'rows' });
+    expect(openCursor.mock.calls[1][0]).toMatch(/FETCH FIRST 51 ROWS ONLY/i);
+  });
+
+  it('keeps the cap when an accepted answer is not a row count', async () => {
+    openCursor.mockResolvedValueOnce(fakeCursor(COLUMNS, [rows(60)]));
+    const result = await exportQueryTool({ ...input({ maxRows: 50 }), elicit: elicitor(true, { action: 'accept', content: { max_rows: 'all' } }) });
+    expect(result).toMatchObject({ success: true, rowCount: 50 });
+  });
+
+  it('does not start when the user declines or cancels', async () => {
+    for (const action of ['decline', 'cancel'] as const) {
+      const result = await exportQueryTool({ ...input({ maxRows: 50 }), elicit: elicitor(true, { action }) });
+      expect(result).toMatchObject({ success: false, errorKind: 'elicitation_declined' });
+    }
+    expect(openCursor).not.toHaveBeenCalled();
+  });
+
+  it('exports as before when the client cannot answer, or the cap is within the setting', async () => {
+    openCursor.mockResolvedValueOnce(fakeCursor(COLUMNS, [rows(30)]));
+    const unsupported = elicitor(false);
+    expect(await exportQueryTool({ ...input({ maxRows: 50 }), elicit: unsupported })).toMatchObject({ success: true, rowCount: 30 });
+    expect(unsupported.ask).not.toHaveBeenCalled();
+
+    openCursor.mockResolvedValueOnce(fakeCursor(COLUMNS, [rows(5)]));
+    const small = elicitor(true);
+    expect(await exportQueryTool({ ...input({ maxRows: 10 }), elicit: small })).toMatchObject({ success: true, rowCount: 5 });
+    expect(small.ask).not.toHaveBeenCalled();
+  });
+
+  it('never asks when EXPORT_CONFIRM_ROWS is 0', async () => {
+    process.env.EXPORT_CONFIRM_ROWS = '0';
+    openCursor.mockResolvedValueOnce(fakeCursor(COLUMNS, [rows(30)]));
+    const elicit = elicitor(true);
+    expect(await exportQueryTool({ ...input({ maxRows: 50 }), elicit })).toMatchObject({ success: true });
+    expect(elicit.ask).not.toHaveBeenCalled();
   });
 });

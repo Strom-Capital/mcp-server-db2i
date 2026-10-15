@@ -12,11 +12,25 @@
  * the tools take an optional `system` argument.
  */
 
-import { CLIENT_INFO_META_KEY, McpServer, type RegisteredTool, type ServerContext } from '@modelcontextprotocol/server';
+import {
+  CLIENT_INFO_META_KEY,
+  isInputRequiredResult,
+  McpServer,
+  type ClientCapabilities,
+  type InputRequiredResult,
+  type RegisteredTool,
+  type ServerContext,
+} from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { serverIcons } from './branding.js';
-import { getEnabledTools, getExportConfig, getResponseFormat, isToolIntentEnabled } from './config.js';
+import {
+  getEnabledTools,
+  getExportConfig,
+  getResponseFormat,
+  isCustomToolsAskEnabled,
+  isToolIntentEnabled,
+} from './config.js';
 import { resolveTarget, STDIO_POOL_KEY, systemNames, type DbTarget, type SystemBinding } from './systems.js';
 import { executeQueryTool } from './tools/query.js';
 import { exportQueryTool } from './tools/exportQuery.js';
@@ -53,6 +67,8 @@ import { registerResources } from './resources.js';
 import { SQL_OBJECT_TYPES } from './db/sqlServices.js';
 import { MAX_COMPUTED_COLUMNS } from './db/profile.js';
 import type { SqlErrorDetails } from './db/sqlErrorInfo.js';
+import { canElicitForm, Elicitor } from './elicitation/elicitor.js';
+import { stateCodec } from './elicitation/state.js';
 import { getRateLimiter } from './utils/rateLimiter.js';
 import {
   auditSessionId,
@@ -556,24 +572,44 @@ interface ToolAudit<TArgs> {
   ownsContext?: boolean;
 }
 
+/** How a tool that can ask the user a question finds out whether the client can answer. */
+export interface ElicitationSupport {
+  /** Capabilities the client declared at `initialize`, for 2025-era connections. */
+  clientCapabilities: () => ClientCapabilities | undefined;
+}
+
+/** Elicitation support for the tools registered on this server. */
+function elicitationFor(server: McpServer): ElicitationSupport {
+  // The only view of what a 2025-era client declared at initialize
+  return { clientCapabilities: () => server.server.getClientCapabilities() };
+}
+
+/** How long a 2025-era client gets to answer a question sent through the SDK's legacy shim. */
+const ELICITATION_ROUND_TIMEOUT_MS = 5 * 60 * 1000;
+
+const REJECTED_STATE_MESSAGE =
+  'This answer does not belong to this tool call, has already been used, or has expired. Call the tool again.';
+
 /**
  * Creates a tool handler wrapper that applies rate limiting and standardizes responses.
  * Eliminates boilerplate code across all tool registrations.
  * 
- * @param handler - The tool handler function
+ * @param handler - The tool handler function. It may return an `input_required` result from its Elicitor.
  * @param errorMessage - Error message to use on failure
  * @param sessionContext - Optional session context for HTTP transport
  * @param audit - Tool name and how to read SQL or arguments for the audit log
  * @param systemOf - Reads the requested system from the arguments. Defaults to the `system` argument.
+ * @param elicitation - Set for tools that may ask the user a question
  */
 export function withToolHandler<TArgs, TResult extends ToolResult>(
-  handler: (args: TArgs, target: DbTarget) => Promise<TResult>,
+  handler: (args: TArgs, target: DbTarget, elicit: Elicitor) => Promise<TResult | InputRequiredResult>,
   errorMessage: string,
   sessionContext?: SessionContext,
   audit?: ToolAudit<TArgs>,
   systemOf: (args: TArgs) => string | undefined = systemArgOf,
-): (args: TArgs, ctx?: ServerContext) => Promise<McpToolResponse> {
-  return async (input: TArgs, ctx?: ServerContext): Promise<McpToolResponse> => {
+  elicitation?: ElicitationSupport,
+): (args: TArgs, ctx?: ServerContext) => Promise<McpToolResponse | InputRequiredResult> {
+  return async (input: TArgs, ctx?: ServerContext): Promise<McpToolResponse | InputRequiredResult> => {
     const { args, intent } = splitIntent(input, audit?.ownsContext);
     const facts: AuditFacts = {
       ...(audit?.audit?.(args) ?? {}),
@@ -594,12 +630,30 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
     const identity = !sessionContext
       ? 'stdio'
       : target?.config.username ?? sessionContext.binding?.config.username ?? 'unknown';
+    const elicit = new Elicitor(
+      ctx,
+      { identity, tool: audit?.tool ?? 'unknown' },
+      args,
+      elicitation ? canElicitForm(ctx, elicitation.clientCapabilities()) : false,
+    );
+    if (elicit.rejected) {
+      recordAudit(audit?.tool, identity, system, facts, {
+        outcome: 'error',
+        error: REJECTED_STATE_MESSAGE,
+        errorKind: 'elicitation_rejected',
+      });
+      return {
+        content: [{ type: 'text', text: REJECTED_STATE_MESSAGE }],
+        structuredContent: { success: false, error: REJECTED_STATE_MESSAGE },
+        isError: true,
+      };
+    }
 
-    // Check rate limit
+    // A retry that carries the answer to this call's question was counted on its first round
     const rateLimiter = getRateLimiter();
-    const rateResult = rateLimiter.checkLimit(sessionContext?.sessionId ?? 'stdio');
+    const rateResult = elicit.isRetry ? undefined : rateLimiter.checkLimit(sessionContext?.sessionId ?? 'stdio');
 
-    if (!rateResult.allowed) {
+    if (rateResult && !rateResult.allowed) {
       const error = rateLimiter.formatError(rateResult);
       recordAudit(audit?.tool, identity, system, facts, {
         outcome: 'rate_limited',
@@ -625,9 +679,9 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
     }
 
     const started = Date.now();
-    let result: TResult;
+    let outcome: TResult | InputRequiredResult;
     try {
-      result = await handler(args, target);
+      outcome = await handler(args, target, elicit);
     } catch (error) {
       const message = error instanceof Error ? error.message : errorMessage;
       recordAudit(audit?.tool, identity, system, facts, {
@@ -635,11 +689,22 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
         error: message,
         errorKind: 'exception',
         durationMs: Date.now() - started,
+        ...(elicit.note ? { elicitation: elicit.note } : {}),
       });
       throw error;
     }
 
     const durationMs = Date.now() - started;
+    if (isInputRequiredResult(outcome)) {
+      recordAudit(audit?.tool, identity, system, facts, {
+        outcome: 'input_required',
+        durationMs,
+        ...(elicit.note ? { elicitation: elicit.note } : {}),
+      });
+      return outcome;
+    }
+    const result = outcome;
+    const asked = elicit.note ? { elicitation: elicit.note } : {};
     if (!result.success) {
       const message = result.error ?? errorMessage;
       const sqlError = sqlErrorFieldsOf(result);
@@ -658,6 +723,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
         ...(sqlError.sqlstate ? { sqlstate: sqlError.sqlstate } : {}),
         ...(sqlError.sqlcode !== undefined ? { sqlcode: sqlError.sqlcode } : {}),
         ...(violations ? { violations } : {}),
+        ...asked,
       });
       const structured = {
         success: false,
@@ -690,6 +756,7 @@ export function withToolHandler<TArgs, TResult extends ToolResult>(
         : {}),
       ...(typeof result.valid === 'boolean' && typeof result.sqlstate === 'string' ? { sqlstate: result.sqlstate } : {}),
       ...(typeof result.valid === 'boolean' && typeof result.sqlcode === 'number' ? { sqlcode: result.sqlcode } : {}),
+      ...asked,
     });
     return {
       content: [{ type: 'text', text: formatToolText(result, getResponseFormat()) }],
@@ -732,7 +799,7 @@ type AuditFacts = Pick<AuditCall, 'sql' | 'params' | 'args' | 'intent' | 'client
 type AuditOutcome = Pick<
   AuditCall,
   | 'outcome' | 'error' | 'errorKind' | 'durationMs' | 'rowCount' | 'truncated' | 'skippedFilters' | 'bytes'
-  | 'sqlstate' | 'sqlcode' | 'violations' | 'rejectedBy' | 'valid'
+  | 'sqlstate' | 'sqlcode' | 'violations' | 'rejectedBy' | 'valid' | 'elicitation'
 >;
 
 /**
@@ -868,8 +935,14 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       version: SERVER_VERSION,
       icons: serverIcons(),
     },
-    instructions ? { instructions } : undefined,
+    {
+      ...(instructions ? { instructions } : {}),
+      // A tampered or expired requestState is refused before any handler runs
+      requestState: { verify: (state, ctx) => stateCodec().verify(state, ctx) },
+      inputRequired: { roundTimeoutMs: ELICITATION_ROUND_TIMEOUT_MS },
+    },
   );
+  const elicitation = elicitationFor(server);
 
   const common = { ...systemShape(sessionContext), ...contextShape() };
 
@@ -909,7 +982,7 @@ export function createServer(sessionContext?: SessionContext): McpServer {
   if (enabledTools.has('export_query') && getExportConfig()) {
     const delivery = sessionContext ? 'link' : 'path';
     const handler = withToolHandler(
-      (args: { sql: string; params?: unknown[]; format?: 'csv' | 'xlsx'; filename?: string; max_rows?: number }, target) =>
+      (args: { sql: string; params?: unknown[]; format?: 'csv' | 'xlsx'; filename?: string; max_rows?: number }, target, elicit) =>
         exportQueryTool({
           sql: args.sql,
           params: args.params,
@@ -921,10 +994,13 @@ export function createServer(sessionContext?: SessionContext): McpServer {
           target,
           defaultSchema: target.defaultSchema,
           describeTable: sessionTools.has('describe_table'),
+          elicit,
         }),
       'Export failed',
       sessionContext,
       sqlAudit('export_query'),
+      systemArgOf,
+      elicitation,
     );
     const description =
       'Run a read-only SQL SELECT and write every row to a CSV or Excel (XLSX) file for the user, instead of returning the rows. ' +
@@ -952,6 +1028,9 @@ export function createServer(sessionContext?: SessionContext): McpServer {
       },
       async (args, ctx) => {
         const response = await handler(args, ctx);
+        if (isInputRequiredResult(response)) {
+          return response;
+        }
         const url = response.structuredContent?.url;
         const filename = response.structuredContent?.filename;
         if (typeof url === 'string' && typeof filename === 'string') {
@@ -1609,7 +1688,7 @@ function syncOneServer(
       description: tool.description,
       paramsSchema: customToolInputSchema(tool, live.sessionContext),
       _meta: customToolMeta(tool),
-      callback: customToolCallback(tool, live.sessionContext),
+      callback: customToolCallback(tool, live.sessionContext, elicitationFor(live.server)),
     });
     current.signature = signature;
   }
@@ -1654,7 +1733,7 @@ function customToolReachable(tool: StoredTool, sessionContext: SessionContext | 
  * `context` argument is added the same way, unless a parameter is named `context`.
  */
 function customToolInputSchema(tool: StoredTool, sessionContext: SessionContext | undefined) {
-  const params = inputSchemaFor(tool.parameters);
+  const params = inputSchemaFor(tool.parameters, { askOptional: isCustomToolsAskEnabled() });
   const system = tool.system || 'system' in tool.parameters ? {} : systemShape(sessionContext);
   const context = 'context' in tool.parameters ? {} : contextShape();
   return params.extend({ ...system, ...context });
@@ -1686,7 +1765,7 @@ function registerCustomTool(
       outputSchema: queryOutputSchema,
       _meta: customToolMeta(tool),
     },
-    customToolCallback(tool, sessionContext),
+    customToolCallback(tool, sessionContext, elicitationFor(server)),
   );
   return { registered, signature: toolSignature(tool) };
 }
@@ -1694,11 +1773,13 @@ function registerCustomTool(
 function customToolCallback(
   tool: StoredTool,
   sessionContext: SessionContext | undefined,
+  elicitation: ElicitationSupport,
 ) {
   return withToolHandler(
-    (args: unknown, target) => executeCustomTool(tool, withoutSystemArg(tool, args), {
+    (args: unknown, target, elicit) => executeCustomTool(tool, withoutSystemArg(tool, args), {
       target,
       defaultSchema: target.defaultSchema,
+      elicit,
     }),
     'Query failed',
     sessionContext,
@@ -1711,6 +1792,7 @@ function customToolCallback(
       ownsContext: 'context' in tool.parameters,
     },
     (args) => customToolSystem(tool, args),
+    elicitation,
   );
 }
 

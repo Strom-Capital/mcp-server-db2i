@@ -63,7 +63,7 @@ annotations:
 
 Parameter types are `string` (optional `maxLength`), `integer`, `number`, `boolean`, `date`, and `enum`. A `string` parameter may also set `enum` to a list of allowed values. `date` values are `YYYY-MM-DD`.
 
-A parameter with a `default` may be omitted, and the default is bound. `required: false` with no default may be omitted, and NULL is bound. Anything else must be sent by the client.
+A parameter with a `default` may be omitted, and the default is bound. `required: false` with no default may be omitted, and NULL is bound. Anything else must be sent by the client, unless it sets `ask: true`. See [Asking the user](#asking-the-user).
 
 Boolean values bind as `1` and `0`.
 
@@ -96,6 +96,34 @@ tools:
 - A tool without `system:` gets the same optional `system` argument as the built-in tools, and runs on the default (first) system when the caller names none. A tool that declares its own parameter named `system` gets no extra argument and runs on the default system.
 - At startup a pinned tool is checked against its system's allowlist. Other tools are checked against the default system's list. Every call is checked again against the system it runs on.
 - An HTTP session that logged in to one system does not list tools pinned to another.
+
+### Asking the user
+
+A model that does not know a value tends to guess it. `ask: true` on a parameter lets the user give it instead:
+
+```yaml
+tools:
+  - name: orders_by_status
+    title: Orders by status
+    description: Sales orders with one status, optionally since a date.
+    parameters:
+      status: { type: enum, enum: [OPEN, CLOSED], ask: true, description: Order status }
+      since: { type: date, required: false, ask: true, description: First order date }
+    sql: |
+      SELECT ORDERNO, CUSTNO FROM MYLIB.ORDERHDR
+      WHERE STATUS = :status
+        AND (CAST(:since AS DATE) IS NULL OR ORDER_DATE >= :since)
+```
+
+- In `tools/list`, an `ask` parameter is optional, and its description tells the model to leave it out unless the user said it.
+- When the model leaves one or more out, the client shows the user one form with a field for each. The field type follows the parameter type, a `default` fills the field, and a field is required when the parameter is.
+- The answers go through the same validation as arguments from the model. A wrong value fails the call, and the statement does not run.
+- If the user declines or cancels, the tool does not run and the model is told that the user did not give the values.
+- A client that cannot show forms gets the same behavior as before: a missing required parameter fails validation, and a missing optional one is bound as NULL.
+- `ask` is refused on a parameter whose name looks like a credential (`pass`, `pwd`, `secret`, `token`, `credential`, `api_key`). MCP form elicitation must not be used to collect passwords.
+- In the audit log, `args` holds what the model sent and `elicitation` holds the outcome (`accept`, `decline` or `cancel`). The answers are bound values, so they are logged only with `MCP_AUDIT_PARAMS=true`.
+
+`MCP_CUSTOM_TOOLS_ASK=false` turns this off. `ask` parameters are then ordinary parameters. See [Elicitation](configuration.md#elicitation) for which clients can answer.
 
 ### Annotations
 

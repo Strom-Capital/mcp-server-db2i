@@ -1260,6 +1260,43 @@ export function isToolIntentEnabled(): boolean {
 }
 
 /**
+ * Whether a business tool asks the user, through MCP elicitation, for an `ask: true`
+ * parameter the model left out. On by default; it only applies to parameters
+ * marked `ask` and to clients that declare the `elicitation` capability.
+ *
+ * Environment variable:
+ * - MCP_CUSTOM_TOOLS_ASK: `false` or `0` turns it off. Anything else, including unset, leaves it on.
+ */
+export function isCustomToolsAskEnabled(): boolean {
+  const value = process.env.MCP_CUSTOM_TOOLS_ASK?.trim().toLowerCase();
+  return value !== 'false' && value !== '0';
+}
+
+/**
+ * The key that signs elicitation `requestState`, and whether every instance
+ * shares it. MCP_ELICITATION_SECRET wins; otherwise a key is derived from
+ * MCP_OAUTH_SECRET; otherwise the caller uses a random key for the process.
+ *
+ * Environment variables:
+ * - MCP_ELICITATION_SECRET: at least 32 characters.
+ * - MCP_OAUTH_SECRET: used, through HKDF, when MCP_ELICITATION_SECRET is unset.
+ *
+ * @returns The secret, or undefined when neither variable is set
+ * @throws Error when MCP_ELICITATION_SECRET is set but shorter than 32 characters
+ */
+export function getElicitationSecret(): { secret: string; source: 'elicitation' | 'oauth' } | undefined {
+  const own = process.env.MCP_ELICITATION_SECRET?.trim();
+  if (own) {
+    if (own.length < 32) {
+      throw new Error('MCP_ELICITATION_SECRET must be at least 32 characters');
+    }
+    return { secret: own, source: 'elicitation' };
+  }
+  const oauth = process.env.MCP_OAUTH_SECRET?.trim();
+  return oauth && oauth.length >= 32 ? { secret: oauth, source: 'oauth' } : undefined;
+}
+
+/**
  * Watching with no files is a startup error. A blank MCP_CUSTOM_TOOLS would
  * otherwise look like a successful watch of nothing.
  */
@@ -1311,6 +1348,11 @@ export interface ExportConfig {
   /** Directory export files are written to. */
   dir: string;
   maxRows: number;
+  /**
+   * Ask the user before an export that can write more rows than this, when the
+   * client supports elicitation. 0 means never ask.
+   */
+  confirmRows: number;
   /** Largest export file in bytes. */
   maxBytes: number;
   /** Seconds an export may take, the open and every fetch together. 0 means no limit. */
@@ -1339,6 +1381,7 @@ const DEFAULT_EXPORT_DIR_MAX_BYTES = 1024 * 1024 * 1024;
  * - EXPORT_ENABLED: `true` or `1` turns exports on.
  * - EXPORT_DIR: directory for export files, created with mode 0700.
  * - EXPORT_MAX_ROWS: rows per export (default 100000).
+ * - EXPORT_CONFIRM_ROWS: ask the user before an export that can write more rows (default 0, never ask).
  * - EXPORT_MAX_BYTES: bytes per export file (default 100 MB).
  * - EXPORT_TIMEOUT: seconds per export (default QUERY_TIMEOUT, 0 for none).
  * - EXPORT_TTL_MINUTES: minutes a file can be downloaded (default 15).
@@ -1361,6 +1404,7 @@ export function getExportConfig(): ExportConfig | undefined {
   return {
     dir,
     maxRows: readIntEnvInRange('EXPORT_MAX_ROWS', 100_000, 1, 10_000_000),
+    confirmRows: readIntEnvInRange('EXPORT_CONFIRM_ROWS', 0, 0, 10_000_000),
     maxBytes: readIntEnvInRange('EXPORT_MAX_BYTES', DEFAULT_EXPORT_MAX_BYTES, 1024, Number.MAX_SAFE_INTEGER),
     timeoutSeconds: readIntEnvInRange(
       'EXPORT_TIMEOUT',

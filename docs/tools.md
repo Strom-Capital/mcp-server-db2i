@@ -96,6 +96,8 @@ A successful `execute_query` or business SQL tool result can carry `warnings`, w
 | `filename` | Name for the file, without extension. Letters, digits, `.`, `_` and `-` are kept |
 | `max_rows` | Most rows to write, capped by `EXPORT_MAX_ROWS` |
 
+With `EXPORT_CONFIRM_ROWS` set, an export whose row cap is above it first asks the user in the client, for example "Export up to 100,000 rows as XLSX?". The user can lower the number, and declining stops the export before the query runs. A client that cannot show the question exports as before. See [Elicitation](configuration.md#elicitation).
+
 The result tells the model where the file is and what is in it:
 
 | Field | Meaning |

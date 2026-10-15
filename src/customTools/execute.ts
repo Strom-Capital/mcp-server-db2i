@@ -13,7 +13,11 @@ import {
   parseStatement,
   type ParsedName,
 } from '../db/sqlServices.js';
-import { applyQueryLimit, getQueryLimitConfig, isQueryParseCheckEnabled } from '../config.js';
+import type { InputRequiredResult } from '@modelcontextprotocol/server';
+
+import { applyQueryLimit, getQueryLimitConfig, isCustomToolsAskEnabled, isQueryParseCheckEnabled } from '../config.js';
+import type { Elicitor } from '../elicitation/elicitor.js';
+import { askForm, missingAskParameters, pickAnswers } from './ask.js';
 import { allowedSchemasFor, type DbTarget } from '../systems.js';
 import { applySqlRowLimit, rowLimitWarning, takeRowsWithinLimit } from '../tools/sqlLimit.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -65,6 +69,13 @@ export interface CustomToolQueryResult extends SqlErrorDetails {
   [key: string]: unknown;
 }
 
+export interface CustomToolOptions {
+  target?: DbTarget;
+  defaultSchema?: string;
+  /** Asks the user for `ask` parameters the model left out. */
+  elicit?: Elicitor;
+}
+
 /**
  * Bind the tool's parameters and run its statement.
  * The row cap is the tool's maxRows, or the default query limit, and never above QUERY_MAX_LIMIT.
@@ -72,9 +83,23 @@ export interface CustomToolQueryResult extends SqlErrorDetails {
 export async function executeCustomTool(
   tool: StoredTool,
   args: Record<string, unknown>,
-  options: { target?: DbTarget; defaultSchema?: string } = {},
-): Promise<CustomToolQueryResult> {
-  const bound = bindCustomToolArgs(tool, args);
+  options?: CustomToolOptions & { elicit?: undefined },
+): Promise<CustomToolQueryResult>;
+export async function executeCustomTool(
+  tool: StoredTool,
+  args: Record<string, unknown>,
+  options: CustomToolOptions,
+): Promise<CustomToolQueryResult | InputRequiredResult>;
+export async function executeCustomTool(
+  tool: StoredTool,
+  args: Record<string, unknown>,
+  options: CustomToolOptions = {},
+): Promise<CustomToolQueryResult | InputRequiredResult> {
+  const asked = await askMissingParameters(tool, args, options.elicit);
+  if (!asked.ok) {
+    return asked.result;
+  }
+  const bound = bindCustomToolArgs(tool, asked.args);
   if (!bound.ok) {
     return { success: false, error: bound.error, errorKind: 'bad_params' };
   }
@@ -153,6 +178,42 @@ export async function executeCustomTool(
     log.debug({ err: error, tool: tool.name }, 'Custom tool failed');
     return { success: false, error: message, ...sqlErrorFields(error) };
   }
+}
+
+/**
+ * Fill in `ask` parameters the model left out by asking the user, when the
+ * client can answer and MCP_CUSTOM_TOOLS_ASK is on. Otherwise the arguments
+ * are returned unchanged, and defaults and required checks apply as before.
+ * Answers go through the same validation as arguments from the model.
+ */
+async function askMissingParameters(
+  tool: StoredTool,
+  args: Record<string, unknown>,
+  elicit: Elicitor | undefined,
+): Promise<{ ok: true; args: Record<string, unknown> } | { ok: false; result: CustomToolQueryResult | InputRequiredResult }> {
+  const missing = missingAskParameters(tool.parameters, args);
+  if (!elicit || missing.length === 0 || !isCustomToolsAskEnabled()) {
+    return { ok: true, args };
+  }
+  const answer = elicit.answer('tool_params');
+  if (!answer) {
+    if (!elicit.available) {
+      return { ok: true, args };
+    }
+    const result = await elicit.ask('tool_params', `${tool.title}: fill in ${missing.join(', ')}.`, askForm(tool.parameters, missing));
+    return { ok: false, result };
+  }
+  if (answer.action !== 'accept') {
+    return {
+      ok: false,
+      result: {
+        success: false,
+        error: `The user did not give ${missing.join(', ')}, so ${tool.name} did not run.`,
+        errorKind: 'elicitation_declined',
+      },
+    };
+  }
+  return { ok: true, args: { ...args, ...pickAnswers(answer.content, missing) } };
 }
 
 /**

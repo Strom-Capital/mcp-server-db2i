@@ -10,6 +10,7 @@ const SQL_NAME = /^[A-Za-z_@#$][A-Za-z0-9_@#$]{0,127}$/;
 const TABLE_REF = /^[A-Za-z_@#$][A-Za-z0-9_@#$]{0,127}\.[A-Za-z_@#$][A-Za-z0-9_@#$]{0,127}$/;
 const DATE_TEXT = /^\d{4}-\d{2}-\d{2}$/;
 const SYSTEM_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+const CREDENTIAL_NAME = /pass|pwd|secret|token|credential|api_?key/i;
 
 const parameterSchema = z.strictObject({
   type: z.enum(['string', 'integer', 'number', 'boolean', 'date', 'enum']),
@@ -18,6 +19,8 @@ const parameterSchema = z.strictObject({
   description: z.string().min(1).optional(),
   enum: z.array(z.string().min(1)).min(1).optional(),
   default: z.union([z.string(), z.number(), z.boolean()]).optional(),
+  /** Ask the user through MCP elicitation when the model leaves this parameter out. */
+  ask: z.boolean().optional(),
 }).superRefine((param, ctx) => {
   const allowsEnum = param.type === 'string' || param.type === 'enum';
   if (param.type === 'enum' && !param.enum) {
@@ -153,6 +156,17 @@ const toolSchema = z.strictObject({
   maxRows: z.number().int().positive().optional(),
   system: z.string().regex(SYSTEM_NAME, 'System must be a profile name from DB2I_PROFILES').optional(),
   sql: z.string().min(1),
+}).superRefine((tool, ctx) => {
+  // Form-mode elicitation must never ask for credentials
+  for (const [name, param] of Object.entries(tool.parameters ?? {})) {
+    if (param.ask && CREDENTIAL_NAME.test(name)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'ask cannot be used on a parameter that looks like a credential',
+        path: ['parameters', name, 'ask'],
+      });
+    }
+  }
 });
 
 export type ToolDef = z.infer<typeof toolSchema>;
@@ -200,7 +214,7 @@ export const customToolsFileSchema = z.strictObject({
  * A default makes the argument optional. Otherwise it is required unless required is false.
  * An omitted optional argument is bound as NULL.
  */
-function parameterIsOptional(param: ParameterDef): boolean {
+export function parameterIsOptional(param: ParameterDef): boolean {
   if (param.default !== undefined) {
     return true;
   }
@@ -211,8 +225,15 @@ const DATE_PARAM = z.string().regex(DATE_TEXT, 'Expected a date as YYYY-MM-DD');
 
 /**
  * MCP input schema for one tool. Optional arguments accept null, which binds as NULL.
+ *
+ * @param options.askOptional - Advertise `ask` parameters as optional, so the model
+ *   can leave them out and the user is asked. Values are still checked strictly
+ *   once the answer is in.
  */
-export function inputSchemaFor(parameters: Record<string, ParameterDef>): z.ZodObject {
+export function inputSchemaFor(
+  parameters: Record<string, ParameterDef>,
+  options: { askOptional?: boolean } = {},
+): z.ZodObject {
   const shape: Record<string, z.ZodType> = {};
 
   for (const [name, param] of Object.entries(parameters)) {
@@ -231,10 +252,12 @@ export function inputSchemaFor(parameters: Record<string, ParameterDef>): z.ZodO
       field = DATE_PARAM;
     }
 
-    if (param.description) {
-      field = field.describe(param.description);
+    const askHint = options.askOptional && param.ask ? 'Leave it out unless the user said it; the user is then asked.' : '';
+    const description = [param.description, askHint].filter(Boolean).join(' ');
+    if (description) {
+      field = field.describe(description);
     }
-    if (parameterIsOptional(param)) {
+    if (parameterIsOptional(param) || (options.askOptional && param.ask)) {
       field = field.nullish();
     }
     shape[name] = field;

@@ -25,6 +25,10 @@ export type AuditErrorKind =
   | 'unknown_system'
   | 'rate_limited'
   | 'exception'
+  /** The user declined or cancelled the tool's question. */
+  | 'elicitation_declined'
+  /** The call carried a requestState for another call, or one already used. */
+  | 'elicitation_rejected'
   | 'other';
 
 /**
@@ -84,7 +88,10 @@ export interface AuditCall {
   /** Size of the file an export wrote. */
   bytes?: number;
   durationMs?: number;
-  outcome: 'success' | 'error' | 'rate_limited';
+  /** `input_required`: the tool asked the user a question and the client will call it again. */
+  outcome: 'success' | 'error' | 'rate_limited' | 'input_required';
+  /** The question the tool asked or the answer it got, never the values typed into the form. */
+  elicitation?: { kind: string; outcome: 'asked' | 'accept' | 'decline' | 'cancel' };
   error?: string;
   errorKind?: AuditErrorKind;
   sqlstate?: string;
@@ -249,6 +256,9 @@ function formatEntry(entry: AuditCall, current: AuditConfig): Record<string, unk
   }
   if (entry.durationMs !== undefined) {
     line.durationMs = entry.durationMs;
+  }
+  if (entry.elicitation) {
+    line.elicitation = { kind: entry.elicitation.kind, outcome: entry.elicitation.outcome };
   }
   if (entry.error !== undefined) {
     line.error = entry.error;
