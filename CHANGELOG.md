@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.0...v3.8.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* quieter KPI tiles that fit on one line ([#306](https://github.com/Strom-Capital/mcp-server-db2i/issues/306)) ([459044a](https://github.com/Strom-Capital/mcp-server-db2i/commit/459044a44dd7f5b82cb1f8c02a18f2e7db99e07f))
+
 ## [3.8.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.7.0...v3.8.0) (2026-10-15)
 
 
