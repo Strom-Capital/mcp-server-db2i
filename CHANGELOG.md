@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.7.0...v3.8.0) (2026-10-15)
+
+
+### Features
+
+* show query results as a grid and chart with MCP Apps ([#303](https://github.com/Strom-Capital/mcp-server-db2i/issues/303)) ([58030bf](https://github.com/Strom-Capital/mcp-server-db2i/commit/58030bf6dada142aa4c4d2a58893a13a7fe3f055))
+
 ## [3.7.0](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.6.1...v3.7.0) (2026-10-15)
 
 
