@@ -33,6 +33,8 @@ export interface ToolResultView {
   limitApplied?: number;
   warnings: string[];
   exportFile?: ExportFile;
+  /** Chart type the server resolved from a chart hint or a YAML `chart:` block. */
+  chartType?: string;
   /** Text content, when there is no structured result to show. */
   text?: string;
 }
@@ -172,6 +174,9 @@ export function readToolResult(output: unknown): ToolResultView {
   }
   if (typeof structured.limitApplied === 'number') {
     view.limitApplied = structured.limitApplied;
+  }
+  if (isRecord(structured.chart) && typeof structured.chart.type === 'string') {
+    view.chartType = structured.chart.type;
   }
   return view;
 }
