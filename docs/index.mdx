@@ -50,6 +50,7 @@ A narrated walkthrough (4:46, with captions): clients and transports, the three 
 - **Read-only SQL.** SELECT and WITH only, checked by a SQL parser and by `QSYS2.PARSE_STATEMENT`, with a row limit and a query timeout that cancels runaway statements on the IBM i. See [Query validation](/security#query-validation).
 - **Catalog tools.** List schemas, tables, views, indexes, constraints, procedures, and functions; describe columns and routine parameters; search tables and columns across libraries; return DDL; list dependent objects; check journaling; read index advice; and profile a table.
 - **Business SQL tools.** Load reviewed ERP queries and table notes from YAML, and check the files before the server starts. See [Business SQL tools](/custom-tools).
+- **Charts in the chat.** In hosts that support MCP Apps, results open as a sortable grid under the tool call, and as a chart when the user asks for one. See [Result view](/tools#result-view).
 - **Multiple systems.** Reach production, test, and other partitions from one server with `DB2I_PROFILES`, each with its own driver, credentials, and library allowlist. See [Multiple systems](/configuration#multiple-systems).
 - **Guardrails.** A library allowlist, per-tool enable and disable, column masking, rate limits, and a JSON audit log. See [Security](/security).
 - **Remote access.** Streamable HTTP with built-in OAuth 2.1 sign-in against the user's own IBM i profile, so claude.ai custom connectors can connect. See [HTTP transport](/http-transport).

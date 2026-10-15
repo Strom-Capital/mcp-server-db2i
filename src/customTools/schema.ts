@@ -4,6 +4,8 @@
 
 import { z } from 'zod';
 
+import { chartSpecSchema } from '../ui/chartSpec.js';
+
 const TOOL_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 const PARAM_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const SQL_NAME = /^[A-Za-z_@#$][A-Za-z0-9_@#$]{0,127}$/;
@@ -152,6 +154,8 @@ const toolSchema = z.strictObject({
   ).optional(),
   maxRows: z.number().int().positive().optional(),
   system: z.string().regex(SYSTEM_NAME, 'System must be a profile name from DB2I_PROFILES').optional(),
+  /** How the result view charts the rows. Column names are checked when the tool runs. */
+  chart: chartSpecSchema.optional(),
   sql: z.string().min(1),
 });
 

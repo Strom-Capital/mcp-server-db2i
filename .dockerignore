@@ -1,4 +1,4 @@
-# Keep the build context small: the Dockerfile copies package files, tsconfig.json and src only.
+# Keep the build context small: the Dockerfile copies package files, tsconfig.json, src, ui and scripts/build-ui.mjs only.
 node_modules
 dist
 coverage

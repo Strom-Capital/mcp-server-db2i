@@ -16,6 +16,7 @@ import type {
   DbDriver,
   DbPool,
   DbQueryOptions,
+  DbRows,
   QueryParam,
   RowCursor,
   SqlDiagnostics,
@@ -142,13 +143,7 @@ function openJt400Cursor(
       options.signal?.throwIfAborted();
       const statement = await pinned.execute(sql, [...params]);
       try {
-        const columns: DbColumn[] = (await statement.metadata()).map((column) => ({
-          name: column.name,
-          kind: kindFromTypeName(column.typeName),
-          dbType: column.typeName,
-          precision: column.precision,
-          scale: column.scale,
-        }));
+        const columns: DbColumn[] = (await statement.metadata()).map(jt400Column);
         const rows = statement.asIterable()[Symbol.asyncIterator]();
         let done = false;
 
@@ -267,7 +262,7 @@ function toJt400Error(error: unknown): unknown {
  * close() would return the connection to the pool twice, so the statement is
  * closed here only when reading the metadata fails.
  */
-async function queryRows(target: Jt400Queryable, sql: string, params: readonly QueryParam[]): Promise<Row[]> {
+async function queryRows(target: Jt400Queryable, sql: string, params: readonly QueryParam[]): Promise<DbRows> {
   const statement = await target.execute(sql, [...params]);
   let columns: Jt400Metadata[];
   try {
@@ -277,13 +272,25 @@ async function queryRows(target: Jt400Queryable, sql: string, params: readonly Q
     throw error;
   }
   const values = await statement.asArray();
-  return values.map((value) => {
+  const rows: DbRows = values.map((value) => {
     const row: Row = {};
     columns.forEach((column, index) => {
       row[column.name] = value[index] ?? null;
     });
     return row;
   });
+  rows.columns = columns.map(jt400Column);
+  return rows;
+}
+
+function jt400Column(column: Jt400Metadata): DbColumn {
+  return {
+    name: column.name,
+    kind: kindFromTypeName(column.typeName),
+    dbType: column.typeName,
+    precision: column.precision,
+    scale: column.scale,
+  };
 }
 
 /**
@@ -301,10 +308,10 @@ async function runStatement(
   sql: string,
   params: readonly QueryParam[],
   options: DbQueryOptions | undefined
-): Promise<Row[]> {
+): Promise<DbRows> {
   const timeoutMs = options?.timeoutMs ?? 0;
   const cancelJob = options?.cancelJob;
-  const run = async (target: Jt400Queryable): Promise<Row[]> => {
+  const run = async (target: Jt400Queryable): Promise<DbRows> => {
     if (options?.noResultSet) {
       await target.update(sql, [...params]);
       return [];

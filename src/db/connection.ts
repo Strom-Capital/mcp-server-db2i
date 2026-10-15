@@ -12,7 +12,7 @@
 import type { DB2iConfig } from '../config.js';
 import { queryTimeoutMs } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
-import type { DbPool, DbRows, RowCursor } from './driver.js';
+import type { DbColumn, DbPool, DbRows, RowCursor } from './driver.js';
 import { DbError, loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
 import { DatabaseQueryError, explainSqlError, LOOKUP_TIMEOUT_MS, type SqlErrorDetails } from './sqlErrorInfo.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -23,6 +23,8 @@ export interface QueryResult {
   rows: Record<string, unknown>[];
   /** Columns whose values the driver rounded (DECIMAL past 15 digits on ODBC). */
   roundedColumns?: string[];
+  /** The result set's columns in order, when the driver reported them. */
+  columns?: DbColumn[];
 }
 
 /** One pool. `pool` is set by the first query and cleared on failure. */
@@ -450,8 +452,12 @@ async function run(
     // BIGINT and binary values from ODBC are not JSON; convert them once, for every output path
     const rows = toJsonSafeRows(Array.from(rawRows));
     log.debug({ rowCount: rows.length }, `${kind} completed`);
-    const { roundedColumns } = rawRows;
-    return roundedColumns ? { rows, roundedColumns } : { rows };
+    const { roundedColumns, columns } = rawRows;
+    return {
+      rows,
+      ...(roundedColumns ? { roundedColumns } : {}),
+      ...(columns ? { columns } : {}),
+    };
   } catch (error) {
     if (error instanceof QueryTimeoutError) {
       logTimeout(error, resolved, slot.config.driver, sql);

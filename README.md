@@ -87,6 +87,7 @@ graph LR
 - **Tool selection** - Enable or disable individual tools, e.g. a metadata-only mode without `execute_query`
 - **Business SQL tools** - Load read-only ERP queries and table notes from YAML, and check the files with `mcp-server-db2i validate-tools` before the server starts. See [Business SQL tools](docs/custom-tools.md)
 - **Server instructions** - Send the rules no query may miss, such as which flag marks a deleted row, to the model at the start of every session. See [Instructions](docs/custom-tools.md#instructions)
+- **Charts in the chat** - Hosts that support MCP Apps show query results as a sortable grid under the tool call, with a chart one click away. When the user asks for a chart, or a YAML tool sets one, it opens on the chart. See [Result view](docs/tools.md#result-view)
 - **Compact responses** - Compact JSON by default, or markdown tables to save tokens
 - **Statement checks and DDL** - Validate object names, return the SQL that recreates an object, and list what depends on a table
 - **Catalog search and profiling** - Find tables and columns across libraries, check journaling, and profile a table's row counts and value ranges
@@ -161,7 +162,7 @@ No MCP client? The [example web app](examples/web-app) is a browser chat with re
 
 | Tool | Description |
 |------|-------------|
-| `execute_query` | Execute read-only SELECT queries |
+| `execute_query` | Execute read-only SELECT queries, with an optional `chart` hint for the [result view](docs/tools.md#result-view) |
 | `export_query` | Write every row of a read-only query to a CSV or XLSX file: a path over stdio, a short-lived download link over HTTP. Off unless `EXPORT_ENABLED` is set |
 | `list_schemas` | List schemas/libraries (with optional filter) |
 | `list_tables` | List tables in a schema (with optional filter) |
@@ -182,6 +183,15 @@ No MCP client? The [example web app](examples/web-app) is a browser chat with re
 | `get_business_context` | List business descriptions, row filters and relations loaded from YAML |
 | `search_ibmi_services` | Find IBM i services by keyword or category, with the release that added each one and an example query |
 
+In hosts that support [MCP Apps](https://modelcontextprotocol.io/extensions/apps), results from `execute_query`, `profile_table` and business SQL tools open as a grid and a chart under the tool call. See [Result view](docs/tools.md#result-view).
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/result-view-dark.png">
+    <img src="docs/assets/result-view.png" alt="Three result views: stacked bars of order lines by warehouse and status, a line chart of monthly totals for three statuses, and a doughnut of orders by status with the total in the middle" width="900">
+  </picture>
+</p>
+
 ### Filter Syntax
 
 The list tools support pattern matching:
@@ -198,6 +208,7 @@ Clients that support MCP resources can read a table's context without a tool cal
 | `db2i://{schema}/{table}` | Columns from the catalog, plus the YAML business description, column notes, and relations | `describe_table` is enabled |
 | `db2i://{schema}/{table}/ddl` | SQL from `QSYS2.GENERATE_SQL` that recreates the table, view, or alias | `get_object_ddl` is enabled |
 | `db2i://business-context` | Every annotation loaded from `MCP_CUSTOM_TOOLS` | `get_business_context` is enabled |
+| `ui://db2i/result` | The [result view](docs/tools.md#result-view) MCP Apps hosts show under tool results | `MCP_UI_ENABLED` is on (the default) |
 
 `resources/list` offers the annotated tables, for example `db2i://MYLIB/ORDERS`. Percent-encode `#` and other reserved characters in names (`ORD%23X` for `ORD#X`). A library outside `QUERY_ALLOWED_SCHEMAS` is rejected with the same message `execute_query` gives, and completion offers only allowed libraries. Reads and completions that query IBM i count against the rate limit, and reads are written to the audit log. Completion fetches a library's name list once and reuses it for 60 seconds, so typing a name costs one query rather than one per keystroke.
 

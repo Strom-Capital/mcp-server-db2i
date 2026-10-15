@@ -28,12 +28,32 @@ import type {
   DbDriver,
   DbPool,
   DbQueryOptions,
+  DbRows,
   QueryParam,
   RowCursor,
 } from '../driver.js';
 import { CANCEL_GRACE_MS, DbError, QueryTimeoutError, toDb2Timestamp, withQueryTimeout } from '../driver.js';
 import { driverInstallHelp } from '../driverPackages.js';
 import { createHostKeyVerifier } from './sshHostKey.js';
+
+/** The fields of mapepire-js's column metadata used here. */
+interface MapepireColumn {
+  name: string;
+  label?: string;
+  type: string;
+  precision: number;
+  scale: number;
+}
+
+function mapepireColumns(columns: readonly MapepireColumn[]): DbColumn[] {
+  return columns.map((column) => ({
+    name: column.label || column.name,
+    kind: kindFromTypeName(column.type),
+    dbType: column.type,
+    precision: column.precision,
+    scale: column.scale,
+  }));
+}
 
 type MapepireModule = typeof import('@ibm/mapepire-js');
 type Ssh2Module = typeof import('ssh2');
@@ -199,10 +219,13 @@ async function runOnJob(
   sql: string,
   params: readonly QueryParam[],
   requestTimeout: number
-): Promise<Row[]> {
+): Promise<DbRows> {
   const query = job.query<Row>(sql, params.length > 0 ? { parameters: bindParams(params) } : {});
   let result = await withTimeout(query.execute(FETCH_SIZE), requestTimeout);
-  const rows: Row[] = [...(result.data ?? [])];
+  const rows: DbRows = [...(result.data ?? [])];
+  if (result.metadata?.columns) {
+    rows.columns = mapepireColumns(result.metadata.columns);
+  }
   try {
     while (!result.is_done) {
       result = await withTimeout(query.fetchMore(FETCH_SIZE), requestTimeout);
@@ -264,7 +287,7 @@ export class JobPool implements DbPool {
     this.sweeper.unref();
   }
 
-  async query(sql: string, params: readonly QueryParam[], options?: DbQueryOptions): Promise<Row[]> {
+  async query(sql: string, params: readonly QueryParam[], options?: DbQueryOptions): Promise<DbRows> {
     if (this.closed) {
       throw new Error('Mapepire pool is closed');
     }
@@ -449,13 +472,7 @@ export class JobPool implements DbPool {
       throw wrapped;
     }
     done = first.is_done;
-    const columns: DbColumn[] = (first.metadata?.columns ?? []).map((column) => ({
-      name: column.label || column.name,
-      kind: kindFromTypeName(column.type),
-      dbType: column.type,
-      precision: column.precision,
-      scale: column.scale,
-    }));
+    const columns = mapepireColumns(first.metadata?.columns ?? []);
     let pending: Row[] | undefined = first.data ?? [];
 
     return {

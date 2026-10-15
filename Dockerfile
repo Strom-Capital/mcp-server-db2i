@@ -45,9 +45,11 @@ COPY package*.json ./
 RUN npm ci
 ENV PATH="/app/node_modules/.bin:${PATH}"
 
-# Copy source code
+# Copy source code (ui/ and scripts/build-ui.mjs build the result view)
 COPY tsconfig.json ./
 COPY src ./src
+COPY ui ./ui
+COPY scripts/build-ui.mjs ./scripts/
 
 # Build TypeScript
 RUN npm run build

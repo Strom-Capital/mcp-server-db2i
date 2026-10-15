@@ -91,6 +91,15 @@ describe('readToolResult', () => {
     });
 
     expect(view).toMatchObject({ ok: true, rows: [{ ORDERNO: 1001 }], rowCount: 1, truncated: true, limitApplied: 1 });
+    expect(view.chartType).toBeUndefined();
+  });
+
+  it('reads the chart type the server resolved', () => {
+    const view = readToolResult({
+      structuredContent: { success: true, data: [{ STATUS: 'OPEN', TOTAL: 3 }], chart: { type: 'bar', x: 'STATUS', y: ['TOTAL'] } },
+    });
+
+    expect(view.chartType).toBe('bar');
   });
 
   it('reads a Db2 error with its details', () => {

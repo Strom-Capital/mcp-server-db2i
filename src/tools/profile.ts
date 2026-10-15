@@ -20,6 +20,7 @@ import {
 } from '../db/profile.js';
 import { isSchemaAllowed } from '../utils/security/schemaAllowlist.js';
 import { requireSchema, schemaDenied } from './sqlServices.js';
+import type { ResultColumn } from '../ui/chartSpec.js';
 
 export type ColumnProfile = {
   column_name: string;
@@ -42,11 +43,23 @@ export type ProfileTableResult = SqlErrorDetails & {
   table_stats?: TableStats | null;
   computed_rows?: number | null;
   data?: ColumnProfile[];
+  /** The columns of `data`, for the result view. */
+  columns?: ResultColumn[];
   count?: number;
   truncated?: boolean;
   /** The aggregate statement compute mode ran. */
   sql?: string;
 };
+
+const PROFILE_COLUMNS: ResultColumn[] = [
+  { name: 'column_name', kind: 'string' },
+  { name: 'data_type', kind: 'string' },
+  { name: 'source', kind: 'string' },
+  { name: 'distinct_values', kind: 'bigint' },
+  { name: 'null_count', kind: 'bigint' },
+  { name: 'low', kind: 'string' },
+  { name: 'high', kind: 'string' },
+];
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error occurred';
@@ -135,6 +148,7 @@ export async function profileTableTool(input: {
         mode: 'stored',
         table_stats: tableStats,
         data,
+        columns: PROFILE_COLUMNS,
         count: data.length,
         truncated: false,
       };
@@ -155,6 +169,7 @@ export async function profileTableTool(input: {
       table_stats: tableStats,
       computed_rows: computed.rowCount,
       data,
+      columns: PROFILE_COLUMNS,
       count: data.length,
       truncated: selected.columns.length > scanned.length,
       sql: computed.sql,

@@ -6,12 +6,15 @@ import { Tool, ToolContent, ToolHeader, ToolInput } from '@/components/ai-elemen
 import { useDuration } from '@/lib/client/clock';
 import { argumentsOf, exportSourceOf, readToolResult, sqlOf } from '@/lib/results';
 import { ExportMenu, ExportOutcome, useResultExport } from './export-menu';
+import { ResultApp } from './result-app';
 import { resultSummary, ToolResultBody } from './tool-result';
 
 /**
  * A tool call in the chat: tool name, status and summary, with the SQL and
  * the result behind a toggle. A result with rows has its Export menu in the
- * header, so it works without opening the card.
+ * header, so it works without opening the card. The server's chart view shows
+ * below it only when the result carries a chart, so the lookups a model runs
+ * on the way to an answer stay folded away.
  */
 export function ToolCard({ part }: { part: DynamicToolUIPart }) {
   const durationMs = useDuration(part.toolCallId);
@@ -22,6 +25,7 @@ export function ToolCard({ part }: { part: DynamicToolUIPart }) {
   const args = argumentsOf(part.input);
   const summary = part.state === 'output-error' ? 'failed' : resultSummary(view, durationMs);
   const rows = view?.rows?.length ? view.rows : undefined;
+  const charted = view?.chartType !== undefined && view.chartType !== 'table';
   const server = useResultExport(rows ? exportSourceOf(part.toolName, part.input) : undefined);
 
   return (
@@ -41,6 +45,7 @@ export function ToolCard({ part }: { part: DynamicToolUIPart }) {
           {done && <ToolResultBody output={part.output} tool={part.toolName} input={part.input} showExport={false} />}
         </ToolContent>
       </Tool>
+      {rows && !failed && charted && <ResultApp part={part} />}
       <ExportOutcome state={server.state} />
     </div>
   );

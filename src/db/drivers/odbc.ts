@@ -113,6 +113,9 @@ function toDbRows(result: OdbcResult): DbRows {
   if (rounded.length > 0) {
     rows.roundedColumns = rounded;
   }
+  if (result.columns) {
+    rows.columns = odbcColumns(result.columns);
+  }
   return rows;
 }
 
