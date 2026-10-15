@@ -251,6 +251,7 @@ Other clients sign in the same way. Each connection is bound to the system picke
   ```
   Cursor opens the sign-in page in the browser and returns through `cursor://anysphere.cursor-mcp/oauth/callback`, which is allowed by default.
 - **Claude Code.** `claude mcp add --transport http --scope user db2i https://mcp.example.com/mcp`, then sign in from `/mcp`. Claude Code uses a loopback callback, which is always accepted.
+- **The example web app.** Set its `MCP_SERVER_URL` to the server's origin and add `<APP_URL>/oauth/callback` to `MCP_OAUTH_REDIRECT_URIS`. See [Example web app](web-app.md).
 
 Pointing every client at one server, instead of starting a stdio server per client, keeps one set of connection pools to the IBM i. By default, tokens live in memory, so clients sign in again after the server restarts. To avoid that, set `MCP_OAUTH_STATE_FILE`.
 

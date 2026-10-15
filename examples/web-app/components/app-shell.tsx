@@ -10,6 +10,9 @@ import { SettingsDialog } from './settings-dialog';
 
 const NAV = [
   { href: '/', label: 'Chat' },
+  { href: '/tools', label: 'Tools' },
+  { href: '/exports', label: 'Exports' },
+  { href: '/context', label: 'Context' },
   { href: '/history', label: 'History' },
 ];
 
@@ -44,9 +47,9 @@ export function AppShell({ children, nav = NAV }: { children: ReactNode; nav?: {
           type="button"
           onClick={() => setSettingsOpen(true)}
           className="max-w-64 truncate rounded-sm border border-line px-2 py-1 text-sm hover:border-fg"
-          title="Model settings"
+          title={model ? `Model settings: ${providerLabel}, ${model}` : 'Model settings'}
         >
-          {model ? `${providerLabel}: ${model}` : 'Choose a model'}
+          {model ?? 'Choose a model'}
         </button>
         {session.loaded &&
           (session.signedIn ? (

@@ -12,8 +12,6 @@ export interface Settings {
   keys: Partial<Record<ProviderId, string>>;
   /** Base URL for the OpenAI-compatible provider. */
   baseUrl?: string;
-  /** IBM i system to run on, when the server offers several. */
-  system?: string;
 }
 
 const STORAGE_KEY = 'db2i-web-settings';

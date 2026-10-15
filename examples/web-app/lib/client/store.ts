@@ -24,6 +24,8 @@ export interface ExportEntry extends ExportFile {
   at: number;
   tool: string;
   sql?: string;
+  /** The tool arguments, so the export can be made again once the link expires. */
+  input?: Record<string, unknown>;
 }
 
 interface AppDb extends DBSchema {

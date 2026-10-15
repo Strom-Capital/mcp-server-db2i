@@ -155,6 +155,8 @@ This uses environment variable expansion to keep credentials out of config files
 
 See the [Client Setup Guide](docs/client-setup.md) for Cursor, Claude Desktop, Claude Code, and Docker setup options.
 
+No MCP client? The [example web app](examples/web-app) is a browser chat with result tables, exports and the business SQL tools. Users sign in with their IBM i user profile and bring their own model API key.
+
 ## Available Tools
 
 | Tool | Description |
@@ -241,6 +243,7 @@ Once connected, you can ask the AI assistant:
 | [Business SQL tools](docs/custom-tools.md) | YAML tools for orders, ledgers, and master data |
 | [Use cases](docs/use-cases.md) | REST APIs, BI pipelines, replication, and ad-hoc analysis |
 | [Client Setup](docs/client-setup.md) | Cursor, Claude, Claude Code setup |
+| [Example web app](docs/web-app.md) | Browser chat with your own model key and IBM i sign-in |
 | [Docker Guide](docs/docker.md) | Container deployment |
 | [Development](docs/development.md) | Contributing and local setup |
 

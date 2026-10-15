@@ -1,11 +1,17 @@
 'use client';
 
 import { useNow } from '@/lib/client/clock';
-import { groupDigits } from '@/lib/format';
+import { countOf, timeLeft } from '@/lib/format';
 import { readToolResult, type ExportFile, type ToolError, type ToolResultView } from '@/lib/results';
 import { ResultTable } from './result-table';
 
-function formatBytes(bytes: number): string {
+/**
+ * A file size in B, KB or MB.
+ *
+ * @param bytes - Size in bytes
+ * @returns Text such as `716.8 KB`
+ */
+export function formatBytes(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;
   }
@@ -24,10 +30,10 @@ export function ExportCard({ file }: { file: ExportFile }) {
       <span className="font-medium">{file.filename}</span>
       <span className="text-muted-foreground tabular">
         {[
-          file.rowCount !== undefined ? `${groupDigits(String(file.rowCount))} rows` : undefined,
+          file.rowCount !== undefined ? countOf(file.rowCount, 'row') : undefined,
           file.bytes !== undefined ? formatBytes(file.bytes) : undefined,
-          file.expiresAt ? `${expired ? 'expired' : 'expires'} ${new Date(file.expiresAt).toLocaleTimeString()}` : undefined,
-          file.downloadsAllowed !== undefined ? `${file.downloadsAllowed} downloads` : undefined,
+          file.expiresAt && now > 0 ? (expired ? 'expired' : `expires ${timeLeft(file.expiresAt, now)}`) : undefined,
+          file.downloadsAllowed !== undefined ? countOf(file.downloadsAllowed, 'download') : undefined,
         ]
           .filter(Boolean)
           .join(' \u00b7 ')}
@@ -78,7 +84,7 @@ export function ToolErrorBox({ error }: { error: ToolError }) {
 export function resultSummary(view: ToolResultView | undefined, durationMs?: number): string {
   const parts: string[] = [];
   if (view?.rowCount !== undefined) {
-    parts.push(`${groupDigits(String(view.rowCount))} ${view.rowCount === 1 ? 'row' : 'rows'}`);
+    parts.push(countOf(view.rowCount, 'row'));
   }
   if (view?.truncated) {
     parts.push(view.limitApplied ? `stopped at the ${view.limitApplied}-row limit` : 'stopped at the limit');

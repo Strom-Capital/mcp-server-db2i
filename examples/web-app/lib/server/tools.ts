@@ -1,9 +1,8 @@
 import 'server-only';
 
-import type { ListToolsResult, MCPClient } from '@ai-sdk/mcp';
-import type { ToolSet } from 'ai';
-
-type ToolDefinition = ListToolsResult['tools'][number];
+import type { MCPClient } from '@ai-sdk/mcp';
+import { summarizeTool, type ToolSummary } from '../catalog';
+import type { BusinessContext } from '../context';
 
 /** The server does not list the tool for this user, or it does not exist. */
 export class ToolNotOfferedError extends Error {
@@ -11,53 +10,6 @@ export class ToolNotOfferedError extends Error {
     super(`The server does not offer the tool ${name}.`);
     this.name = 'ToolNotOfferedError';
   }
-}
-
-/**
- * Names of the systems a tool can run on, from its `system` argument. The
- * server only adds that argument when the user can reach more than one system.
- *
- * @param tool - A tool definition from `tools/list`
- * @returns The system names, or an empty list
- */
-export function toolSystems(tool: ToolDefinition): string[] {
-  const properties = (tool.inputSchema as { properties?: Record<string, { enum?: unknown[] }> }).properties;
-  const values = properties?.system?.enum;
-  return Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string') : [];
-}
-
-/**
- * The server's tools as AI SDK tools. When the user picked a system, tools
- * that take a `system` argument run there unless the model names another.
- *
- * @param client - Connected MCP client
- * @param system - Picked system, if any
- * @returns Tools for `streamText`
- */
-export async function systemAwareTools(client: MCPClient, system: string | undefined): Promise<ToolSet> {
-  const definitions = await client.listTools();
-  const tools = client.toolsFromDefinitions(definitions) as ToolSet;
-  if (!system) {
-    return tools;
-  }
-  const wrapped: ToolSet = {};
-  for (const definition of definitions.tools) {
-    const tool = tools[definition.name];
-    if (!tool) {
-      continue;
-    }
-    const execute = tool.execute;
-    if (!execute || !toolSystems(definition).includes(system)) {
-      wrapped[definition.name] = tool;
-      continue;
-    }
-    wrapped[definition.name] = {
-      ...tool,
-      execute: (input: unknown, options) =>
-        execute({ ...(input as Record<string, unknown>), system: (input as { system?: string }).system ?? system }, options),
-    } as typeof tool;
-  }
-  return wrapped;
 }
 
 /**
@@ -77,4 +29,63 @@ export async function callListedTool(client: MCPClient, name: string, args: Reco
     throw new ToolNotOfferedError(name);
   }
   return client.callTool({ name, arguments: args });
+}
+
+/**
+ * Every tool the server offers this user, for the tools page.
+ *
+ * @param client - Connected MCP client
+ * @returns Summaries in the server's order
+ */
+export async function listToolSummaries(client: MCPClient): Promise<ToolSummary[]> {
+  const { tools } = await client.listTools();
+  return tools.map(summarizeTool);
+}
+
+const BUSINESS_CONTEXT_URI = 'db2i://business-context';
+
+function parseContext(text: string | undefined): BusinessContext | undefined {
+  if (!text) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(text) as { data?: unknown };
+    return Array.isArray(parsed.data) ? { available: true, annotations: parsed.data as BusinessContext['annotations'] } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The business context loaded from the server's YAML files: entities, table
+ * and column notes, row filters and relations. Reads the
+ * `db2i://business-context` resource, or calls `get_business_context` when
+ * the server offers the tool but not the resource.
+ *
+ * @param client - Connected MCP client
+ * @returns The annotations, or `available: false` when the server has none
+ */
+export async function readBusinessContext(client: MCPClient): Promise<BusinessContext> {
+  const { tools } = await client.listTools();
+  if (!tools.some((tool) => tool.name === 'get_business_context')) {
+    return { available: false, annotations: [] };
+  }
+  try {
+    const resource = await client.readResource({ uri: BUSINESS_CONTEXT_URI });
+    const first = resource.contents[0];
+    const fromResource = parseContext(first && 'text' in first && typeof first.text === 'string' ? first.text : undefined);
+    if (fromResource) {
+      return fromResource;
+    }
+  } catch {
+    // Older servers have the tool but not the resource
+  }
+  const result = (await client.callTool({ name: 'get_business_context', arguments: {} })) as {
+    structuredContent?: { data?: unknown };
+    content?: { type: string; text?: string }[];
+  };
+  if (Array.isArray(result.structuredContent?.data)) {
+    return { available: true, annotations: result.structuredContent.data as BusinessContext['annotations'] };
+  }
+  return parseContext(result.content?.find((part) => part.type === 'text')?.text) ?? { available: true, annotations: [] };
 }

@@ -116,6 +116,39 @@ export function formatCell(value: unknown, kind: ColumnKind, group = true): stri
 }
 
 /**
+ * A grouped count with a singular or plural noun.
+ *
+ * @param count - How many
+ * @param noun - Singular noun, such as `row`
+ * @returns Text such as `1 row` or `12,500 rows`
+ */
+export function countOf(count: number, noun: string): string {
+  return `${groupDigits(String(count))} ${count === 1 ? noun : `${noun}s`}`;
+}
+
+/**
+ * Time until an expiry, in words, for a clock that ticks every 15 seconds.
+ *
+ * @param expiresAt - ISO timestamp
+ * @param now - Epoch milliseconds
+ * @returns Text such as `in 8 min`, or `expired`
+ */
+export function timeLeft(expiresAt: string, now: number): string {
+  const ms = Date.parse(expiresAt) - now;
+  if (Number.isNaN(ms) || ms <= 0) {
+    return 'expired';
+  }
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) {
+    return 'in less than a minute';
+  }
+  if (minutes < 120) {
+    return `in ${minutes} min`;
+  }
+  return `in ${Math.floor(minutes / 60)} h`;
+}
+
+/**
  * Order two cell values. Nulls sort last; numbers compare as numbers, even
  * when written as text.
  *

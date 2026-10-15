@@ -5,7 +5,6 @@ import { checkOrigin, errorMessage, errorResponse, redact } from '@/lib/server/h
 import { connectMcp } from '@/lib/server/mcp';
 import { createModel, ModelChoiceError } from '@/lib/server/models';
 import { MODEL_KEY_HEADER, modelChoiceSchema } from '@/lib/providers';
-import { systemAwareTools } from '@/lib/server/tools';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -15,7 +14,6 @@ const MAX_STEPS = 20;
 const bodySchema = z.object({
   messages: z.array(z.custom<UIMessage>((value) => typeof value === 'object' && value !== null)).min(1).max(500),
   choice: modelChoiceSchema,
-  system: z.string().trim().max(100).optional(),
 });
 
 /** Stream a chat answer from the user's model, with the MCP server's tools. */
@@ -29,7 +27,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) {
     return Response.json({ error: 'Invalid chat request.' }, { status: 400 });
   }
-  const { messages, choice, system } = parsed.data;
+  const { messages, choice } = parsed.data;
 
   let model;
   try {
@@ -50,10 +48,10 @@ export async function POST(request: Request): Promise<Response> {
   const { client, close } = connection;
 
   try {
-    const tools = await systemAwareTools(client, system);
+    const tools = client.toolsFromDefinitions(await client.listTools());
     const result = streamText({
       model,
-      instructions: buildInstructions(client.instructions, system),
+      instructions: buildInstructions(client.instructions),
       messages: await convertToModelMessages(messages, { ignoreIncompleteToolCalls: true }),
       tools,
       stopWhen: isStepCount(MAX_STEPS),

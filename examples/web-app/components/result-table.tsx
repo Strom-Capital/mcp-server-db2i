@@ -16,7 +16,7 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMemo, useRef, useState } from 'react';
-import { compareCells, formatCell, groupDigits, inferColumns, toCsv, toTsv, type ColumnInfo } from '@/lib/format';
+import { compareCells, countOf, formatCell, groupDigits, inferColumns, toCsv, toTsv, type ColumnInfo } from '@/lib/format';
 import type { Row } from '@/lib/results';
 
 const features = tableFeatures({
@@ -115,7 +115,7 @@ export function ResultTable({ rows, filename = 'result' }: { rows: Row[]; filena
           className="h-8 w-48 rounded-sm border border-line bg-surface px-2 outline-none focus:border-accent"
         />
         <span className="text-muted-foreground tabular">
-          {visibleRows.length === rows.length ? `${groupDigits(String(rows.length))} rows` : `${groupDigits(String(visibleRows.length))} of ${groupDigits(String(rows.length))} rows`}
+          {visibleRows.length === rows.length ? countOf(rows.length, 'row') : `${groupDigits(String(visibleRows.length))} of ${countOf(rows.length, 'row')}`}
         </span>
         <span className="flex-1" />
         <button

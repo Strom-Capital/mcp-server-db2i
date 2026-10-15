@@ -22,7 +22,7 @@ interface AppState {
   refreshSession: () => void;
   signOut: () => Promise<void>;
   chat: UseChatHelpers<UIMessage>;
-  /** Send a message with the model, key and system from Settings. */
+  /** Send a message with the model and key from Settings. */
   send: (text: string) => Promise<void>;
   /** Text to put in the chat input, for example from "Ask about this". */
   draft: string;
@@ -109,7 +109,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           headers: { [MODEL_KEY_HEADER]: apiKey },
           body: {
             choice: { provider: settings.provider, model, baseUrl: settings.baseUrl },
-            system: settings.system,
           },
         },
       );
@@ -145,7 +144,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         source: 'chat',
       });
       if (view?.exportFile) {
-        void addExport({ ...view.exportFile, at: now, tool: part.toolName, sql: sqlOf(input) });
+        void addExport({ ...view.exportFile, at: now, tool: part.toolName, sql: sqlOf(input), input });
       }
     }
   }, [chat.messages]);

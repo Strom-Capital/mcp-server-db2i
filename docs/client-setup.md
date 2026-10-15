@@ -334,6 +334,10 @@ It needs the same setup as claude.ai:
 
 Claude for Excel needs a paid Claude plan. As with any assistant, query results go to Claude; see [Where data goes](security.md#where-data-goes).
 
+## Web app
+
+For people without an MCP client or a Claude subscription, the repository has an [example web app](web-app.md). Users sign in with their IBM i user profile, bring their own model API key, and get result tables, exports and the business SQL tools in the browser.
+
 ## Troubleshooting
 
 ### Connection Issues

@@ -4,8 +4,9 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useAppState } from '@/components/app-state';
 import { ToolResultBody, resultSummary } from '@/components/tool-result';
-import { addExport, addHistory, clearHistory, useHistory, type HistoryEntry } from '@/lib/client/store';
-import { argumentsOf, readToolResult, sqlOf } from '@/lib/results';
+import { runTool, SignInNeededError } from '@/lib/client/run-tool';
+import { clearHistory, useHistory, type HistoryEntry } from '@/lib/client/store';
+import { argumentsOf, sqlOf } from '@/lib/results';
 
 interface RunState {
   loading: boolean;
@@ -20,7 +21,7 @@ function describe(entry: HistoryEntry): string {
 
 export default function HistoryPage() {
   const { items, loading } = useHistory();
-  const { setDraft } = useAppState();
+  const { setDraft, refreshSession } = useAppState();
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [runs, setRuns] = useState<Record<string, RunState>>({});
@@ -37,33 +38,12 @@ export default function HistoryPage() {
   async function runAgain(entry: HistoryEntry) {
     setRuns((current) => ({ ...current, [entry.id]: { loading: true } }));
     try {
-      const response = await fetch('/api/tools/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: entry.tool, arguments: entry.input }),
-      });
-      const body = (await response.json()) as { result?: unknown; error?: string; durationMs?: number };
-      if (!response.ok) {
-        throw new Error(body.error ?? 'The run failed.');
-      }
-      setRuns((current) => ({ ...current, [entry.id]: { loading: false, output: body.result, durationMs: body.durationMs } }));
-      const view = readToolResult(body.result);
-      void addHistory({
-        id: crypto.randomUUID(),
-        at: Date.now(),
-        tool: entry.tool,
-        input: entry.input,
-        ok: view.ok,
-        rowCount: view.rowCount,
-        truncated: view.truncated,
-        durationMs: body.durationMs,
-        error: view.error?.message,
-        source: 'direct',
-      });
-      if (view.exportFile) {
-        void addExport({ ...view.exportFile, at: Date.now(), tool: entry.tool, sql: sqlOf(entry.input) });
-      }
+      const run = await runTool(entry.tool, entry.input);
+      setRuns((current) => ({ ...current, [entry.id]: { loading: false, output: run.output, durationMs: run.durationMs } }));
     } catch (error) {
+      if (error instanceof SignInNeededError) {
+        refreshSession();
+      }
       setRuns((current) => ({
         ...current,
         [entry.id]: { loading: false, error: error instanceof Error ? error.message : 'The run failed.' },
@@ -127,7 +107,6 @@ export default function HistoryPage() {
                   {[
                     new Date(entry.at).toLocaleString(),
                     resultSummary({ ok: entry.ok, rowCount: entry.rowCount, truncated: !!entry.truncated, warnings: [] }, entry.durationMs),
-                    typeof entry.input.system === 'string' ? entry.input.system : undefined,
                   ]
                     .filter(Boolean)
                     .join(' \u00b7 ')}

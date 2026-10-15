@@ -21,6 +21,22 @@ export function checkOrigin(request: Request): Response | undefined {
 }
 
 /**
+ * Refuse a read that another site started. GET requests carry the
+ * SameSite=Lax cookie on top-level navigations, and these reads reach the
+ * IBM i, so `Sec-Fetch-Site` must say the request came from this app.
+ *
+ * @param request - The incoming request
+ * @returns A 403 response, or undefined when the request is same-origin or the browser sent no header
+ */
+export function checkFetchSite(request: Request): Response | undefined {
+  const site = request.headers.get('sec-fetch-site');
+  if (site && site !== 'same-origin' && site !== 'none') {
+    return Response.json({ error: 'Cross-site request refused.' }, { status: 403 });
+  }
+  return undefined;
+}
+
+/**
  * Turn an error into a JSON response. Sign-in errors become 401 so the page
  * can show the sign-in button; anything else is a 502 with a short message.
  *
