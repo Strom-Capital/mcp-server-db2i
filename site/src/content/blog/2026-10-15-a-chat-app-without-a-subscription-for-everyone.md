@@ -8,6 +8,18 @@ tags: [release, web-app, oauth]
 
 So far, using this Model Context Protocol (MCP) server meant having an AI client: claude.ai, ChatGPT, Cursor or Claude Code. That works well for people who already have one. But most companies don't buy a Claude, Gemini or ChatGPT seat for everyone who might want to ask about orders or stock levels once a week. Version 3.7 adds an example web app in [`examples/web-app`](https://github.com/Strom-Capital/mcp-server-db2i/tree/main/examples/web-app). People open it in the browser, sign in with their own IBM i user profile and ask. The model behind it is your choice.
 
+<figure class="shot wide" data-video="web-app">
+  <video class="light" data-theme-version="light" controls playsinline preload="none" width="1920" height="1080" poster="/video/web-app-light.jpg" aria-label="A walkthrough of the example web app: signing in with an IBM i user profile, asking a question, sorting and filtering the result table, and charts drawn by the server's result view">
+    <source src="/video/web-app-light.mp4" type="video/mp4" />
+    <track kind="captions" srclang="en" label="English" src="/video/web-app.vtt" />
+  </video>
+  <video class="dark" data-theme-version="dark" controls playsinline preload="none" width="1920" height="1080" poster="/video/web-app-dark.jpg" aria-label="A walkthrough of the example web app: signing in with an IBM i user profile, asking a question, sorting and filtering the result table, and charts drawn by the server's result view">
+    <source src="/video/web-app-dark.mp4" type="video/mp4" />
+    <track kind="captions" srclang="en" label="English" src="/video/web-app.vtt" />
+  </video>
+  <figcaption>The web app in under two minutes, with sound and captions. Sample data.</figcaption>
+</figure>
+
 <figure class="shot">
   <img class="light" src="/images/blog/web-app-chat.png" width="1920" height="1080" alt="The web app chat: a sidebar with saved chats grouped by day, a question about the 20 most recent orders in MYLIB.ORDERS, a collapsed execute_query tool card with 20 rows and an Export button, and the answer with a table of orders per warehouse" />
   <img class="dark" src="/images/blog/web-app-chat-dark.png" width="1920" height="1080" alt="The web app chat: a sidebar with saved chats grouped by day, a question about the 20 most recent orders in MYLIB.ORDERS, a collapsed execute_query tool card with 20 rows and an Export button, and the answer with a table of orders per warehouse" />

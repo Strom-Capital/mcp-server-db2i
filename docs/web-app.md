@@ -10,6 +10,17 @@ The repository includes an example web app in [`examples/web-app`](https://githu
 
 It is an example to read, run and change, built with Next.js, [AI SDK](https://ai-sdk.dev) 7, `@ai-sdk/mcp`, [AI Elements](https://ai-sdk.dev/elements) and shadcn/ui. It is not published to npm.
 
+<div data-video="web-app">
+  <video class="block dark:hidden" data-theme-version="light" controls playsinline preload="none" crossorigin="anonymous" width="1920" height="1080" poster="https://db2i-mcp.com/video/web-app-light.jpg" aria-label="A walkthrough of the example web app: signing in with an IBM i user profile, asking a question, sorting and filtering the result table, and charts drawn by the server's result view" style="width: 100%; height: auto; aspect-ratio: 16 / 9;">
+    <source src="https://db2i-mcp.com/video/web-app-light.mp4" type="video/mp4" />
+    <track kind="captions" srclang="en" label="English" src="https://db2i-mcp.com/video/web-app.vtt" />
+  </video>
+  <video class="hidden dark:block" data-theme-version="dark" controls playsinline preload="none" crossorigin="anonymous" width="1920" height="1080" poster="https://db2i-mcp.com/video/web-app-dark.jpg" aria-label="A walkthrough of the example web app: signing in with an IBM i user profile, asking a question, sorting and filtering the result table, and charts drawn by the server's result view" style="width: 100%; height: auto; aspect-ratio: 16 / 9;">
+    <source src="https://db2i-mcp.com/video/web-app-dark.mp4" type="video/mp4" />
+    <track kind="captions" srclang="en" label="English" src="https://db2i-mcp.com/video/web-app.vtt" />
+  </video>
+</div>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/web-app-chat-dark.png" />

@@ -1,0 +1,109 @@
+WEBVTT
+
+1
+00:00.400 --> 00:05.210
+This is the example web app for the Db2 for i MCP Server.
+
+2
+00:05.280 --> 00:09.590
+Your team asks questions about IBM i data in a browser,
+
+3
+00:09.640 --> 00:12.410
+without an AI subscription for each person.
+
+4
+00:13.260 --> 00:17.610
+Everyone signs in with their own IBM i user profile.
+
+5
+00:17.660 --> 00:23.430
+Every query runs with that user's authority, and the server's checks still apply.
+
+6
+00:24.180 --> 00:26.317
+Ask in plain language.
+
+7
+00:26.367 --> 00:30.770
+The model writes a read-only query, the server checks it and runs it,
+
+8
+00:30.820 --> 00:34.110
+and the answer comes back with the rows behind it.
+
+9
+00:35.260 --> 00:37.970
+Every result opens as a table.
+
+10
+00:38.020 --> 00:40.970
+Sort it, filter it, copy it for Excel,
+
+11
+00:41.020 --> 00:44.070
+or export every row to a file.
+
+12
+00:46.220 --> 00:48.810
+Ask for a chart, and you get one.
+
+13
+00:48.860 --> 00:51.370
+The chart view comes from the server itself,
+
+14
+00:51.420 --> 00:56.390
+as an MCP App, so it draws the actual rows from the query.
+
+15
+00:59.340 --> 01:01.690
+Bars stacked by status.
+
+16
+01:01.740 --> 01:04.310
+A pareto chart for your top customers.
+
+17
+01:04.540 --> 01:07.270
+A waterfall from last year to this year.
+
+18
+01:07.500 --> 01:09.190
+A doughnut for shares.
+
+19
+01:09.580 --> 01:12.710
+Switch the chart type, or go back to the table.
+
+20
+01:15.660 --> 01:19.317
+Business tools your IT team wrote show up as forms,
+
+21
+01:19.367 --> 01:21.957
+so you can run one without the model.
+
+22
+01:22.007 --> 01:26.470
+The context page shows the table notes the model reads first.
+
+23
+01:29.620 --> 01:34.850
+The same chart view works in Claude and other apps that support MCP Apps.
+
+24
+01:34.900 --> 01:36.690
+And you choose the model:
+
+25
+01:36.740 --> 01:42.990
+a pay-as-you-go key, or a local model that keeps questions and results inside your network.
+
+26
+01:45.240 --> 01:48.470
+The web app is an example in the repository.
+
+27
+01:48.520 --> 01:51.730
+Read it, run it, and make it your own.
