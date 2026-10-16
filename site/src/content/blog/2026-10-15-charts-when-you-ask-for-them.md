@@ -18,6 +18,18 @@ Until now, a query result reached the user as text. The model read the rows and 
 
 The view opens on a grid you can sort and filter. A chart is one click away on the Chart tab. It opens on the chart only when someone asked for one: the user wrote "as a chart" or "show me a graph", or a business SQL tool has a chart of its own. The tool description tells the model to send a chart only when the user asks for one, so the lookups it runs on the way to an answer stay tables.
 
+<figure class="shot wide" data-video="web-app">
+  <video class="light" data-theme-version="light" controls playsinline preload="none" width="1920" height="1080" poster="/video/web-app-light.jpg" aria-label="A walkthrough of the example web app: signing in with an IBM i user profile, asking a question, sorting and filtering the result table, and charts drawn by the server's result view">
+    <source src="/video/web-app-light.mp4" type="video/mp4" />
+    <track kind="captions" srclang="en" label="English" src="/video/web-app.vtt" />
+  </video>
+  <video class="dark" data-theme-version="dark" controls playsinline preload="none" width="1920" height="1080" poster="/video/web-app-dark.jpg" aria-label="A walkthrough of the example web app: signing in with an IBM i user profile, asking a question, sorting and filtering the result table, and charts drawn by the server's result view">
+    <source src="/video/web-app-dark.mp4" type="video/mp4" />
+    <track kind="captions" srclang="en" label="English" src="/video/web-app.vtt" />
+  </video>
+  <figcaption>Charts in the example web app, from a line to a waterfall, with sound and captions. Sample data.</figcaption>
+</figure>
+
 ## How a chart is chosen
 
 `execute_query` takes an optional `chart` argument:

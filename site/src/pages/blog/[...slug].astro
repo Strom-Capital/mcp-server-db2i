@@ -47,6 +47,10 @@ const { Content } = await render(post);
   </article>
 </Base>
 
+<script>
+  import '../../scripts/site-video';
+</script>
+
 <style>
   .post-head, .post-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
   @media (min-width: 1000px) { .post-head, .post-body { grid-template-columns: 200px minmax(0, 1fr); column-gap: 64px; } }
@@ -72,6 +76,7 @@ const { Content } = await render(post);
   .prose :global(.shot) { margin: var(--space-6) 0; }
   .prose :global(.shot img) { width: 100%; max-width: 420px; height: auto; border: 1px solid var(--line); border-radius: var(--radius-code); }
   .prose :global(.shot.wide img) { max-width: 100%; border: 0; border-radius: 0; }
+  .prose :global(.shot video) { width: 100%; height: auto; aspect-ratio: 16 / 9; border: 1px solid var(--line); background: var(--surface); }
   .prose :global(.shot figcaption) { margin-top: var(--space-2); font: 12px/1.5 var(--font-mono); color: var(--muted); }
   .prose :global(blockquote) { margin: var(--space-5) 0; padding-left: var(--space-4); border-left: 2px solid var(--line-strong); color: var(--muted); }
   .after { margin-top: var(--space-8); padding-top: var(--space-5); border-top: 1px solid var(--line-strong); max-width: 68ch; }
