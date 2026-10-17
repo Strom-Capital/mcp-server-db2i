@@ -5,6 +5,19 @@ description: "Credentials, query validation, the schema allowlist, rate limits, 
 
 This guide covers security features and best practices for mcp-server-db2i.
 
+<div data-video="security">
+  <video class="block dark:hidden" data-theme-version="light" controls playsinline preload="none" crossorigin="anonymous" width="1920" height="1080" poster="https://db2i-mcp.com/video/security-light.jpg" aria-label="The security model for reviewers: the model treated as untrusted, sign-in with each user's own IBM i profile, read-only in three layers, the library allowlist, column masking, rate limits, OAuth, secrets, where data goes, the audit log and what the server does not do, with real refusals from the server in the example web app" style="width: 100%; height: auto; aspect-ratio: 16 / 9;">
+    <source src="https://db2i-mcp.com/video/security-light.mp4" type="video/mp4" />
+    <track kind="captions" srclang="en" label="English" src="https://db2i-mcp.com/video/security.vtt" />
+  </video>
+  <video class="hidden dark:block" data-theme-version="dark" controls playsinline preload="none" crossorigin="anonymous" width="1920" height="1080" poster="https://db2i-mcp.com/video/security-dark.jpg" aria-label="The security model for reviewers: the model treated as untrusted, sign-in with each user's own IBM i profile, read-only in three layers, the library allowlist, column masking, rate limits, OAuth, secrets, where data goes, the audit log and what the server does not do, with real refusals from the server in the example web app" style="width: 100%; height: auto; aspect-ratio: 16 / 9;">
+    <source src="https://db2i-mcp.com/video/security-dark.mp4" type="video/mp4" />
+    <track kind="captions" srclang="en" label="English" src="https://db2i-mcp.com/video/security.vtt" />
+  </video>
+</div>
+
+The video walks through the security model for whoever has to approve the server, in about eight minutes. The [Security Checklist](#security-checklist) near the end of this page is the short version.
+
 ## Security Features
 
 - **Read-only access**: Only SELECT statements are permitted, and the driver connection is opened read only (JDBC `access=read only` for `jt400` and `mapepire`, ODBC `CONNTYPE=2`) unless `DB2I_JDBC_OPTIONS` sets `access` or `DB2I_ODBC_OPTIONS` sets `CONNTYPE`
