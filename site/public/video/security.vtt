@@ -1,0 +1,529 @@
+WEBVTT
+
+1
+00:00.400 --> 00:03.530
+This video is for the person who has to approve it.
+
+2
+00:04.000 --> 00:08.450
+Someone wants an AI assistant to read Db2 for i.
+
+3
+00:08.560 --> 00:10.650
+Four questions come first.
+
+4
+00:10.720 --> 00:12.250
+What can the model do?
+
+5
+00:12.560 --> 00:14.670
+Whose authority does it use?
+
+6
+00:14.720 --> 00:16.390
+Where do the rows go?
+
+7
+00:16.440 --> 00:19.130
+And what is written down afterwards?
+
+8
+00:20.430 --> 00:24.520
+Start from the worst case, and treat the model as untrusted.
+
+9
+00:24.910 --> 00:31.500
+A prompt injection in an email, a document or a table row can make it ask for anything.
+
+10
+00:31.550 --> 00:34.760
+So nothing here depends on the model behaving.
+
+11
+00:34.830 --> 00:38.140
+The server enforces the policy on every call,
+
+12
+00:38.190 --> 00:41.800
+and the IBM i decides what each user may read.
+
+13
+00:42.030 --> 00:44.680
+The model only sends requests.
+
+14
+00:45.980 --> 00:48.490
+First, whose authority.
+
+15
+00:48.540 --> 00:51.050
+There is no shared service profile.
+
+16
+00:51.100 --> 00:55.370
+Each person signs in with their own IBM i user profile,
+
+17
+00:55.420 --> 00:58.810
+on a sign-in page the server serves itself.
+
+18
+00:58.860 --> 01:02.170
+The server tests the password with a real connection,
+
+19
+01:02.220 --> 01:05.210
+and every query runs as that user.
+
+20
+01:05.260 --> 01:09.823
+Object authority and exit programs apply as they always have.
+
+21
+01:09.873 --> 01:17.350
+Each token refresh tests the profile again, so a disabled profile is locked out at the next refresh.
+
+22
+01:18.650 --> 01:21.380
+Next, what the model can do.
+
+23
+01:21.530 --> 01:26.280
+The tools are the attack surface, so keep only the ones you need.
+
+24
+01:26.330 --> 01:30.760
+Allow and deny lists decide which tools exist at all.
+
+25
+01:30.810 --> 01:35.320
+Turn off execute_query, and free-form SQL is gone,
+
+26
+01:35.370 --> 01:36.600
+not hidden.
+
+27
+01:36.650 --> 01:39.240
+What remains can be business tools:
+
+28
+01:39.290 --> 01:43.400
+vetted queries your team wrote in YAML, with bound parameters,
+
+29
+01:43.450 --> 01:48.020
+so a value from the model is never pasted into the SQL.
+
+30
+01:49.320 --> 01:54.350
+Free-form SQL is read-only in three independent layers.
+
+31
+01:54.400 --> 01:58.470
+The validator parses each statement and scans its text:
+
+32
+01:58.520 --> 02:03.110
+one statement, starting with SELECT, WITH or VALUES.
+
+33
+02:03.160 --> 02:05.670
+No data change hidden in a FINAL TABLE,
+
+34
+02:05.720 --> 02:08.550
+and no QCMDEXC.
+
+35
+02:08.600 --> 02:12.230
+The connection itself is opened read-only by the driver.
+
+36
+02:12.280 --> 02:14.790
+And IBM i parses the statement,
+
+37
+02:14.840 --> 02:16.870
+and must call it a query.
+
+38
+02:16.920 --> 02:19.190
+One exception, stated plainly:
+
+39
+02:19.240 --> 02:23.537
+object DDL and statement cancel use a second connection,
+
+40
+02:23.587 --> 02:26.450
+which runs only fixed statements.
+
+41
+02:28.350 --> 02:32.380
+Then, what it can read, and where it could send it.
+
+42
+02:32.430 --> 02:37.260
+IBM i services that reach outside the database are refused:
+
+43
+02:37.310 --> 02:41.180
+HTTP calls, IFS writes and email.
+
+44
+02:41.230 --> 02:50.220
+The library allowlist checks every table, view and qualified function against the names that IBM i's own parser returns,
+
+45
+02:50.270 --> 02:53.927
+including subqueries and common table expressions.
+
+46
+02:53.977 --> 03:00.360
+An unqualified table function is refused too, because it resolves through the SQL path.
+
+47
+03:02.260 --> 03:07.210
+Column masking hides values such as email and phone from the agent.
+
+48
+03:07.260 --> 03:10.450
+A mask only helps if it can't be bypassed,
+
+49
+03:10.500 --> 03:14.450
+so a masked column may only be selected as itself.
+
+50
+03:14.500 --> 03:19.517
+An alias, a function, a filter or a union is refused.
+
+51
+03:19.567 --> 03:21.730
+But be clear about what this is.
+
+52
+03:21.780 --> 03:27.410
+It changes what the agent receives, not what the user can read with another tool.
+
+53
+03:27.460 --> 03:32.590
+Row and column access control in Db2 is the control that holds.
+
+54
+03:34.490 --> 03:38.200
+A read-only query can still hurt production.
+
+55
+03:38.250 --> 03:41.200
+Results are capped at a thousand rows by default,
+
+56
+03:41.250 --> 03:43.200
+and ten thousand at most.
+
+57
+03:43.250 --> 03:46.200
+But a row cap doesn't stop a table scan,
+
+58
+03:46.250 --> 03:50.120
+so a timeout cancels the statement on the IBM i itself,
+
+59
+03:50.170 --> 03:51.880
+not just on the client.
+
+60
+03:51.930 --> 03:55.080
+ODBC cancels on its own connection.
+
+61
+03:55.130 --> 03:58.920
+JT400 and Mapepire call CANCEL_SQL,
+
+62
+03:58.970 --> 04:01.400
+which needs job control authority.
+
+63
+04:01.450 --> 04:06.020
+Exports have their own limits for rows, size and concurrency.
+
+64
+04:07.320 --> 04:10.370
+Rate limits sit on every way in.
+
+65
+04:10.440 --> 04:15.590
+Tool calls are limited per token, a hundred per fifteen minutes by default,
+
+66
+04:15.640 --> 04:18.690
+and a refreshed token keeps the same budget.
+
+67
+04:18.760 --> 04:22.130
+Sign-ins allow five attempts a minute per address.
+
+68
+04:22.360 --> 04:27.110
+They are counted when they arrive, so parallel guesses don't slip through.
+
+69
+04:27.160 --> 04:32.530
+A success doesn't reset the failures, and these limits can't be switched off.
+
+70
+04:32.600 --> 04:36.470
+Behind a proxy, set MCP_TRUST_PROXY,
+
+71
+04:36.520 --> 04:39.430
+or every client shares one budget.
+
+72
+04:39.480 --> 04:44.930
+Underneath, the IBM i still counts failed sign-ons for each profile.
+
+73
+04:46.230 --> 04:50.840
+Over HTTP, the edge is checked before any route.
+
+74
+04:50.950 --> 04:53.660
+The host header must be on an allowlist,
+
+75
+04:53.710 --> 04:55.840
+which stops DNS rebinding.
+
+76
+04:56.310 --> 05:02.160
+Browser origins must match, and cross-origin requests never carry credentials.
+
+77
+05:02.630 --> 05:06.540
+The server refuses to run without auth on a public address,
+
+78
+05:06.590 --> 05:10.760
+and the public URL must use HTTPS.
+
+79
+05:10.950 --> 05:15.840
+Put it behind a proxy, and allow only your clients' address ranges.
+
+80
+05:17.140 --> 05:20.270
+The O Auth server is small and strict.
+
+81
+05:20.580 --> 05:25.550
+PKCE is required, with S256 only.
+
+82
+05:25.780 --> 05:28.930
+Redirect URIs must be on an allowlist,
+
+83
+05:28.980 --> 05:33.150
+so nobody can register a client that sends codes to their own site.
+
+84
+05:33.620 --> 05:36.610
+Codes work once and expire in a minute,
+
+85
+05:36.660 --> 05:40.190
+and a replayed code revokes every token it issued.
+
+86
+05:40.820 --> 05:43.330
+State is signed with HMAC,
+
+87
+05:43.380 --> 05:47.130
+the sign-in page has a strict content security policy,
+
+88
+05:47.180 --> 05:50.430
+and a failed sign-in shows a generic message.
+
+89
+05:51.730 --> 05:55.580
+On the wire, turn on TLS to the host servers.
+
+90
+05:56.050 --> 06:02.020
+Mapepire runs over SSH, and checks the host key before the password is sent.
+
+91
+06:02.210 --> 06:05.680
+At rest, sign-ins live in memory by default,
+
+92
+06:05.730 --> 06:08.060
+and a restart signs everyone out.
+
+93
+06:08.450 --> 06:12.880
+To keep them, a state file is encrypted with AES-GCM,
+
+94
+06:12.930 --> 06:16.160
+and stores only hashes of the refresh tokens.
+
+95
+06:16.210 --> 06:19.220
+Keep the file and its secret apart.
+
+96
+06:19.410 --> 06:24.220
+Profiles refuse plain-text passwords, and the logs redact them.
+
+97
+06:25.520 --> 06:28.090
+Now the question that matters most.
+
+98
+06:28.160 --> 06:31.290
+The rows a query returns go to the model.
+
+99
+06:31.680 --> 06:34.750
+With a hosted assistant, they leave your network,
+
+100
+06:34.800 --> 06:37.170
+and the provider's terms apply.
+
+101
+06:37.360 --> 06:41.070
+Use an assistant your organization has approved for this data,
+
+102
+06:41.120 --> 06:44.330
+or a local model inside your network.
+
+103
+06:44.560 --> 06:47.990
+Keep what comes back small, with the allowlist,
+
+104
+06:48.040 --> 06:49.690
+masking and row limits.
+
+105
+06:50.000 --> 06:54.330
+And treat an export link like a password until it expires.
+
+106
+06:55.630 --> 06:59.260
+Every tool call writes one JSON line:
+
+107
+06:59.310 --> 07:04.620
+who, which tool, which system, how long, how many rows,
+
+108
+07:04.670 --> 07:06.520
+and which check refused it.
+
+109
+07:06.990 --> 07:09.500
+The SQL is hashed by default,
+
+110
+07:09.550 --> 07:12.960
+so the log doesn't become a second copy of the data.
+
+111
+07:13.150 --> 07:16.620
+Sign-ins are logged with the outcome and the address.
+
+112
+07:16.670 --> 07:19.080
+Treat this log as personal data.
+
+113
+07:19.310 --> 07:24.920
+Tell your users, keep it short, and think twice before shipping it to a third party.
+
+114
+07:26.220 --> 07:28.090
+What it does not do.
+
+115
+07:28.140 --> 07:31.210
+It does not replace object authority.
+
+116
+07:31.260 --> 07:35.450
+A view in an allowed library can still read another library,
+
+117
+07:35.500 --> 07:38.810
+so give each profile only what it needs.
+
+118
+07:38.860 --> 07:42.837
+Unqualified functions resolve through the library list.
+
+119
+07:42.887 --> 07:47.050
+And injected text in the data can still mislead an answer.
+
+120
+07:47.100 --> 07:52.470
+It cannot raise the user's authority, but people should check the numbers that matter.
+
+121
+07:53.770 --> 07:56.360
+Finally, the code you run.
+
+122
+07:56.410 --> 08:00.360
+Releases are built and published to npm from CI,
+
+123
+08:00.410 --> 08:03.680
+with trusted publishing, not from a laptop.
+
+124
+08:03.730 --> 08:06.627
+Dependabot keeps dependencies current.
+
+125
+08:06.677 --> 08:09.480
+The Docker image runs as a non-root user,
+
+126
+08:09.530 --> 08:12.120
+and you should pin a version in production.
+
+127
+08:12.170 --> 08:13.587
+Found a problem?
+
+128
+08:13.637 --> 08:15.960
+Report it privately through GitHub.
+
+129
+08:16.010 --> 08:18.760
+And every check in this video is open source,
+
+130
+08:18.810 --> 08:20.580
+so you can read it yourself.
+
+131
+08:22.830 --> 08:26.580
+Read the security guide and its production checklist.
+
+132
+08:26.630 --> 08:29.560
+Then decide with the facts in front of you.
