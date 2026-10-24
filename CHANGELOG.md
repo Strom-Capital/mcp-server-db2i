@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.8.2](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.1...v3.8.2) (2026-10-24)
+
+
+### Dependencies
+
+* bump dev tooling, site vite and web-app dependencies ([#317](https://github.com/Strom-Capital/mcp-server-db2i/issues/317)) ([873c24c](https://github.com/Strom-Capital/mcp-server-db2i/commit/873c24cdf6685dd0e294b696a6519bb01f8c679c))
+* bump ip-address from 10.7.2 to 10.7.4 ([#321](https://github.com/Strom-Capital/mcp-server-db2i/issues/321)) ([eb6143e](https://github.com/Strom-Capital/mcp-server-db2i/commit/eb6143e2a820bbd24f30a48b8655a55267de72ec))
+
 ## [3.8.1](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.0...v3.8.1) (2026-10-15)
 
 
