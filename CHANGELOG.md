@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.3](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.2...v3.8.3) (2026-10-25)
+
+
+### Dependencies
+
+* bump body-parser, fast-uri, undici and zod for security alerts ([#327](https://github.com/Strom-Capital/mcp-server-db2i/issues/327)) ([f9f44d7](https://github.com/Strom-Capital/mcp-server-db2i/commit/f9f44d723c078b93c80c95418dd72adb031157ad))
+
 ## [3.8.2](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.1...v3.8.2) (2026-10-24)
 
 
