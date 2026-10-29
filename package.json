@@ -70,7 +70,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@ibm/mapepire-js": "^1.0.0",
+    "@ibm/mapepire-js": "^1.1.0",
     "@modelcontextprotocol/client": "^2.3.1",
     "@modelcontextprotocol/ext-apps": "^2.0.3",
     "@types/express": "^5.0.6",

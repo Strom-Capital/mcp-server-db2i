@@ -344,8 +344,9 @@ For people without an MCP client or a Claude subscription, the repository has an
 
 1. **Check hostname resolution**: Ensure the IBM i hostname is reachable
 2. **Verify credentials**: Test with a known-good username/password
-3. **Check ports**: Port 446 is not used. `odbc` and `jt400` connect to the IBM i database host servers: 449 (port mapper), 8476 (sign-on) and 8471 (database), or 9476 and 9471 with TLS. `mapepire` needs only SSH (port 22, or `sshPort` in `DB2I_MAPEPIRE_OPTIONS`). Verify a firewall allows the ports your driver uses. See [Database Drivers](configuration.md#database-drivers)
+3. **Check ports**: Port 446 is not used. `odbc` and `jt400` connect to the IBM i database host servers: 449 (port mapper), 8476 (sign-on) and 8471 (database), or 9476 and 9471 with TLS. `mapepire` needs only SSH (port 22, or `sshPort` in `DB2I_MAPEPIRE_OPTIONS`) open to the MCP server, but by default it still uses the database host server inside the IBM i, so that server must be running. Verify a firewall allows the ports your driver uses. See [Database Drivers](configuration.md#database-drivers)
 4. **Enable debug logging**: Set `LOG_LEVEL=debug`
+5. **`CCSID value is not valid`** (`mapepire`): `technique=cli` in `DB2I_MAPEPIRE_OPTIONS` uses the native JDBC driver, which fails when the job CCSID is 65535 (system value `QCCSID` 65535 and a user profile with `CCSID(*SYSVAL)`). Remove `technique=cli` to use the default `tcp`, or give the user profile a CCSID, for example `CHGUSRPRF CCSID(37)`. Versions of this server without the `technique` option hit it with `@ibm/mapepire-js` 1.1.0 and later: upgrade, or pin `@ibm/mapepire-js@1.0.2`. See [Using the Mapepire driver](configuration.md#using-the-mapepire-driver-ssh)
 
 ### Docker Issues
 
