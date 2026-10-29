@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.4](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.3...v3.8.4) (2026-10-29)
+
+
+### Bug Fixes
+
+* **mapepire:** connect through the host server so job CCSID 65535 works ([#330](https://github.com/Strom-Capital/mcp-server-db2i/issues/330)) ([e7c8ff4](https://github.com/Strom-Capital/mcp-server-db2i/commit/e7c8ff49fc92a67260bc2ed5764148d5997b6810))
+
 ## [3.8.3](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.2...v3.8.3) (2026-10-25)
 
 
