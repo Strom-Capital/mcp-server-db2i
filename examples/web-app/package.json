@@ -29,7 +29,7 @@
     "@streamdown/math": "^1.0.3",
     "@streamdown/mermaid": "^1.0.3",
     "@tanstack/react-table": "^9.3.1",
-    "@tanstack/react-virtual": "^3.14.22",
+    "@tanstack/react-virtual": "^3.14.23",
     "ai": "^7.0.141",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
