@@ -5,7 +5,9 @@
  * the IBM i and starts the Mapepire server inside it, one server process per
  * job. mapepire-js uploads its bundled server JAR to the user's
  * $HOME/.mapepire on first use unless serverPath points at an installed one.
- * Nothing needs to be installed or running on the IBM i besides sshd and Java.
+ * Nothing needs to be installed on the IBM i besides sshd and Java. The server
+ * connects to Db2 through the database host server on the same system
+ * (technique=tcp) unless technique=cli asks for the native JDBC driver.
  *
  * The pool is transport-agnostic: it asks a JobFactory for jobs. A daemon
  * transport (a running Mapepire server on port 8076) would add a factory and
@@ -18,7 +20,7 @@
 import { readFileSync } from 'node:fs';
 import type { SQLJob } from '@ibm/mapepire-js';
 import type { Client, ConnectConfig } from 'ssh2';
-import type { DB2iConfig, MapepireSettings, MapepireSshSettings } from '../../config.js';
+import type { DB2iConfig, MapepireSettings, MapepireSshSettings, MapepireTechnique } from '../../config.js';
 import { buildMapepireJdbcOptions, resolveMapepireSettings } from '../../config.js';
 import { kindFromTypeName, rowFromObject } from '../columns.js';
 import type {
@@ -175,6 +177,24 @@ export function toMapepireError(error: unknown): Error {
     );
   }
   return new Error(message, { cause: error });
+}
+
+const NATIVE_CCSID_ERROR = /CCSID value is not valid/i;
+
+/**
+ * The native JDBC driver (technique=cli) refuses to load when the job CCSID
+ * is 65535. Say how to get past it, since the Db2 message does not.
+ */
+export function withCcsidHint(error: unknown, technique: MapepireTechnique): unknown {
+  const message = error instanceof Error ? error.message : String(error);
+  if (technique !== 'cli' || !NATIVE_CCSID_ERROR.test(message)) {
+    return error;
+  }
+  return new Error(
+    `${message.replace(/\.?\s*$/, '.')} The Mapepire server's native JDBC driver (technique=cli) cannot run in a job with CCSID 65535. ` +
+      'Remove technique=cli from DB2I_MAPEPIRE_OPTIONS to use the default tcp, or give the user profile a CCSID, for example CHGUSRPRF CCSID(37).',
+    { cause: error }
+  );
 }
 
 /** mapepire-js binds strings, numbers and null. */
@@ -675,10 +695,17 @@ export function createSshJobFactory(
             ...(settings.javaPath ? { javaPath: settings.javaPath } : {}),
             ...(settings.serverPath ? { serverPath: settings.serverPath } : {}),
           },
+          // mapepire-js 1.1 and later. Older versions ignore it and use cli,
+          // which works with their bundled server 2.3.6.
+          sshSingleTechnique: settings.technique,
         },
         jdbcOptions
       );
-      await job.connect();
+      try {
+        await job.connect();
+      } catch (error) {
+        throw withCcsidHint(error, settings.technique);
+      }
       return job;
     },
     async close() {

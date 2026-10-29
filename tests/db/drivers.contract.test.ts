@@ -23,7 +23,9 @@ const created = vi.hoisted(() => ({
   jt400: [] as Array<{ config: Record<string, string>; pool: FakePool }>,
   odbc: [] as Array<{ connectionString: string; options: Record<string, unknown>; pool: FakePool }>,
   // mapepire: one entry per started job, which is what a query runs on.
-  mapepire: [] as Array<{ jdbcOptions: Record<string, string>; pool: FakePool }>,
+  mapepire: [] as Array<{ config: Record<string, unknown>; jdbcOptions: Record<string, string>; pool: FakePool }>,
+  // mapepire: the message the next job start fails with
+  mapepireStartError: undefined as string | undefined,
   sshClients: [] as Array<{ config: Record<string, unknown>; end: Mock<() => void> }>,
   failNext: { jt400: false, odbc: false, mapepire: false },
   rows: [] as Record<string, unknown>[],
@@ -234,7 +236,7 @@ vi.mock('ssh2', async () => {
 vi.mock('@ibm/mapepire-js', () => ({
   createSSH2Connection: vi.fn(() => ({ exec: vi.fn(), upload: vi.fn() })),
   SQLJob: {
-    withConfig: vi.fn((_config: unknown, jdbcOptions: Record<string, string>) => {
+    withConfig: vi.fn((config: Record<string, unknown>, jdbcOptions: Record<string, string>) => {
       const pool = makeFakePool();
       let status = 'notStarted';
       return {
@@ -244,9 +246,14 @@ vi.mock('@ibm/mapepire-js', () => ({
             created.failNext.mapepire = false;
             throw new Error('mapepire job failed to start');
           }
+          if (created.mapepireStartError !== undefined) {
+            const message = created.mapepireStartError;
+            created.mapepireStartError = undefined;
+            throw new Error(message);
+          }
           status = 'ready';
           this.id = JOB_NAME;
-          created.mapepire.push({ jdbcOptions, pool });
+          created.mapepire.push({ config, jdbcOptions, pool });
           return { success: true };
         },
         getStatus: () => status,
@@ -1072,6 +1079,27 @@ describe('driver contract: mapepire specifics', () => {
       access: 'read only',
       libraries: 'MYLIB',
     });
+  });
+
+  it('starts the Mapepire server with technique tcp unless told otherwise', async () => {
+    connection.initializePool(baseConfig('mapepire'));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    expect(created.mapepire[0].config).toMatchObject({ transport: 'ssh-single', sshSingleTechnique: 'tcp' });
+    await connection.closeGlobalPool();
+
+    connection.initializePool({ ...baseConfig('mapepire'), mapepireOptions: { technique: 'CLI' } });
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    expect(created.mapepire[1].config).toMatchObject({ sshSingleTechnique: 'cli' });
+  });
+
+  it('explains the CCSID 65535 failure of technique=cli', async () => {
+    const ccsidError =
+      'INTERNAL ERROR:  Creation of DB2Driver object for registering with DriverManager failed. -> com.ibm.db2.jdbc.app.DB2JDBCDataException: CCSID value is not valid.';
+    connection.initializePool({ ...baseConfig('mapepire'), mapepireOptions: { technique: 'cli' } });
+    created.mapepireStartError = ccsidError;
+    await expect(connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1')).rejects.toThrow(
+      /CCSID value is not valid\. The Mapepire server's native JDBC driver \(technique=cli\) cannot run in a job with CCSID 65535/
+    );
   });
 
   it('binds Date parameters as Db2 timestamps', async () => {

@@ -278,6 +278,15 @@ export function odbcConnectionSecurity(
 export const MAPEPIRE_TRANSPORTS = ['ssh', 'daemon'] as const;
 export type MapepireTransport = (typeof MAPEPIRE_TRANSPORTS)[number];
 
+/**
+ * How the Mapepire server started over SSH connects to Db2. `tcp` (the
+ * default) is the Toolbox (jt400) driver to the database host server on the
+ * same system. `cli` is the native JDBC driver in the SSH job, which fails
+ * when the job CCSID is 65535 on mapepire-server 2.4 and later.
+ */
+export const MAPEPIRE_TECHNIQUES = ['cli', 'tcp'] as const;
+export type MapepireTechnique = (typeof MAPEPIRE_TECHNIQUES)[number];
+
 /** How the SSH host key is checked. */
 export type HostKeyCheck = 'pinned' | 'known_hosts' | 'off';
 
@@ -312,6 +321,8 @@ export interface MapepireSshSettings extends MapepireCommonSettings {
   javaPath?: string;
   /** Server JAR already on the IBM i. Unset means the bundled JAR is installed privately. */
   serverPath?: string;
+  /** How the server connects to Db2. Defaults to `tcp`. */
+  technique: MapepireTechnique;
 }
 
 /** Settings of every implemented transport. A daemon member is added with that transport. */
@@ -331,6 +342,7 @@ const MAPEPIRE_OPTION_KEYS = [
   'agent',
   'javaPath',
   'serverPath',
+  'technique',
 ] as const;
 
 /**
@@ -419,6 +431,13 @@ export function resolveMapepireSettings(
     throw new Error(`${label}: set either hostKey or insecureHostKey=true, not both`);
   }
 
+  const rawTechnique = mapepireOption(options, 'technique')?.toLowerCase();
+  if (rawTechnique !== undefined && !(MAPEPIRE_TECHNIQUES as readonly string[]).includes(rawTechnique)) {
+    throw new Error(
+      `${label}: technique must be one of: ${MAPEPIRE_TECHNIQUES.join(', ')}, got "${rawTechnique}"`
+    );
+  }
+
   const privateKeyFile = mapepireOption(options, 'privateKeyFile');
   const agent = mapepireAgent(options, label);
   if (privateKeyFile !== undefined && agent !== undefined) {
@@ -439,6 +458,7 @@ export function resolveMapepireSettings(
     agent,
     javaPath: mapepireOption(options, 'javaPath'),
     serverPath: mapepireOption(options, 'serverPath'),
+    technique: (rawTechnique as MapepireTechnique | undefined) ?? 'tcp',
   };
 }
 

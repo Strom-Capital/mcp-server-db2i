@@ -358,7 +358,7 @@ If the build fails, the install fails with it. npm prints `glob` deprecation war
 
 ### Using the Mapepire driver (SSH)
 
-The `mapepire` driver reaches Db2 for i through [Mapepire](https://mapepire-ibmi.github.io/) over SSH. It logs in with SSH as the configured user and starts the Mapepire server inside that session. No Mapepire daemon runs on the IBM i, no port besides SSH is used, and no administrator install is needed.
+The `mapepire` driver reaches Db2 for i through [Mapepire](https://mapepire-ibmi.github.io/) over SSH. It logs in with SSH as the configured user and starts the Mapepire server inside that session. No Mapepire daemon runs on the IBM i, no port besides SSH is opened to the network, and no administrator install is needed.
 
 Add `@ibm/mapepire-js` and `ssh2` next to the server first (see [Installing the jt400 and mapepire packages](#installing-the-jt400-and-mapepire-packages)). Neither needs a build or Java on the MCP server side.
 
@@ -369,10 +369,13 @@ Requirements on the IBM i:
 - The SSH daemon running, and the user allowed to log in with SSH.
 - A home directory for the user, which must exist and be writable.
 - Java 8 or later. mapepire-js uses `/QOpenSys/QIBM/ProdData/JavaVM/jdk80/64bit/bin/java` by default. Set `javaPath` to use another JDK.
+- The database host server running (`STRHOSTSVR SERVER(*DATABASE)`), for the default `technique=tcp`. ODBC, JT400 and ACS Run SQL Scripts use the same server, so it is usually running already.
 
 Each Mapepire job is a JVM on the IBM i. Starting one takes a few seconds, and the first start takes longer because of the upload. The pool starts jobs when queries need them, up to `maxJobs`, and closes each one after `idleTimeout` without queries. The SSH session closes with the last job, and the next query opens it again. Over HTTP, `MCP_POOL_IDLE_TIMEOUT` also closes a session's whole pool after 10 minutes without queries, on every driver. Over HTTP with `MCP_AUTH_MODE=required`, every `/auth` login and OAuth sign-in or refresh starts a job to check the credentials, so it takes several seconds. That job then serves the token's first queries, so they do not wait for another one.
 
 The JDBC connection runs on the IBM i with the JT400 driver, so `DB2I_JDBC_OPTIONS` applies as it does for `jt400`. That includes the read-only default (`access=read only`) and `libraries`. The session is encrypted by SSH, so `secure=true` is not needed.
+
+By default (`technique=tcp`) the Mapepire server connects to the database host server on the same IBM i, as the SSH user, so the queries run in a `QZDASOINIT` job. `technique=cli` uses the native JDBC driver in the SSH job instead. With mapepire-js 1.1 and later (Mapepire server 2.4 and later), `cli` fails with `CCSID value is not valid` when the job CCSID is 65535, which is the case when the system value `QCCSID` is 65535 and the user profile has `CCSID(*SYSVAL)`. Use `cli` only if the user profile has a CCSID such as 37, or the host server cannot be used. mapepire-js 1.0 ignores `technique` and always uses `cli`, which works on its bundled server 2.3.6.
 
 #### Host key check
 
@@ -400,6 +403,7 @@ If neither matches, the connection is refused and the error shows the key's fing
 | `agent` | - | SSH agent for the login, so the key can have a passphrase. `true` reads the socket path from `SSH_AUTH_SOCK`, or give the absolute socket path. On Windows: `pageant` for PuTTY Pageant, or `\\.\pipe\openssh-ssh-agent` for the Windows OpenSSH Authentication Agent. When set, `DB2I_PASSWORD` can be left unset. Not together with `privateKeyFile`. HTTP `/auth` logins ignore it and log in with the caller's password |
 | `javaPath` | mapepire-js default (`jdk80`) | Java binary on the IBM i |
 | `serverPath` | - | Path of an installed Mapepire server JAR. When set, the bundled JAR is not uploaded |
+| `technique` | `tcp` | How the Mapepire server connects to Db2: `tcp` (the database host server on the same system) or `cli` (the native JDBC driver in the SSH job, which needs a job CCSID other than 65535). Needs mapepire-js 1.1 or later |
 | `maxJobs` | `2` | Most Mapepire jobs (JVMs) one pool runs at a time |
 | `idleTimeout` | `600000` | Milliseconds before an idle job is closed |
 | `startupTimeout` | `60000` | Milliseconds to wait for a job to start |

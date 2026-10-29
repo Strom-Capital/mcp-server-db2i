@@ -665,7 +665,16 @@ describe('Config Module', () => {
         agent: undefined,
         javaPath: undefined,
         serverPath: undefined,
+        technique: 'tcp',
       });
+    });
+
+    it('should read technique in any case and reject other values', () => {
+      expect(resolveMapepireSettings({ technique: 'CLI' }).technique).toBe('cli');
+      expect(resolveMapepireSettings({ technique: 'tcp' }).technique).toBe('tcp');
+      expect(() => resolveMapepireSettings({ technique: 'jdbc' })).toThrow(
+        'technique must be one of: cli, tcp, got "jdbc"'
+      );
     });
 
     it('should read DB2I_MAPEPIRE_OPTIONS with keys in any case', () => {
