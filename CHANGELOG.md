@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.8.5](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.4...v3.8.5) (2026-10-29)
+
+
+### Dependencies
+
+* bump @hono/node-server from 1.19.17 to 2.1.5 ([#340](https://github.com/Strom-Capital/mcp-server-db2i/issues/340)) ([1620cb9](https://github.com/Strom-Capital/mcp-server-db2i/commit/1620cb93df793f69390091ea25ad008abf6ca76a))
+* bump the production group with 3 updates ([#334](https://github.com/Strom-Capital/mcp-server-db2i/issues/334)) ([a885d54](https://github.com/Strom-Capital/mcp-server-db2i/commit/a885d54f9f61e7c525bcb7f47dd84e4875833de7))
+
 ## [3.8.4](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.3...v3.8.4) (2026-10-29)
 
 
