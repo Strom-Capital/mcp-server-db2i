@@ -21,6 +21,10 @@ updates:
         patterns: ["eslint", "@eslint/*"]
       vitest:
         patterns: ["vitest", "@vitest/*"]
+      # Database driver packages. Users install the newest ones with npx, and
+      # the tests mock them, so a bump needs the real-system check before merge.
+      drivers:
+        patterns: ["odbc", "node-jt400", "@ibm/mapepire-js", "ssh2"]
       production:
         dependency-type: production
         update-types: [minor, patch]
