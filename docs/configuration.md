@@ -296,7 +296,7 @@ NODE_ENV=production
 
 `DB2I_DRIVER` picks how the server talks to Db2 for i. All drivers run the same tools and apply the same defaults: system naming, ISO dates, a read-only query connection, `DB2I_SCHEMA` as the library list, and a second connection without the read-only setting for `QSYS2.GENERATE_SQL` (`get_object_ddl`). Each driver is loaded on first use, so the default `odbc` driver never starts Java.
 
-Pick by what the network allows: `odbc` and `jt400` need the database host server ports (8471 and friends) open to the MCP server. `mapepire` needs only SSH (port 22).
+Pick by what the network allows: `odbc` and `jt400` need the database host server ports (8471 and friends) open to the MCP server. `mapepire` needs only SSH (port 22) open to the MCP server. By default it still connects to the database host server inside the IBM i, so that server must be running there (see [`technique`](#options)).
 
 | Driver | Package | Needs | Options variable |
 |--------|---------|-------|------------------|
