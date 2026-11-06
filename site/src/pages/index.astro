@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import Hero from '../components/Hero.astro';
 import SiteVideo from '../components/SiteVideo.astro';
+import Featured from '../components/Featured.astro';
 import FeatureGrid from '../components/FeatureGrid.astro';
 import Architecture from '../components/Architecture.astro';
 import Install from '../components/Install.astro';
@@ -25,6 +26,7 @@ const latest = (await getPosts()).slice(0, 3);
     lead="One question from plain language to rows, what is enforced on every query, and how it connects to your IBM i. With sound and captions."
     description="Promo video: asking an IBM i a question in plain language with the Db2 for i MCP Server"
   />
+  <Featured />
   <FeatureGrid />
   <Architecture />
   <Install />
