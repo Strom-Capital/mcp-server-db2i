@@ -1,0 +1,107 @@
+---
+/**
+ * "Featured in": articles about the project, each with the publication's logo.
+ *
+ * Logos live in public/images/press as <logo>.svg (or .png/.webp), with an optional
+ * <logo>-dark file for dark mode, and are drawn logoHeight px tall (32 by default). Until a file is there, the publication name is
+ * shown as a text wordmark, so the section never shows a broken image.
+ */
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { url } from '../lib/links';
+
+const items = [
+  {
+    publication: 'TechChannel',
+    logo: 'techchannel',
+    logoHeight: 22,
+    kind: 'Article',
+    title: 'What MCP Means for IBM i',
+    href: 'https://techchannel.com/ai/what-mcp-means-for-ibm-i/',
+  },
+  {
+    publication: 'IT Jungle',
+    logo: 'itjungle',
+    logoHeight: 48,
+    kind: 'News',
+    title: 'A Read-Only MCP Server For Db2 for i',
+    date: 'October 12, 2026',
+    href: 'https://www.itjungle.com/2026/10/12/a-read-only-mcp-server-for-db2-for-i/',
+  },
+  {
+    publication: 'IBM TechXchange Community',
+    logo: 'ibm-community',
+    logoHeight: 30,
+    kind: 'Community blog',
+    title: 'Asking Db2 for i questions from an AI assistant, read-only',
+    date: 'September 27, 2026',
+    href: 'https://community.ibm.com/community/user/blogs/roni-strom/2026/09/27/asking-db2-for-i-questions-from-an-ai-assistant-read-only',
+  },
+];
+
+/** The first logo file that exists for this name and suffix, as a site path. */
+function logoFile(name: string, suffix = ''): string | undefined {
+  for (const ext of ['svg', 'png', 'webp']) {
+    const path = `images/press/${name}${suffix}.${ext}`;
+    // Astro builds from the site folder; import.meta.url would point at the bundled chunk.
+    if (existsSync(join(process.cwd(), 'public', path))) return url(`/${path}`);
+  }
+  return undefined;
+}
+
+const entries = items.map((item) => ({ ...item, light: logoFile(item.logo), dark: logoFile(item.logo, '-dark') }));
+---
+<section class="section section--tight" id="featured" aria-labelledby="featured-label">
+  <div class="container">
+    <p class="label" id="featured-label">Featured in</p>
+    <ul class="press">
+      {entries.map((e) => (
+        <li>
+          <a class="item" href={e.href} rel="noopener">
+            <span class:list={['mark', { shot: e.light && e.dark }]}>
+              {e.light ? (
+                <>
+                  <img class="light" src={e.light} alt={e.publication} style={`height:${e.logoHeight ?? 32}px`} loading="lazy" decoding="async" />
+                  {e.dark && <img class="dark" src={e.dark} alt="" aria-hidden="true" style={`height:${e.logoHeight ?? 32}px`} loading="lazy" decoding="async" />}
+                </>
+              ) : (
+                <span class="wordmark">{e.publication}</span>
+              )}
+            </span>
+            <span class="title">{e.title}</span>
+            <span class="meta">
+              {e.kind}{e.date && <> · <time>{e.date}</time></>}
+              <em aria-hidden="true">→</em>
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .label { margin-bottom: var(--space-4); }
+  .press { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--line-strong); }
+  @media (min-width: 760px) { .press { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .press li + li { border-top: 1px solid var(--line); }
+  @media (min-width: 760px) {
+    .press li + li { border-top: 0; border-left: 1px solid var(--line); }
+    .press li { padding-inline: 28px; }
+    .press li:first-child { padding-left: 0; }
+    .press li:last-child { padding-right: 0; }
+  }
+  .item { display: grid; grid-template-rows: 48px auto 1fr; gap: 14px; height: 100%; padding: 24px 0 28px; text-decoration: none; color: var(--fg); }
+  .mark { display: flex; align-items: center; }
+  /* Logos are shown in one ink so three brands sit quietly together; full color on hover. */
+  /* No display here: with a dark file, the global .shot rules pick light or dark. */
+  .mark img { width: auto; max-width: 180px; object-fit: contain; filter: grayscale(1); opacity: 0.75; transition: filter 0.15s, opacity 0.15s; }
+  .wordmark { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; color: var(--muted); transition: color 0.15s; }
+  .title { font-size: 1.1rem; font-weight: 500; line-height: 1.35; letter-spacing: -0.01em; text-wrap: balance; }
+  .meta { display: flex; align-items: end; gap: 8px; font: 500 11px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .meta em { margin-left: auto; font: normal 1rem/1 var(--font-sans); transition: transform 0.15s, color 0.15s; }
+  .item:hover { color: var(--fg); }
+  .item:hover .mark img { filter: none; opacity: 1; }
+  .item:hover .wordmark { color: var(--fg); }
+  .item:hover .meta em { color: var(--accent); transform: translateX(3px); }
+</style>
