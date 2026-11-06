@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.6](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.5...v3.8.6) (2026-11-06)
+
+
+### Dependencies
+
+* bump express-rate-limit, hono, dev tooling and web-app example packages ([#352](https://github.com/Strom-Capital/mcp-server-db2i/issues/352)) ([cbef137](https://github.com/Strom-Capital/mcp-server-db2i/commit/cbef1372068ae984057e251ad4e29c04bbef4cff))
+
 ## [3.8.5](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.4...v3.8.5) (2026-10-29)
 
 
