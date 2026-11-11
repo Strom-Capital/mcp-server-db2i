@@ -37,8 +37,9 @@ function compare(a: unknown, b: unknown, column: Column): number {
  *
  * @param container - Element to fill
  * @param table - The result
+ * @param bar - Toolbar that takes the row count and the filter, so they share a line with its other controls
  */
-export function renderGrid(container: HTMLElement, table: ResultTable): void {
+export function renderGrid(container: HTMLElement, table: ResultTable, bar: HTMLElement): void {
   const state: GridState = { descending: false, filter: '' };
   container.replaceChildren();
 
@@ -50,7 +51,8 @@ export function renderGrid(container: HTMLElement, table: ResultTable): void {
   filter.setAttribute('aria-label', 'Filter rows');
   const count = document.createElement('span');
   count.className = 'meta';
-  toolbar.append(filter, count);
+  toolbar.append(count, filter);
+  bar.append(toolbar);
 
   const scroller = document.createElement('div');
   scroller.className = 'grid-scroll';
@@ -59,7 +61,7 @@ export function renderGrid(container: HTMLElement, table: ResultTable): void {
   const tbody = document.createElement('tbody');
   tableEl.append(thead, tbody);
   scroller.append(tableEl);
-  container.append(toolbar, scroller);
+  container.append(scroller);
 
   const headRow = document.createElement('tr');
   for (const column of table.columns) {

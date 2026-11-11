@@ -184,5 +184,5 @@ export function takeRowsWithinLimit<T>(rows: T[], limit: number): { rows: T[]; t
 
 /** Warning added to a result that stopped at the row limit. */
 export function rowLimitWarning(limit: number): string {
-  return `Result stopped at ${limit} rows and more rows match. Narrow the filter or aggregate, or tell the user the list is incomplete.`;
+  return `Result stopped at ${limit} rows and more rows match, so the list is incomplete. A narrower filter or an aggregate covers every row.`;
 }
