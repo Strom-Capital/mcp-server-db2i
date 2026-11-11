@@ -61,7 +61,7 @@ describe('roundedColumnsWarnings', () => {
     const [warning] = roundedColumnsWarnings(['W', 'TOTAL']) ?? [];
     expect(warning).toMatch(/^The ODBC driver rounds DECIMAL and NUMERIC values past 15 digits, so the values in W, TOTAL are not exact\./);
     expect(warning).toContain('CAST(<column> AS VARCHAR(40))');
-    expect(warning).toContain('jt400 or mapepire');
+    expect(warning).toContain('jt400 and mapepire');
   });
 
   it('leaves out masked columns', () => {

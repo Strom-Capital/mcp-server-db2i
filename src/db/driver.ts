@@ -355,6 +355,6 @@ export function roundedColumnsWarnings(
   }
   return [
     `The ODBC driver rounds DECIMAL and NUMERIC values past 15 digits, so the values in ${names.join(', ')} are not exact. ` +
-      'Select the column as CAST(<column> AS VARCHAR(40)) to keep every digit, or use the jt400 or mapepire driver.',
+      'Selecting a column as CAST(<column> AS VARCHAR(40)) keeps every digit, and so do the jt400 and mapepire drivers.',
   ];
 }

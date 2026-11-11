@@ -34,7 +34,8 @@ html, body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin-bottom: 12px;
 }
 
@@ -72,7 +73,8 @@ html, body {
 .kpi:only-child .kpi-value { font-size: 44px; letter-spacing: -0.03em; margin-top: 8px; }
 h2 { font: 500 14px var(--v-sans); margin: 0 0 10px; }
 
-.grid-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+/* Row count and filter, on the toolbar's line at the right; they wrap below the tabs when the view is narrow */
+.grid-toolbar { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .grid-toolbar input {
   text-transform: none;
   letter-spacing: 0;
@@ -108,3 +110,23 @@ td.null { color: var(--v-muted); }
 
 .notes p, .message { font: 12px var(--v-mono); color: var(--v-muted); margin: 10px 0 0; }
 .message.error { color: var(--v-error); }
+
+/* Loading placeholder: the toolbar and grid as blocks, pulsing row by row */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.bone { background: var(--v-line); border-radius: 2px; }
+.bone-tabs { width: 132px; height: 27px; margin-bottom: 12px; }
+.bone-rows { border-top: 1px solid var(--v-ink); }
+.bone-row {
+  display: grid;
+  grid-template-columns: 2fr 3fr 2fr 1fr;
+  gap: 24px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--v-line);
+  animation: bone-pulse 1.4s ease-in-out var(--delay, 0ms) infinite;
+}
+.bone-row .bone { height: 9px; }
+.bone-row:first-child .bone { background: var(--v-muted); opacity: 0.45; }
+.bone-row .bone:nth-child(odd) { width: 70%; }
+.bone-row .bone:last-child { justify-self: end; width: 60%; }
+@keyframes bone-pulse { 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { .bone-row { animation: none; } }

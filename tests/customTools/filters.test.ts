@@ -46,8 +46,8 @@ describe('checkRowFilters', () => {
 
     expect(result.tables).toEqual(['MYLIB.ORDERS']);
     expect(result.warnings).toEqual([
-      "MYLIB.ORDERS has a filter LINESTAT <> 'D' (Deleted lines stay in the table). This query does not use LINESTAT. " +
-        'Add the filter unless the question needs those rows.',
+      "MYLIB.ORDERS has a filter LINESTAT <> 'D' (Deleted lines stay in the table). This query does not use LINESTAT, " +
+        'so the result can include rows the filter leaves out. The filter belongs in the query unless the question needs those rows.',
     ]);
   });
 

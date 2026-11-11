@@ -112,6 +112,33 @@ function message(text: string, error = false): void {
   root.replaceChildren(p);
 }
 
+/** Placeholder in the shape of the grid, shown until the tool result arrives. */
+function loading(): void {
+  const frame = document.createElement('div');
+  frame.className = 'loading';
+  frame.setAttribute('role', 'status');
+  const label = document.createElement('span');
+  label.className = 'sr-only';
+  label.textContent = 'Waiting for the result\u2026';
+  const tabs = document.createElement('div');
+  tabs.className = 'bone bone-tabs';
+  const rows = document.createElement('div');
+  rows.className = 'bone-rows';
+  for (let row = 0; row < 6; row++) {
+    const line = document.createElement('div');
+    line.className = 'bone-row';
+    line.style.setProperty('--delay', `${row * 80}ms`);
+    for (let cell = 0; cell < 4; cell++) {
+      const bone = document.createElement('div');
+      bone.className = 'bone';
+      line.append(bone);
+    }
+    rows.append(line);
+  }
+  frame.append(label, tabs, rows);
+  root.replaceChildren(frame);
+}
+
 function toolbar(table: ResultTable): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'toolbar';
@@ -213,12 +240,13 @@ function render(): void {
   }
   state.chart?.destroy();
   state.chart = undefined;
+  const bar = toolbar(table);
   const content = document.createElement('div');
   content.className = 'content';
   if (state.view === 'chart' && state.plan) {
     renderChart(content, table, state.plan);
   } else {
-    renderGrid(content, table);
+    renderGrid(content, table, bar);
   }
   const notes = document.createElement('div');
   notes.className = 'notes';
@@ -227,7 +255,7 @@ function render(): void {
     p.textContent = warning;
     notes.append(p);
   }
-  root.replaceChildren(toolbar(table), content, ...(table.warnings.length > 0 ? [notes] : []));
+  root.replaceChildren(bar, content, ...(table.warnings.length > 0 ? [notes] : []));
 }
 
 function showResult(structured: unknown, text: string | undefined): void {
@@ -273,7 +301,7 @@ function watchSize(bridge: Bridge): void {
   report();
 }
 
-message('Waiting for the result\u2026');
+loading();
 
 connect(window.parent, { name: 'db2i-result-view', version: __APP_VERSION__ }, {
   onToolResult: (result) => {

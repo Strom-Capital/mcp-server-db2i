@@ -100,7 +100,7 @@ function annotatedKeysFor(
 function filterWarning(table: string, filter: StoredFilter): string {
   const reason = filter.reason ? ` (${filter.reason})` : '';
   return (
-    `${table} has a filter ${filter.sql}${reason}. This query does not use ${filter.columns.join(' or ')}. ` +
-    'Add the filter unless the question needs those rows.'
+    `${table} has a filter ${filter.sql}${reason}. This query does not use ${filter.columns.join(' or ')}, ` +
+    'so the result can include rows the filter leaves out. The filter belongs in the query unless the question needs those rows.'
   );
 }
