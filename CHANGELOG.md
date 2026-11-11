@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.7](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.6...v3.8.7) (2026-11-11)
+
+
+### Bug Fixes
+
+* **ui:** word result warnings for the user too and tighten the result view ([#354](https://github.com/Strom-Capital/mcp-server-db2i/issues/354)) ([7488e07](https://github.com/Strom-Capital/mcp-server-db2i/commit/7488e07520ecab2b2324ef75c29bdc4e6bd2a5a2))
+
 ## [3.8.6](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.5...v3.8.6) (2026-11-06)
 
 
