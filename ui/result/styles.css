@@ -72,7 +72,7 @@ html, body {
 
 .tabs button + button { border-left: 1px solid var(--v-control); }
 .tabs button[aria-selected='true'] { color: var(--v-ink); box-shadow: inset 0 -2px 0 var(--v-accent); }
-.tabs button:disabled { cursor: default; opacity: 0.45; }
+.tabs button[aria-disabled='true'] { cursor: not-allowed; opacity: 0.45; }
 .tabs button:focus-visible, .toolbar select:focus-visible, .grid-toolbar input:focus-visible, th button:focus-visible {
   outline: 2px solid var(--v-accent);
   outline-offset: -2px;
@@ -84,6 +84,7 @@ html, body {
 
 /* Every tile has a divider and indent; the row is pulled left and clipped, so the first tile on each line starts flush */
 .kpis { overflow: hidden; border-top: 1px solid var(--v-ink); }
+.loading .kpis { border-top-color: var(--v-muted); }
 .kpi-row { display: flex; flex-wrap: wrap; margin-left: -17px; }
 .kpi { flex: 1 1 100px; padding: 12px 16px 14px; border-left: 1px solid var(--v-line); }
 .kpi-label { font: 500 11px var(--v-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--v-muted); }
@@ -143,7 +144,7 @@ th.num:not(:last-child), td.num:not(:last-child) { padding-right: 24px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .bone { background: color-mix(in srgb, var(--v-line) 75%, var(--v-muted)); border-radius: 2px; }
 .bone-tabs { width: 132px; height: 27px; margin-bottom: 12px; }
-.bone-rows { border-top: 1px solid var(--v-ink); }
+.bone-rows { border-top: 1px solid var(--v-muted); }
 .bone-row {
   display: grid;
   grid-template-columns: 2fr 3fr 2fr 1fr;
@@ -165,7 +166,7 @@ th.num:not(:last-child), td.num:not(:last-child) { padding-right: 24px; }
   align-items: flex-end;
   gap: 9%;
   padding: 0 5% 0 8%;
-  border-bottom: 1px solid var(--v-ink);
+  border-bottom: 1px solid var(--v-muted);
   background: repeating-linear-gradient(to top, transparent 0 calc(25% - 1px), var(--v-line) calc(25% - 1px) 25%);
 }
 .bone-bar { flex: 1; border-radius: 0; background: var(--v-line); animation: bone-pulse 1.4s ease-in-out var(--delay, 0ms) infinite; }

@@ -267,6 +267,25 @@ describe('buildChart', () => {
     expect(built).toMatchObject({ kind: 'kpi', items: [{ value: '2,381,921' }, { value: '3.45' }] });
   });
 
+  it('keeps the decimals of a single KPI tile', () => {
+    const t = table({ data: [{ REVENUE: '2381920.55' }] });
+    const built = buildChart(t, { type: 'kpi', y: ['REVENUE'], stacked: false, horizontal: false }, ctx);
+    expect(built).toMatchObject({ kind: 'kpi', items: [{ value: '2,381,920.55' }] });
+  });
+
+  it('names the waterfall and pareto colors in the legend', () => {
+    const steps = [{ STEP: 'Start', AMOUNT: 100 }, { STEP: 'Sales', AMOUNT: 40 }, { STEP: 'Returns', AMOUNT: -15 }];
+    const waterfall = buildChart(table({ data: steps }), { type: 'waterfall', x: 'STEP', y: ['AMOUNT'], stacked: false, horizontal: false }, ctx);
+    const labels = (built: ReturnType<typeof buildChart>) => built.kind === 'chart'
+      ? (built.config.options as { plugins: { legend: { labels: { generateLabels: () => { text: string }[] } } } })
+        .plugins.legend.labels.generateLabels().map((label) => label.text)
+      : [];
+    expect(labels(waterfall)).toEqual(['Start and end', 'Increase', 'Decrease']);
+    const ranked = [50, 30, 10, 5, 3, 2].map((V, i) => ({ S: `s${i}`, V }));
+    const pareto = buildChart(table({ data: ranked }), { type: 'pareto', x: 'S', y: ['V'], stacked: false, horizontal: false }, ctx);
+    expect(labels(pareto)).toEqual(['V, top 80%', 'The rest', 'Cumulative %']);
+  });
+
   it('ends a waterfall with a total bar', () => {
     const data = [{ STEP: 'Start', AMOUNT: 100 }, { STEP: 'Sales', AMOUNT: 40 }, { STEP: 'Returns', AMOUNT: -15 }];
     const built = buildChart(table({ data }), { type: 'waterfall', x: 'STEP', y: ['AMOUNT'], stacked: false, horizontal: false }, ctx);

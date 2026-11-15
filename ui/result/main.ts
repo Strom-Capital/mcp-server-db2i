@@ -49,7 +49,7 @@ const TYPE_LABELS: Record<ChartPlan['type'], string> = {
   pareto: 'Pareto',
   waterfall: 'Waterfall',
   histogram: 'Histogram',
-  kpi: 'Number',
+  kpi: 'Key figures',
 };
 
 /** What the placeholder looks like: the shape the result will most likely take. */
@@ -63,7 +63,7 @@ interface ViewState {
   locale?: string;
   chart?: Chart;
   /** Chart hint known before the result: from the tool input or the tool's metadata. */
-  pending?: { shape: Shape; title?: string };
+  pending?: { shape: Shape; title?: string; tiles?: number };
   /** The result (or an error) has been shown, so the placeholder is gone. */
   done: boolean;
 }
@@ -120,13 +120,14 @@ function applyHostContext(context: McpUiHostContext): void {
 }
 
 /** The placeholder shape for a chart hint: the chart box, KPI tiles, or the grid. */
-function shapeOf(hint: unknown): { shape: Shape; title?: string } {
+function shapeOf(hint: unknown): NonNullable<ViewState['pending']> {
   if (!hint || typeof hint !== 'object' || !('type' in hint) || typeof hint.type !== 'string') {
     return { shape: 'table' };
   }
   const title = 'title' in hint && typeof hint.title === 'string' ? hint.title : undefined;
+  const tiles = 'y' in hint && Array.isArray(hint.y) && hint.y.length > 0 ? Math.min(hint.y.length, 3) : 1;
   const shape: Shape = hint.type === 'table' ? 'table' : hint.type === 'kpi' ? 'kpi' : 'chart';
-  return { shape, ...(title ? { title } : {}) };
+  return { shape, ...(title ? { title } : {}), ...(shape === 'kpi' ? { tiles } : {}) };
 }
 
 /** Redraw the placeholder for what the result will most likely look like. */
@@ -217,15 +218,21 @@ function chartBones(title: string | undefined): HTMLElement {
 }
 
 /** KPI tiles built from the real classes, so the placeholder is exactly as tall. */
-function kpiBones(title: string | undefined): HTMLElement[] {
+function kpiBones(title: string | undefined, tiles: number): HTMLElement[] {
   const frame = document.createElement('div');
   frame.className = 'kpis';
   const row = document.createElement('div');
   row.className = 'kpi-row';
-  const tile = document.createElement('div');
-  tile.className = 'kpi bone-pulse';
-  tile.append(boneText('kpi-label', '72px'), boneText('kpi-value', '180px'));
-  row.append(tile);
+  for (let index = 0; index < tiles; index++) {
+    const tile = document.createElement('div');
+    tile.className = 'kpi bone-pulse';
+    // A titled single tile shows no label (see renderChart)
+    if (!(title && tiles === 1)) {
+      tile.append(boneText('kpi-label', '72px'));
+    }
+    tile.append(boneText('kpi-value', tiles === 1 ? '180px' : '70%'));
+    row.append(tile);
+  }
   frame.append(row);
   return title ? [boneText('', '40%', 'h2'), frame] : [frame];
 }
@@ -254,7 +261,7 @@ function tableBones(): HTMLElement {
  * chart box for a chart hint, tiles for KPIs, otherwise the grid.
  */
 function loading(): void {
-  const { shape, title } = state.pending ?? { shape: 'table' as Shape };
+  const { shape, title, tiles } = state.pending ?? { shape: 'table' as Shape };
   const frame = document.createElement('div');
   frame.className = `loading loading-${shape}`;
   frame.setAttribute('role', 'status');
@@ -263,7 +270,7 @@ function loading(): void {
   label.textContent = 'Waiting for the result\u2026';
   const tabs = document.createElement('div');
   tabs.className = 'bone bone-tabs';
-  const body = shape === 'chart' ? [chartBones(title)] : shape === 'kpi' ? kpiBones(title) : [tableBones()];
+  const body = shape === 'chart' ? [chartBones(title)] : shape === 'kpi' ? kpiBones(title, tiles ?? 1) : [tableBones()];
   frame.append(label, tabs, ...body);
   root.replaceChildren(frame);
 }
@@ -296,10 +303,15 @@ function toolbar(table: ResultTable): HTMLElement {
     button.tabIndex = selected ? 0 : -1;
     button.textContent = view === 'chart' ? 'Chart' : 'Table';
     if (!enabled.includes(view)) {
-      button.disabled = true;
-      button.title = 'Nothing in these rows to chart';
+      // aria-disabled rather than disabled: a disabled button shows no tooltip, and this one says why
+      button.setAttribute('aria-disabled', 'true');
+      button.title = 'No chart: these rows have no numbers to plot';
     }
-    button.addEventListener('click', () => selectView(view));
+    button.addEventListener('click', () => {
+      if (enabled.includes(view)) {
+        selectView(view);
+      }
+    });
     tabs.append(button);
   }
   // Arrow keys move between the tabs, as in any tab list
@@ -364,16 +376,23 @@ function renderChart(container: HTMLElement, table: ResultTable, plan: ChartPlan
       title.textContent = built.title;
       container.append(title);
     }
+    // One tile under a title: the title already says what the number is
+    const labelled = !(built.title && built.items.length === 1);
     for (const item of built.items) {
       const tile = document.createElement('div');
       tile.className = 'kpi';
-      const label = document.createElement('div');
-      label.className = 'kpi-label';
-      label.textContent = item.label;
+      if (labelled) {
+        const label = document.createElement('div');
+        label.className = 'kpi-label';
+        label.textContent = item.label;
+        tile.append(label);
+      } else {
+        tile.title = item.label;
+      }
       const value = document.createElement('div');
       value.className = 'kpi-value';
       value.textContent = item.value;
-      tile.append(label, value);
+      tile.append(value);
       tiles.append(tile);
     }
     container.append(frame);

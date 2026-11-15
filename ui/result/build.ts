@@ -87,6 +87,16 @@ function foldSmallest(entries: [string, number][], keep: number): [string, numbe
   return [...sorted.slice(0, keep), [OTHER, rest]];
 }
 
+/** A legend entry that is not a dataset: one bar color and what it means. */
+function legendKey(ctx: BuildContext, text: string, color: string) {
+  return { text, fillStyle: color, strokeStyle: color, lineWidth: 0, pointStyle: 'rect', fontColor: ctx.theme.muted, hidden: false };
+}
+
+/** An axis title in the tick style. */
+function axisTitle(ctx: BuildContext, text: string) {
+  return { display: true, text, color: ctx.theme.muted, font: { family: ctx.fonts.mono, size: 11 } };
+}
+
 function baseOptions(ctx: BuildContext, plan: ChartPlan, legend: boolean) {
   const { theme, fonts } = ctx;
   const fmt = formatter(ctx.locale);
@@ -319,6 +329,16 @@ function paretoChart(table: ResultTable, plan: ChartPlan, ctx: BuildContext): Bu
   let running = 0;
   const cumulative = entries.map(([, value]) => Math.round(((running += value) / total) * 1000) / 10);
   const options = baseOptions(ctx, { ...plan, horizontal: false, stacked: false }, true);
+  const tail = entries.some(([label], i) => label === OTHER || (i > 0 && cumulative[i - 1] >= 80));
+  // Name the two bar colors: the categories that make up the first 80%, and the rest
+  options.plugins.legend.labels = {
+    ...(options.plugins.legend.labels as Record<string, unknown>),
+    generateLabels: () => [
+      legendKey(ctx, `${plan.y[0]}, top 80%`, theme.accent),
+      ...(tail ? [legendKey(ctx, 'The rest', theme.other)] : []),
+      legendKey(ctx, 'Cumulative %', theme.ink),
+    ],
+  };
   options.scales.y1 = {
     position: 'right', min: 0, max: 100, grid: { display: false }, border: { display: false },
     ticks: { color: theme.muted, font: { family: fonts.mono, size: 11 }, stepSize: 20, callback: (v: number) => `${v}%` },
@@ -358,7 +378,15 @@ function waterfallChart(table: ResultTable, plan: ChartPlan, ctx: BuildContext):
   }
   bars.push({ label: 'End', range: [0, level], color: theme.total, value: level });
   const fmt = formatter(ctx.locale);
-  const options = baseOptions(ctx, { ...plan, horizontal: false, stacked: false }, false);
+  const options = baseOptions(ctx, { ...plan, horizontal: false, stacked: false }, true);
+  options.plugins.legend.labels = {
+    ...(options.plugins.legend.labels as Record<string, unknown>),
+    generateLabels: () => [
+      legendKey(ctx, 'Start and end', theme.total),
+      ...(steps.slice(1).some((step) => step.value >= 0) ? [legendKey(ctx, 'Increase', theme.up)] : []),
+      ...(steps.slice(1).some((step) => step.value < 0) ? [legendKey(ctx, 'Decrease', theme.down)] : []),
+    ],
+  };
   options.scales.y = { ...options.scales.y, beginAtZero: false };
   options.plugins.tooltip = {
     ...options.plugins.tooltip,
@@ -412,6 +440,8 @@ function histogramChart(table: ResultTable, plan: ChartPlan, ctx: BuildContext):
   const fmt = formatter(ctx.locale);
   const labels = counts.map((_, i) => `${fmt.tick(edges[i])}-${fmt.tick(edges[i + 1])}`);
   const options = baseOptions(ctx, { ...plan, horizontal: false, stacked: false }, false);
+  options.scales.x = { ...options.scales.x, title: axisTitle(ctx, plan.y[0]) };
+  options.scales.y = { ...options.scales.y, title: axisTitle(ctx, 'Rows') };
   return config('bar', {
     labels,
     datasets: [{
@@ -464,14 +494,15 @@ function kpi(table: ResultTable, plan: ChartPlan, ctx: BuildContext): BuiltChart
     return { kind: 'empty', reason: 'No rows.' };
   }
   const fmt = formatter(ctx.locale);
-  // A tile is read at a glance; the table keeps the exact value
+  // Side by side, tiles round to whole numbers so they fit on one line; a single tile has room for the cents
   const whole = new Intl.NumberFormat(ctx.locale, { maximumFractionDigits: 0 });
+  const single = plan.y.length === 1;
   const items = plan.y.map((name) => {
     const value = numberOf(row[name]);
     if (value === null) {
       return { label: name, value: String(row[name] ?? '') };
     }
-    return { label: name, value: Math.abs(value) >= 1000 ? whole.format(value) : fmt.full(value) };
+    return { label: name, value: !single && Math.abs(value) >= 1000 ? whole.format(value) : fmt.full(value) };
   });
   return { kind: 'kpi', items, ...(plan.title ? { title: plan.title } : {}) };
 }
