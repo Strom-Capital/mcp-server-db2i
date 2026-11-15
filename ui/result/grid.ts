@@ -1,6 +1,7 @@
 /**
- * The result grid: sortable columns, a filter over every cell, and numbers
- * right-aligned. Values are shown as the tool returned them.
+ * The result grid: sortable columns and a filter over every cell. Measures are
+ * right-aligned with their digits grouped and their decimals kept; codes such
+ * as order numbers stay left-aligned and ungrouped. NULL shows as an empty cell.
  */
 
 import { numberOf, type Column, type ResultTable, type Row } from './data.js';
@@ -14,6 +15,17 @@ interface GridState {
   sortBy?: string;
   descending: boolean;
   filter: string;
+}
+
+/** A measure's value with its digits grouped, keeping every decimal it came with. */
+function measureText(value: unknown, format: (decimals: number) => Intl.NumberFormat): string {
+  const text = cellText(value).trim();
+  const match = /^-?\d+(?:\.(\d+))?$/.exec(text);
+  if (!match) {
+    return text;
+  }
+  // Format the string, not a Number, so DECIMAL values longer than a double keep their digits
+  return format(match[1]?.length ?? 0).format(text as unknown as number);
 }
 
 function cellText(value: unknown): string {
@@ -39,8 +51,26 @@ function compare(a: unknown, b: unknown, column: Column): number {
  * @param table - The result
  * @param bar - Toolbar that takes the row count and the filter, so they share a line with its other controls
  */
-export function renderGrid(container: HTMLElement, table: ResultTable, bar: HTMLElement): void {
+export function renderGrid(
+  container: HTMLElement,
+  table: ResultTable,
+  bar: HTMLElement,
+  options: { locale?: string } = {},
+): void {
   const state: GridState = { descending: false, filter: '' };
+  const formats = new Map<number, Intl.NumberFormat>();
+  const format = (decimals: number): Intl.NumberFormat => {
+    let found = formats.get(decimals);
+    if (!found) {
+      found = new Intl.NumberFormat(options.locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      formats.set(decimals, found);
+    }
+    return found;
+  };
+  // Right-align and group only real quantities; numeric codes and dates read as text
+  const isMeasure = (column: Column): boolean => column.role === 'measure' && NUMERIC.has(column.kind);
+  const shownText = (value: unknown, column: Column): string =>
+    isMeasure(column) ? measureText(value, format) : cellText(value);
   container.replaceChildren();
 
   const toolbar = document.createElement('div');
@@ -49,8 +79,10 @@ export function renderGrid(container: HTMLElement, table: ResultTable, bar: HTML
   filter.type = 'search';
   filter.placeholder = 'Filter rows';
   filter.setAttribute('aria-label', 'Filter rows');
+  filter.dataset.focus = 'filter';
   const count = document.createElement('span');
   count.className = 'meta';
+  count.setAttribute('aria-live', 'polite');
   toolbar.append(count, filter);
   bar.append(toolbar);
 
@@ -67,14 +99,24 @@ export function renderGrid(container: HTMLElement, table: ResultTable, bar: HTML
   for (const column of table.columns) {
     const th = document.createElement('th');
     th.scope = 'col';
-    if (NUMERIC.has(column.kind)) th.className = 'num';
+    th.setAttribute('aria-sort', 'none');
+    if (isMeasure(column)) th.className = 'num';
     const button = document.createElement('button');
     button.type = 'button';
+    button.dataset.focus = `sort-${column.name}`;
     button.textContent = column.name;
-    button.title = `${column.name} (${column.kind})`;
+    button.title = `Sort by ${column.name} (${column.kind})`;
+    // Ascending, then descending, then back to the order the query returned
     button.addEventListener('click', () => {
-      state.descending = state.sortBy === column.name ? !state.descending : false;
-      state.sortBy = column.name;
+      if (state.sortBy !== column.name) {
+        state.sortBy = column.name;
+        state.descending = false;
+      } else if (!state.descending) {
+        state.descending = true;
+      } else {
+        state.sortBy = undefined;
+        state.descending = false;
+      }
       draw();
     });
     th.append(button);
@@ -90,7 +132,12 @@ export function renderGrid(container: HTMLElement, table: ResultTable, bar: HTML
   function visibleRows(): Row[] {
     let rows = table.rows;
     if (state.filter) {
-      rows = rows.filter((row) => table.columns.some((c) => cellText(row[c.name]).toLowerCase().includes(state.filter)));
+      // Match what the cell shows and the raw value, so "1 250" and "1250" both find it
+      rows = rows.filter((row) => table.columns.some((c) => {
+        const value = row[c.name];
+        return cellText(value).toLowerCase().includes(state.filter)
+          || (isMeasure(c) && shownText(value, c).toLowerCase().includes(state.filter));
+      }));
     }
     const sortColumn = table.columns.find((c) => c.name === state.sortBy);
     if (sortColumn) {
@@ -109,12 +156,16 @@ export function renderGrid(container: HTMLElement, table: ResultTable, bar: HTML
       for (const column of table.columns) {
         const td = document.createElement('td');
         const value = row[column.name];
-        if (NUMERIC.has(column.kind)) td.className = 'num';
+        if (isMeasure(column)) td.className = 'num';
         if (value === null || value === undefined) {
           td.classList.add('null');
-          td.textContent = 'NULL';
+          td.title = 'No value (NULL)';
+          const hidden = document.createElement('span');
+          hidden.className = 'sr-only';
+          hidden.textContent = 'No value';
+          td.append(hidden);
         } else {
-          td.textContent = cellText(value);
+          td.textContent = shownText(value, column);
         }
         tr.append(td);
       }

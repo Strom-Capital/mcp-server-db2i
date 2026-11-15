@@ -5,7 +5,11 @@
   --v-ink: var(--color-text-primary, #161716);
   --v-muted: var(--color-text-secondary, #666962);
   --v-line: var(--color-border-tertiary, #d8d6cf);
+  /* Control outlines: 3:1 against the surface, unlike the hairline rules */
+  --v-control: var(--color-border-primary, #8a8c85);
   --v-accent: #3159e8;
+  /* The chart box; the loading placeholder uses it too, so the frame keeps its height */
+  --v-chart-height: 320px;
   --v-error: var(--color-text-danger, #b42318);
   --v-sans: var(--font-sans, 'Geist Variable', Geist, system-ui, -apple-system, 'Segoe UI', sans-serif);
   --v-mono: var(--font-mono, 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
@@ -16,8 +20,22 @@
   --v-ink: var(--color-text-primary, #ecebe4);
   --v-muted: var(--color-text-secondary, #9c9e97);
   --v-line: var(--color-border-tertiary, #2e302d);
+  --v-control: var(--color-border-primary, #6a6c66);
   --v-accent: #7d97ff;
   --v-error: var(--color-text-danger, #f97066);
+}
+
+/* Before the host says which theme it uses, follow the system */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --v-surface: var(--color-background-primary, #181918);
+    --v-ink: var(--color-text-primary, #ecebe4);
+    --v-muted: var(--color-text-secondary, #9c9e97);
+    --v-line: var(--color-border-tertiary, #2e302d);
+    --v-control: var(--color-border-primary, #6a6c66);
+    --v-accent: #7d97ff;
+    --v-error: var(--color-text-danger, #f97066);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -39,7 +57,7 @@ html, body {
   margin-bottom: 12px;
 }
 
-.tabs { display: inline-flex; border: 1px solid var(--v-line); border-radius: 3px; overflow: hidden; }
+.tabs { display: inline-flex; border: 1px solid var(--v-control); border-radius: 3px; overflow: hidden; }
 
 .tabs button, .toolbar select, .grid-toolbar input {
   font: 500 11px var(--v-mono);
@@ -52,7 +70,7 @@ html, body {
   cursor: pointer;
 }
 
-.tabs button + button { border-left: 1px solid var(--v-line); }
+.tabs button + button { border-left: 1px solid var(--v-control); }
 .tabs button[aria-selected='true'] { color: var(--v-ink); box-shadow: inset 0 -2px 0 var(--v-accent); }
 .tabs button:disabled { cursor: default; opacity: 0.45; }
 .tabs button:focus-visible, .toolbar select:focus-visible, .grid-toolbar input:focus-visible, th button:focus-visible {
@@ -60,9 +78,9 @@ html, body {
   outline-offset: -2px;
 }
 
-.toolbar select { border: 1px solid var(--v-line); border-radius: 3px; padding: 5px 8px; color: var(--v-ink); }
+.toolbar select { border: 1px solid var(--v-control); border-radius: 3px; padding: 5px 8px; color: var(--v-ink); }
 
-.chart { position: relative; height: 320px; }
+.chart { position: relative; height: var(--v-chart-height); }
 
 /* Every tile has a divider and indent; the row is pulled left and clipped, so the first tile on each line starts flush */
 .kpis { overflow: hidden; border-top: 1px solid var(--v-ink); }
@@ -80,17 +98,19 @@ h2 { font: 500 14px var(--v-sans); margin: 0 0 10px; }
   letter-spacing: 0;
   font-weight: 400;
   color: var(--v-ink);
-  border: 1px solid var(--v-line);
+  border: 1px solid var(--v-control);
   border-radius: 2px;
   padding: 5px 8px;
   width: 200px;
   cursor: text;
 }
+.grid-toolbar input::placeholder { color: var(--v-muted); opacity: 1; }
 .meta { font: 11px var(--v-mono); color: var(--v-muted); }
 
 .grid-scroll { max-height: 360px; overflow: auto; border-top: 1px solid var(--v-ink); }
 table { border-collapse: collapse; width: 100%; font: 12px/1.35 var(--v-mono); font-variant-numeric: tabular-nums; }
-th, td { padding: 5px 10px 5px 0; text-align: left; border-bottom: 1px solid var(--v-line); white-space: nowrap; }
+th, td { padding: 5px 16px 5px 0; text-align: left; border-bottom: 1px solid var(--v-line); white-space: nowrap; }
+th:last-child, td:last-child { padding-right: 0; }
 th { position: sticky; top: 0; background: var(--v-surface); }
 th button {
   font: 500 11px var(--v-mono);
@@ -106,14 +126,22 @@ th[aria-sort='ascending'] button::after { content: ' \2191'; }
 th[aria-sort='descending'] button::after { content: ' \2193'; }
 .num { text-align: right; }
 th.num button { text-align: right; }
-td.null { color: var(--v-muted); }
+/* Measures take a wider gap on the right, so a number never runs into the text column after it */
+th.num:not(:last-child), td.num:not(:last-child) { padding-right: 24px; }
 
-.notes p, .message { font: 12px var(--v-mono); color: var(--v-muted); margin: 10px 0 0; }
-.message.error { color: var(--v-error); }
+.notes p { font: 12px var(--v-mono); color: var(--v-muted); margin: 10px 0 0; }
 
-/* Loading placeholder: the toolbar and grid as blocks, pulsing row by row */
+/* No rows, or an error: a headline, the detail, and a next step */
+.state { padding: 4px 0 2px; max-width: 72ch; }
+.state p { margin: 0; }
+.state .state-title { font: 500 14px/1.4 var(--v-sans); color: var(--v-ink); }
+.state.error .state-title { color: var(--v-error); }
+.state .state-detail { font: 12px/1.5 var(--v-mono); color: var(--v-muted); margin-top: 4px; overflow-wrap: anywhere; }
+.state .state-hint { font: 13px/1.45 var(--v-sans); color: var(--v-ink); margin-top: 8px; }
+
+/* Loading placeholder in the shape of the coming result: the grid, the chart box, or KPI tiles */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.bone { background: var(--v-line); border-radius: 2px; }
+.bone { background: color-mix(in srgb, var(--v-line) 75%, var(--v-muted)); border-radius: 2px; }
 .bone-tabs { width: 132px; height: 27px; margin-bottom: 12px; }
 .bone-rows { border-top: 1px solid var(--v-ink); }
 .bone-row {
@@ -128,5 +156,19 @@ td.null { color: var(--v-muted); }
 .bone-row:first-child .bone { background: var(--v-muted); opacity: 0.45; }
 .bone-row .bone:nth-child(odd) { width: 70%; }
 .bone-row .bone:last-child { justify-self: end; width: 60%; }
-@keyframes bone-pulse { 50% { opacity: 0.4; } }
-@media (prefers-reduced-motion: reduce) { .bone-row { animation: none; } }
+.bone-text { display: inline-block; max-width: 100%; vertical-align: top; }
+.bone-chart { display: flex; flex-direction: column; }
+.bone-title { font: 500 14px var(--v-sans); padding: 4px 0 12px; }
+.bone-plot {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 9%;
+  padding: 0 5% 0 8%;
+  border-bottom: 1px solid var(--v-ink);
+  background: repeating-linear-gradient(to top, transparent 0 calc(25% - 1px), var(--v-line) calc(25% - 1px) 25%);
+}
+.bone-bar { flex: 1; border-radius: 0; background: var(--v-line); animation: bone-pulse 1.4s ease-in-out var(--delay, 0ms) infinite; }
+.bone-pulse { animation: bone-pulse 1.4s ease-in-out infinite; }
+@keyframes bone-pulse { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .bone-row, .bone-bar, .bone-pulse { animation: none; } }
