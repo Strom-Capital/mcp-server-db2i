@@ -1692,12 +1692,17 @@ function customToolInputSchema(tool: StoredTool, sessionContext: SessionContext 
 export const TOOL_META_KEY = 'db2i-mcp/tool';
 
 /**
- * Tool `_meta` for a business tool: its kind and YAML toolset. Built-in tools
- * carry no such entry.
+ * Tool `_meta` for a business tool: its kind, YAML toolset, and chart type
+ * and title when it has a `chart:` block. Built-in tools carry no such entry.
  */
 export function customToolMeta(tool: StoredTool): Record<string, unknown> {
   return {
-    [TOOL_META_KEY]: { kind: 'business', ...(tool.toolset ? { toolset: tool.toolset } : {}) },
+    [TOOL_META_KEY]: {
+      kind: 'business',
+      ...(tool.toolset ? { toolset: tool.toolset } : {}),
+      // The result view draws a placeholder in this shape while the tool runs
+      ...(tool.chart ? { chart: { type: tool.chart.type, ...(tool.chart.title ? { title: tool.chart.title } : {}) } } : {}),
+    },
     ...resultViewMeta(),
   };
 }

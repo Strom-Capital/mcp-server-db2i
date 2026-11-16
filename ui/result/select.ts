@@ -4,7 +4,7 @@
  * chart, or none when the result does not chart well.
  */
 
-import type { ChartHint, ChartType, Column, ResultTable } from './data.js';
+import { numberOf, type ChartHint, type ChartType, type Column, type ResultTable } from './data.js';
 import { MAX_SERIES } from './theme.js';
 
 /** A chart with every column it needs chosen. */
@@ -155,26 +155,52 @@ export function selectChart(table: ResultTable): Selection {
   return { plan: ruleChart(table), showChart: false };
 }
 
-/** Chart types the type menu offers for a result. */
-export function availableTypes(table: ResultTable): ChartPlan['type'][] {
-  const measures = byRole(table, 'measure').length;
-  const axes = byRole(table, 'time').length + byRole(table, 'category').length;
-  if (measures === 0 || table.rows.length === 0) {
+/** Pie and doughnut read only with a few slices. */
+const MAX_SLICES = 8;
+
+/**
+ * Chart types the type menu offers: the ones that suit the shape of the
+ * current chart, with the current type always among them.
+ *
+ * - Split into series: bar, line and area.
+ * - Over time: line, area and bar.
+ * - Over categories: bar and pareto; pie and doughnut for a few slices;
+ *   waterfall when the measure has negative changes.
+ * - Two measures and no axis: scatter. One measure with many rows: histogram.
+ * - Up to three rows: KPI tiles.
+ */
+export function availableTypes(table: ResultTable, plan: ChartPlan): ChartPlan['type'][] {
+  const rows = table.rows.length;
+  const measures = byRole(table, 'measure');
+  if (measures.length === 0 || rows === 0) {
     return [];
   }
+  const x = column(table, plan.x);
+  const axis = x && x.role !== 'measure' ? x : undefined;
   const types: ChartPlan['type'][] = [];
-  if (axes > 0) {
-    types.push('bar', 'line', 'area', 'pareto', 'waterfall');
-    if (table.rows.length <= 50) {
+  if (axis && plan.series) {
+    types.push('bar', 'line', 'area');
+  } else if (axis?.role === 'time') {
+    types.push('line', 'area', 'bar');
+  } else if (axis) {
+    types.push('bar', 'pareto');
+    if (axis.distinct <= MAX_SLICES) {
       types.push('pie', 'doughnut');
     }
+    const measure = plan.y[0];
+    if (table.rows.some((row) => (numberOf(row[measure]) ?? 0) < 0)) {
+      types.push('waterfall');
+    }
+  } else {
+    if (measures.length >= 2 && rows >= 5) {
+      types.push('scatter');
+    }
+    if (rows >= 10) {
+      types.push('histogram');
+    }
   }
-  if (measures >= 2) {
-    types.push('scatter');
-  }
-  types.push('histogram');
-  if (table.rows.length <= 3) {
+  if (rows <= 3) {
     types.push('kpi');
   }
-  return types;
+  return types.includes(plan.type) ? types : [plan.type, ...types];
 }

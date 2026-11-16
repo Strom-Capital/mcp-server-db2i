@@ -196,12 +196,34 @@ describe('selectChart', () => {
 });
 
 describe('availableTypes', () => {
-  it('offers pies only for short results and KPI tiles only for a few rows', () => {
+  const plan = (x: string | undefined, y: string, extra: object = {}) =>
+    ({ type: 'bar' as const, ...(x ? { x } : {}), y: [y], stacked: false, horizontal: false, ...extra });
+
+  it('offers pies only for a few slices and KPI tiles only for a few rows', () => {
     const short = table({ data: [{ S: 'a', V: 1 }, { S: 'b', V: 2 }] });
-    expect(availableTypes(short)).toEqual(expect.arrayContaining(['bar', 'pie', 'kpi']));
+    expect(availableTypes(short, plan('S', 'V'))).toEqual(['bar', 'pareto', 'pie', 'doughnut', 'kpi']);
     const long = table({ data: Array.from({ length: 60 }, (_, i) => ({ S: `s${i}`, V: i })) });
-    expect(availableTypes(long)).not.toContain('pie');
-    expect(availableTypes(long)).not.toContain('kpi');
+    expect(availableTypes(long, plan('S', 'V'))).toEqual(['bar', 'pareto']);
+  });
+
+  it('offers only line, area and bar over time or split into series', () => {
+    const months = ['2026-01-01', '2026-02-01', '2026-03-01'];
+    const series = table({
+      columns: [{ name: 'MONTH', kind: 'date' }, { name: 'STATUS', kind: 'string' }, { name: 'TOTAL', kind: 'decimal' }],
+      data: months.flatMap((m) => ['A', 'B'].map((s) => ({ MONTH: m, STATUS: s, TOTAL: 5 }))),
+    });
+    expect(availableTypes(series, { ...plan('MONTH', 'TOTAL', { series: 'STATUS' }), type: 'line' }))
+      .toEqual(['bar', 'line', 'area']);
+    const time = table({ columns: [{ name: 'MONTH', kind: 'date' }, { name: 'TOTAL', kind: 'decimal' }], data: months.map((m) => ({ MONTH: m, TOTAL: 5 })) });
+    expect(availableTypes(time, { ...plan('MONTH', 'TOTAL'), type: 'line' })).toEqual(['line', 'area', 'bar', 'kpi']);
+  });
+
+  it('offers a waterfall only when the measure has negative changes, and keeps a hinted type', () => {
+    const steps = table({ data: [{ S: 'Start', V: 100 }, { S: 'Sales', V: 40 }, { S: 'Returns', V: -12 }, { S: 'Freight', V: 6 }] });
+    expect(availableTypes(steps, plan('S', 'V'))).toContain('waterfall');
+    const positive = table({ data: [{ S: 'a', V: 1 }, { S: 'b', V: 2 }, { S: 'c', V: 3 }, { S: 'd', V: 4 }] });
+    expect(availableTypes(positive, plan('S', 'V'))).not.toContain('waterfall');
+    expect(availableTypes(positive, { ...plan('S', 'V'), type: 'waterfall' })[0]).toBe('waterfall');
   });
 });
 
@@ -243,6 +265,25 @@ describe('buildChart', () => {
     const t = table({ data: [{ REVENUE: '2381920.55', AVG_LINES: '3.45' }] });
     const built = buildChart(t, { type: 'kpi', y: ['REVENUE', 'AVG_LINES'], stacked: false, horizontal: false }, { ...ctx, locale: 'en-US' });
     expect(built).toMatchObject({ kind: 'kpi', items: [{ value: '2,381,921' }, { value: '3.45' }] });
+  });
+
+  it('keeps the decimals of a single KPI tile', () => {
+    const t = table({ data: [{ REVENUE: '2381920.55' }] });
+    const built = buildChart(t, { type: 'kpi', y: ['REVENUE'], stacked: false, horizontal: false }, ctx);
+    expect(built).toMatchObject({ kind: 'kpi', items: [{ value: '2,381,920.55' }] });
+  });
+
+  it('names the waterfall and pareto colors in the legend', () => {
+    const steps = [{ STEP: 'Start', AMOUNT: 100 }, { STEP: 'Sales', AMOUNT: 40 }, { STEP: 'Returns', AMOUNT: -15 }];
+    const waterfall = buildChart(table({ data: steps }), { type: 'waterfall', x: 'STEP', y: ['AMOUNT'], stacked: false, horizontal: false }, ctx);
+    const labels = (built: ReturnType<typeof buildChart>) => built.kind === 'chart'
+      ? (built.config.options as { plugins: { legend: { labels: { generateLabels: () => { text: string }[] } } } })
+        .plugins.legend.labels.generateLabels().map((label) => label.text)
+      : [];
+    expect(labels(waterfall)).toEqual(['Start and end', 'Increase', 'Decrease']);
+    const ranked = [50, 30, 10, 5, 3, 2].map((V, i) => ({ S: `s${i}`, V }));
+    const pareto = buildChart(table({ data: ranked }), { type: 'pareto', x: 'S', y: ['V'], stacked: false, horizontal: false }, ctx);
+    expect(labels(pareto)).toEqual(['V, top 80%', 'The rest', 'Cumulative %']);
   });
 
   it('ends a waterfall with a total bar', () => {
