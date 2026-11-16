@@ -37,7 +37,7 @@ const light: Theme = {
   down: '#c4583f',
   total: '#3a3d37',
   series: ['#3159e8', '#a8761c', '#2a8576', '#c4583f', '#3a3d37', '#8a5fb8'],
-  other: '#bdb8ab',
+  other: '#938f82',
   ramp: ['#1d3797', '#3159e8', '#6f8cf0', '#a9bbf6', '#d6defb'],
 };
 
@@ -52,7 +52,7 @@ const dark: Theme = {
   down: '#ec8468',
   total: '#d9d8d0',
   series: ['#7d97ff', '#e0b05a', '#3f9e8f', '#ec8468', '#d9d8d0', '#bb9ae6'],
-  other: '#4c4e49',
+  other: '#686a63',
   ramp: ['#c3cfff', '#7d97ff', '#5674e6', '#3a54b8', '#27397a'],
 };
 

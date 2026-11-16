@@ -40,7 +40,7 @@ import { loadCustomTools } from '../../src/customTools/loader.js';
 import { getCustomTools, resetCustomTools, setCustomTools } from '../../src/customTools/registry.js';
 import type { DB2iConfig } from '../../src/config.js';
 import { initializePool } from '../../src/db/connection.js';
-import { createServer, TOOL_META_KEY, type SessionContext } from '../../src/server.js';
+import { createServer, customToolMeta, TOOL_META_KEY, type SessionContext } from '../../src/server.js';
 
 function textOf(result: CallToolResult): string {
   return (result.content[0] as { type: 'text'; text: string }).text;
@@ -114,6 +114,15 @@ describe('Custom ERP tools', () => {
     const search = tools.find((tool) => tool.name === 'search_sales_orders');
     expect(search?.annotations?.readOnlyHint).toBe(true);
     expect(search?.description).toContain('customer');
+  });
+
+  it('names the chart type and title of a tool with a chart block, for the result view placeholder', () => {
+    const tool = { toolset: 'sales', chart: { type: 'bar', x: 'STATUS', title: 'Orders by status' } };
+    expect(customToolMeta(tool as unknown as Parameters<typeof customToolMeta>[0])[TOOL_META_KEY]).toEqual({
+      kind: 'business',
+      toolset: 'sales',
+      chart: { type: 'bar', title: 'Orders by status' },
+    });
   });
 
   it('marks business tools and their toolset in _meta, and leaves built-in tools unmarked', async () => {
