@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.8.8](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.7...v3.8.8) (2026-11-16)
+
+
+### Bug Fixes
+
+* **ui:** steady result view height, focus, states and grid readability ([#366](https://github.com/Strom-Capital/mcp-server-db2i/issues/366)) ([df0448f](https://github.com/Strom-Capital/mcp-server-db2i/commit/df0448fd6bbabf1fe1e795ac43f45c3424dc03a1))
+
+
+### Dependencies
+
+* bump @hono/node-server, express-rate-limit, hono, astro, dev tooling and web-app example packages ([#364](https://github.com/Strom-Capital/mcp-server-db2i/issues/364)) ([20843ba](https://github.com/Strom-Capital/mcp-server-db2i/commit/20843ba071774feaeed62a8fef8f4c5281b3b662))
+
 ## [3.8.7](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.6...v3.8.7) (2026-11-11)
 
 
