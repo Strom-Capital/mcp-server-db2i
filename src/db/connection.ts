@@ -13,7 +13,7 @@ import type { DB2iConfig } from '../config.js';
 import { queryTimeoutMs } from '../config.js';
 import { DEFAULT_SYSTEM_NAME, STDIO_POOL_KEY, type DbTarget } from '../systems.js';
 import type { DbColumn, DbPool, DbRows, RowCursor } from './driver.js';
-import { DbError, loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
+import { DbError, isConnectionLost, loadDriver, QueryTimeoutError, toJsonSafeRows, toParams } from './driver.js';
 import { DatabaseQueryError, explainSqlError, LOOKUP_TIMEOUT_MS, type SqlErrorDetails } from './sqlErrorInfo.js';
 import { createChildLogger } from '../utils/logger.js';
 
@@ -56,6 +56,13 @@ let idleSweeper: NodeJS.Timeout | undefined;
 
 // Pools whose close() has started and not finished, for the shutdown deadline log
 const closingPools = new Set<string>();
+
+// Statements and cursors running on each pool, so a pool dropped after the IBM i
+// ended its connection closes only once they have finished
+const poolUsers = new Map<Promise<DbPool>, number>();
+
+// Dropped pools that close when the last statement or cursor using them ends
+const retiring = new Map<Promise<DbPool>, () => void>();
 
 // Systems whose failed cancel was already logged, so a runaway query per call
 // does not repeat the same warning
@@ -346,6 +353,77 @@ function acquire(slot: PoolSlot, target: DbTarget): Promise<DbPool> {
   return created;
 }
 
+/** One statement's or cursor's use of a pool. */
+interface Lease {
+  db: DbPool;
+  /** The slot's pool when the lease was taken, for retire(). */
+  pending: Promise<DbPool>;
+  /** Stop using the pool. Safe to call twice. */
+  done(): void;
+}
+
+/**
+ * Get the slot's pool, creating it on first use, and count the caller as a
+ * user of it until `done()`. A pool that retire() dropped closes when its last
+ * user is done.
+ */
+async function lease(slot: PoolSlot, target: DbTarget): Promise<Lease> {
+  const pending = acquire(slot, target);
+  poolUsers.set(pending, (poolUsers.get(pending) ?? 0) + 1);
+  let finished = false;
+  const done = (): void => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    const users = (poolUsers.get(pending) ?? 1) - 1;
+    if (users > 0) {
+      poolUsers.set(pending, users);
+      return;
+    }
+    poolUsers.delete(pending);
+    const close = retiring.get(pending);
+    if (close) {
+      retiring.delete(pending);
+      close();
+    }
+  };
+  try {
+    return { db: await pending, pending, done };
+  } catch (error) {
+    done();
+    throw error;
+  }
+}
+
+/**
+ * Drop a pool whose connection the IBM i ended, so the next statement opens a
+ * new one. node-odbc puts a dead connection back in its pool and hands it out
+ * again, so without this every later statement fails the same way until the
+ * process restarts. The old pool closes once the statements and cursors still
+ * using it have ended. Nothing happens when the slot already has another pool.
+ */
+function retire(slot: PoolSlot, target: DbTarget, pending: Promise<DbPool>): void {
+  if (slot.pool !== pending) {
+    return;
+  }
+  slot.pool = undefined;
+  log.warn(
+    { ...logContext(target), driver: slot.config.driver },
+    `${slot.label}: the IBM i ended the connection, so the next statement opens a new one`
+  );
+  const detached: PoolSlot = { ...slot, pool: pending };
+  const sessionId = target.poolKey === STDIO_POOL_KEY ? undefined : target.poolKey;
+  const close = (): void => {
+    void closeSlot(detached, target.system, sessionId);
+  };
+  if (poolUsers.has(pending)) {
+    retiring.set(pending, close);
+  } else {
+    close();
+  }
+}
+
 function resolve(target: DbTarget | undefined): DbTarget {
   if (target) {
     return target;
@@ -429,7 +507,6 @@ async function run(
   const resolved = resolve(target);
   const slot = getSlot(resolved, procedure);
   const kind = procedure ? 'Procedure' : 'Query';
-  let db: DbPool | undefined;
   const release = markActive(resolved);
 
   try {
@@ -437,38 +514,55 @@ async function run(
       { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
       procedure ? 'Executing procedure' : 'Executing query'
     );
-    db = await acquire(slot, resolved);
-    const timeoutMs = queryTimeoutMs(slot.config);
-    const warmUp = scheduleCancelWarmUp(slot, resolved, procedure, timeoutMs);
-    let rawRows: DbRows;
-    try {
-      rawRows = await db.query(sql, toParams(params), {
-        timeoutMs,
-        cancelJob: (jobName) => cancelSql(jobName, resolved),
-      });
-    } finally {
-      clearTimeout(warmUp);
+    // A statement whose connection the IBM i ended runs once more on a new
+    // pool. Safe: the query pool is read only, and the procedure pool runs only
+    // QSYS2.GENERATE_SQL.
+    for (let attempt = 1; ; attempt++) {
+      let used: Lease | undefined;
+      try {
+        used = await lease(slot, resolved);
+        const timeoutMs = queryTimeoutMs(slot.config);
+        const warmUp = scheduleCancelWarmUp(slot, resolved, procedure, timeoutMs);
+        let rawRows: DbRows;
+        try {
+          rawRows = await used.db.query(sql, toParams(params), {
+            timeoutMs,
+            cancelJob: (jobName) => cancelSql(jobName, resolved),
+          });
+        } finally {
+          clearTimeout(warmUp);
+        }
+        // BIGINT and binary values from ODBC are not JSON; convert them once, for every output path
+        const rows = toJsonSafeRows(Array.from(rawRows));
+        log.debug({ rowCount: rows.length }, `${kind} completed`);
+        const { roundedColumns, columns } = rawRows;
+        return {
+          rows,
+          ...(roundedColumns ? { roundedColumns } : {}),
+          ...(columns ? { columns } : {}),
+        };
+      } catch (error) {
+        if (used && isConnectionLost(error)) {
+          retire(slot, resolved, used.pending);
+          if (attempt === 1) {
+            log.info({ ...logContext(resolved) }, `${kind} lost its connection; running it again on a new one`);
+            continue;
+          }
+        }
+        if (error instanceof QueryTimeoutError) {
+          logTimeout(error, resolved, slot.config.driver, sql);
+        }
+        log.debug({ err: error, sql: sql.substring(0, 200) }, procedure ? 'Procedure call failed' : 'Database query failed');
+        if (!used) {
+          const message = error instanceof Error ? error.message : 'Unknown database error';
+          throw new Error(`Database query failed: ${message}`, { cause: error });
+        }
+        const { message, details } = await explainSqlError(error, used.db, resolved.system);
+        throw new DatabaseQueryError(`Database query failed: ${message}`, details, { cause: error });
+      } finally {
+        used?.done();
+      }
     }
-    // BIGINT and binary values from ODBC are not JSON; convert them once, for every output path
-    const rows = toJsonSafeRows(Array.from(rawRows));
-    log.debug({ rowCount: rows.length }, `${kind} completed`);
-    const { roundedColumns, columns } = rawRows;
-    return {
-      rows,
-      ...(roundedColumns ? { roundedColumns } : {}),
-      ...(columns ? { columns } : {}),
-    };
-  } catch (error) {
-    if (error instanceof QueryTimeoutError) {
-      logTimeout(error, resolved, slot.config.driver, sql);
-    }
-    log.debug({ err: error, sql: sql.substring(0, 200) }, procedure ? 'Procedure call failed' : 'Database query failed');
-    if (!db) {
-      const message = error instanceof Error ? error.message : 'Unknown database error';
-      throw new Error(`Database query failed: ${message}`, { cause: error });
-    }
-    const { message, details } = await explainSqlError(error, db, resolved.system);
-    throw new DatabaseQueryError(`Database query failed: ${message}`, details, { cause: error });
   } finally {
     release();
   }
@@ -503,8 +597,10 @@ export async function explainUnparsedStatement(
   }
   const slot = getSlot(resolved, false);
   const release = markActive(resolved);
+  let used: Lease | undefined;
   try {
-    const db = await acquire(slot, resolved);
+    used = await lease(slot, resolved);
+    const { db } = used;
     if (!db.prepare) {
       return undefined;
     }
@@ -521,6 +617,11 @@ export async function explainUnparsedStatement(
     if (outcome === 'prepared') {
       return { accepted: true };
     }
+    if (isConnectionLost(outcome)) {
+      // Not a reason Db2 rejects the statement; the next statement gets a new pool
+      retire(slot, resolved, used.pending);
+      return undefined;
+    }
     if (!(outcome instanceof DbError)) {
       if (outcome === 'timeout') {
         log.debug({ ...logContext(resolved) }, 'Prepare to explain a parse failure timed out');
@@ -532,6 +633,7 @@ export async function explainUnparsedStatement(
     log.debug({ err: error, ...logContext(resolved) }, 'Prepare to explain a parse failure failed');
     return undefined;
   } finally {
+    used?.done();
     release();
   }
 }
@@ -555,8 +657,6 @@ export async function openQueryCursor(
 ): Promise<RowCursor> {
   const resolved = resolve(target);
   const slot = getSlot(resolved, false);
-  let db: DbPool | undefined;
-  let warmUp: NodeJS.Timeout | undefined;
   // The cursor holds a connection until it is closed, so it counts as use until then
   const release = markActive(resolved);
 
@@ -570,45 +670,65 @@ export async function openQueryCursor(
     return new DatabaseQueryError(`Database query failed: ${message}`, details, { cause: error });
   };
 
-  try {
-    log.debug(
-      { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
-      'Opening cursor'
-    );
-    db = await acquire(slot, resolved);
-    if (!db.openCursor) {
-      throw new Error(`The ${slot.config.driver} driver cannot read results in batches`);
+  log.debug(
+    { sql: sql.substring(0, 200), paramCount: params.length, ...logContext(resolved) },
+    'Opening cursor'
+  );
+  // A cursor whose connection the IBM i ended opens once more on a new pool.
+  // Once rows are handed out it is never started again.
+  for (let attempt = 1; ; attempt++) {
+    let used: Lease | undefined;
+    let warmUp: NodeJS.Timeout | undefined;
+    try {
+      used = await lease(slot, resolved);
+      const { db, pending, done } = used;
+      if (!db.openCursor) {
+        throw new Error(`The ${slot.config.driver} driver cannot read results in batches`);
+      }
+      warmUp = scheduleCancelWarmUp(slot, resolved, false, options.timeoutMs);
+      const cursor = await db.openCursor(sql, toParams(params), {
+        fetchSize: options.fetchSize,
+        timeoutMs: options.timeoutMs,
+        signal: options.signal,
+        cancelJob: (jobName) => cancelSql(jobName, resolved),
+      });
+      const timer = warmUp;
+      return {
+        columns: cursor.columns,
+        async next() {
+          try {
+            return await cursor.next();
+          } catch (error) {
+            if (isConnectionLost(error)) {
+              retire(slot, resolved, pending);
+            }
+            throw await explain(error, db);
+          }
+        },
+        async close() {
+          clearTimeout(timer);
+          try {
+            await cursor.close();
+          } finally {
+            done();
+            release();
+          }
+        },
+      };
+    } catch (error) {
+      clearTimeout(warmUp);
+      if (used && isConnectionLost(error)) {
+        retire(slot, resolved, used.pending);
+        if (attempt === 1) {
+          used.done();
+          log.info({ ...logContext(resolved) }, 'Cursor lost its connection while opening; opening it again on a new one');
+          continue;
+        }
+      }
+      used?.done();
+      release();
+      throw await explain(error, used?.db);
     }
-    warmUp = scheduleCancelWarmUp(slot, resolved, false, options.timeoutMs);
-    const cursor = await db.openCursor(sql, toParams(params), {
-      fetchSize: options.fetchSize,
-      timeoutMs: options.timeoutMs,
-      signal: options.signal,
-      cancelJob: (jobName) => cancelSql(jobName, resolved),
-    });
-    const pool = db;
-    return {
-      columns: cursor.columns,
-      async next() {
-        try {
-          return await cursor.next();
-        } catch (error) {
-          throw await explain(error, pool);
-        }
-      },
-      async close() {
-        clearTimeout(warmUp);
-        try {
-          await cursor.close();
-        } finally {
-          release();
-        }
-      },
-    };
-  } catch (error) {
-    clearTimeout(warmUp);
-    release();
-    throw await explain(error, db);
   }
 }
 
@@ -621,11 +741,27 @@ async function cancelSql(jobName: string, target: DbTarget): Promise<void> {
   const slot = getSlot(target, true);
   const release = markActive(target);
   try {
-    const db = await acquire(slot, target);
-    await db.query('CALL QSYS2.CANCEL_SQL(?)', [jobName], {
-      timeoutMs: CANCEL_CALL_TIMEOUT_MS,
-      noResultSet: true,
-    });
+    // A cancel whose connection the IBM i ended runs once more on a new pool
+    for (let attempt = 1; ; attempt++) {
+      const used = await lease(slot, target);
+      try {
+        await used.db.query('CALL QSYS2.CANCEL_SQL(?)', [jobName], {
+          timeoutMs: CANCEL_CALL_TIMEOUT_MS,
+          noResultSet: true,
+        });
+        break;
+      } catch (error) {
+        if (!isConnectionLost(error)) {
+          throw error;
+        }
+        retire(slot, target, used.pending);
+        if (attempt > 1) {
+          throw error;
+        }
+      } finally {
+        used.done();
+      }
+    }
   } finally {
     release();
   }
@@ -649,12 +785,23 @@ function scheduleCancelWarmUp(
   }
   const timer = setTimeout(() => {
     // getSlot throws once the session has closed, so it runs inside the chain
-    void Promise.resolve()
-      .then(() => acquire(getSlot(target, true), target))
-      .then((db) => db.query('VALUES 1', [], { timeoutMs: CANCEL_CALL_TIMEOUT_MS }))
-      .catch((err: unknown) => {
-        log.debug({ err, ...logContext(target) }, 'Could not open the pool QSYS2.CANCEL_SQL runs on');
-      });
+    void (async () => {
+      const procedureSlot = getSlot(target, true);
+      const used = await lease(procedureSlot, target);
+      try {
+        await used.db.query('VALUES 1', [], { timeoutMs: CANCEL_CALL_TIMEOUT_MS });
+      } catch (error) {
+        // The cancel then opens a new pool instead of finding a dead connection
+        if (isConnectionLost(error)) {
+          retire(procedureSlot, target, used.pending);
+        }
+        throw error;
+      } finally {
+        used.done();
+      }
+    })().catch((err: unknown) => {
+      log.debug({ err, ...logContext(target) }, 'Could not open the pool QSYS2.CANCEL_SQL runs on');
+    });
   }, timeoutMs / 2);
   timer.unref();
   return timer;

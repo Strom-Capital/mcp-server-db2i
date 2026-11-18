@@ -162,11 +162,22 @@ export function describeMapepireError(error: unknown): string {
 }
 
 /**
+ * What the Mapepire server answers, with no SQLSTATE, to every request once the
+ * IBM i ended the QZDASOINIT job behind its JDBC connection. The job still
+ * reports ready, so it is reported as SQLSTATE 08003 and the connection manager
+ * replaces the pool.
+ */
+const NOT_CONNECTED = /^Not connected, , 0$/;
+
+/**
  * The error a failed request throws: a DbError with the SQLSTATE and SQLCODE
  * when mapepire-js reported them, else a plain Error with the same message.
  */
 export function toMapepireError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);
+  if (NOT_CONNECTED.test(message)) {
+    return new DbError('[08003] Not connected', { sqlstate: '08003' }, { cause: error });
+  }
   const match = MAPEPIRE_SQL_ERROR.exec(message);
   if (match) {
     const sqlcode = Number(match[3]);

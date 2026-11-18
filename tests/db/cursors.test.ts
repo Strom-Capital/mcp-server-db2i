@@ -19,6 +19,15 @@ const state = vi.hoisted(() => ({
     cursorCloses: 0,
     connectionCloses: 0,
     lastOptions: undefined as Record<string, unknown> | undefined,
+    // Pools created so far; each fake pool knows its own number
+    pools: 0,
+    // Pools whose connections the IBM i has ended: every statement and fetch on them fails with 08S01
+    deadPools: new Set<number>(),
+    // Every pool is dead, as when the IBM i cannot be reached at all
+    allDead: false,
+    // Statements and fetches that reached a dead connection
+    deadHits: 0,
+    closedPools: new Set<number>(),
   },
   jt400: {
     rows: [] as unknown[][],
@@ -31,59 +40,90 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock('odbc', () => ({
-  pool: vi.fn(async () => ({
-    async query() {
-      return [];
-    },
-    async close() {},
-    async connect() {
-      return {
-        // The cursor runs through a prepared statement, so SQLCancel can reach it
-        async createStatement() {
-          return {
-            async prepare() {},
-            async bind() {},
-            async execute(options: Record<string, unknown>) {
-              state.odbc.lastOptions = options;
-              if (state.odbc.hang) {
-                await new Promise<void>((resolve) => {
-                  state.odbc.release = resolve;
-                });
-                throw Object.assign(new Error('cancelled'), {
-                  odbcErrors: [{ state: 'HY008', code: 0, message: 'Operation canceled' }],
-                });
-              }
-              if (state.odbc.queryError) {
-                throw state.odbc.queryError;
-              }
-              let index = 0;
-              return {
-                get noData() {
-                  return index >= state.odbc.batches.length;
-                },
-                async fetch() {
-                  const rows = state.odbc.batches[index] ?? [];
-                  index += 1;
-                  return Object.assign([...rows], { columns: state.odbc.columns, count: rows.length });
-                },
-                async close() {
-                  state.odbc.cursorCloses += 1;
-                },
-              };
-            },
-            async cancel() {
-              state.odbc.cancels += 1;
-              state.odbc.release?.();
-            },
-            async close() {},
-          };
-        },
-        async close() {
-          state.odbc.connectionCloses += 1;
-        },
-      };
-    },
-  })),
+  pool: vi.fn(async () => {
+    state.odbc.pools += 1;
+    const id = state.odbc.pools;
+    const dead = (): boolean => state.odbc.allDead || state.odbc.deadPools.has(id);
+    // What IBM i Access reports once the QZDASOINIT job behind a connection has ended
+    const linkFailure = (): Error => {
+      state.odbc.deadHits += 1;
+      return Object.assign(new Error('[odbc] Error executing the sql statement'), {
+        odbcErrors: [
+          {
+            state: '08S01',
+            code: -99999,
+            message:
+              'Communication link failure. comm rc=10054 - CWBCO1047 - The IBM i server application disconnected the connection',
+          },
+        ],
+      });
+    };
+    return {
+      async query() {
+        if (dead()) {
+          throw linkFailure();
+        }
+        return [];
+      },
+      async close() {
+        state.odbc.closedPools.add(id);
+      },
+      async connect() {
+        return {
+          // The cursor runs through a prepared statement, so SQLCancel can reach it
+          async createStatement() {
+            return {
+              async prepare() {},
+              async bind() {},
+              async execute(options: Record<string, unknown>) {
+                state.odbc.lastOptions = options;
+                if (dead()) {
+                  throw linkFailure();
+                }
+                if (state.odbc.hang) {
+                  await new Promise<void>((resolve) => {
+                    state.odbc.release = resolve;
+                  });
+                  throw Object.assign(new Error('cancelled'), {
+                    odbcErrors: [{ state: 'HY008', code: 0, message: 'Operation canceled' }],
+                  });
+                }
+                if (state.odbc.queryError) {
+                  throw state.odbc.queryError;
+                }
+                let index = 0;
+                return {
+                  get noData() {
+                    return index >= state.odbc.batches.length;
+                  },
+                  async fetch() {
+                    // The first fetch runs while the cursor opens; later ones are next()
+                    if (index > 0 && dead()) {
+                      throw linkFailure();
+                    }
+                    const rows = state.odbc.batches[index] ?? [];
+                    index += 1;
+                    return Object.assign([...rows], { columns: state.odbc.columns, count: rows.length });
+                  },
+                  async close() {
+                    state.odbc.cursorCloses += 1;
+                  },
+                };
+              },
+              async cancel() {
+                state.odbc.cancels += 1;
+                state.odbc.release?.();
+              },
+              async close() {},
+            };
+          },
+          async close() {
+            state.odbc.connectionCloses += 1;
+          },
+        };
+      },
+    };
+  }),
 }));
 
 vi.mock('node-jt400', () => ({
@@ -241,6 +281,10 @@ describe('openQueryCursor', () => {
       queryError: undefined,
       hang: false,
       connectionCloses: 0,
+      deadPools: new Set<number>(),
+      allDead: false,
+      deadHits: 0,
+      closedPools: new Set<number>(),
     });
   });
 
@@ -286,6 +330,73 @@ describe('openQueryCursor', () => {
 
     connection.setSessionPoolIdleTimeout(0);
     await connection.closeSessionPool('session-a');
+  });
+
+  describe('a connection the IBM i ended', () => {
+    it('opens the cursor on a new connection and closes the old one', async () => {
+      const connection = await import('../../src/db/connection.js');
+      connection.initializePool(config('odbc'));
+      await connection.executeQuery('VALUES 1');
+      const dead = state.odbc.pools;
+      state.odbc.deadPools.add(dead);
+
+      const cursor = await connection.openQueryCursor('SELECT ORDERNO FROM MYLIB.ORDERS', [], undefined, {
+        fetchSize: 100,
+        timeoutMs: 0,
+      });
+      expect(await drain(cursor)).toEqual([[1001]]);
+      await cursor.close();
+
+      expect(state.odbc.pools).toBe(dead + 1);
+      expect(state.odbc.closedPools.has(dead)).toBe(true);
+      await connection.closeGlobalPool();
+    });
+
+    it('opens it once more only, and reports the failure when the new connection fails too', async () => {
+      const connection = await import('../../src/db/connection.js');
+      connection.initializePool(config('odbc'));
+      await connection.executeQuery('VALUES 1');
+      const before = state.odbc.pools;
+      state.odbc.allDead = true;
+
+      await expect(
+        connection.openQueryCursor('SELECT ORDERNO FROM MYLIB.ORDERS', [], undefined, { fetchSize: 100, timeoutMs: 0 })
+      ).rejects.toThrow(/^Database query failed: \[08S01\].*CWBCO1047/);
+      expect(state.odbc.pools).toBe(before + 1);
+
+      state.odbc.allDead = false;
+      const cursor = await connection.openQueryCursor('SELECT ORDERNO FROM MYLIB.ORDERS', [], undefined, {
+        fetchSize: 100,
+        timeoutMs: 0,
+      });
+      expect(await drain(cursor)).toEqual([[1001]]);
+      await cursor.close();
+      await connection.closeGlobalPool();
+    });
+
+    it('reports a connection that ends during a read, and drops it so the next statement never reaches it', async () => {
+      state.odbc.batches = [[{ ORDERNO: 1001 }], [{ ORDERNO: 1002 }]];
+      const connection = await import('../../src/db/connection.js');
+      connection.initializePool(config('odbc'));
+      const cursor = await connection.openQueryCursor('SELECT ORDERNO FROM MYLIB.ORDERS', [], undefined, {
+        fetchSize: 1,
+        timeoutMs: 0,
+      });
+      const dead = state.odbc.pools;
+      expect(await cursor.next()).toEqual([[1001]]);
+
+      // Rows were already handed out, so the read is not started again
+      state.odbc.deadPools.add(dead);
+      await expect(cursor.next()).rejects.toThrow(/^Database query failed: \[08S01\].*CWBCO1047/);
+      await cursor.close();
+      expect(state.odbc.closedPools.has(dead)).toBe(true);
+
+      const hits = state.odbc.deadHits;
+      await connection.executeQuery('VALUES 1');
+      expect(state.odbc.deadHits).toBe(hits);
+      expect(state.odbc.pools).toBe(dead + 1);
+      await connection.closeGlobalPool();
+    });
   });
 });
 

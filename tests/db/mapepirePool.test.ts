@@ -4,7 +4,8 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { SQLJob } from '@ibm/mapepire-js';
-import { JobPool, describeMapepireError, type JobFactory } from '../../src/db/drivers/mapepire.js';
+import { JobPool, describeMapepireError, toMapepireError, type JobFactory } from '../../src/db/drivers/mapepire.js';
+import { isConnectionLost } from '../../src/db/driver.js';
 
 interface FakeJob {
   id: number;
@@ -301,5 +302,19 @@ describe('describeMapepireError', () => {
   it('leaves other errors alone', () => {
     expect(describeMapepireError(new Error('SSH connection failed'))).toBe('SSH connection failed');
     expect(describeMapepireError('plain')).toBe('plain');
+  });
+});
+
+describe('toMapepireError', () => {
+  it('reports Not connected, which has no SQLSTATE, as a lost connection', () => {
+    const error = toMapepireError(new Error('Not connected, , 0'));
+    expect(isConnectionLost(error)).toBe(true);
+    expect(error.message).toBe('[08003] Not connected');
+  });
+
+  it('keeps an ordinary SQL error as it is', () => {
+    const error = toMapepireError(new Error('Table not found, 42704, -204'));
+    expect(isConnectionLost(error)).toBe(false);
+    expect(error.message).toBe('[42704] Table not found');
   });
 });

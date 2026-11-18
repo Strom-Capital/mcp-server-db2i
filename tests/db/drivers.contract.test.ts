@@ -46,6 +46,8 @@ const created = vi.hoisted(() => ({
   prepared: [] as string[],
   prepareFailure: undefined as { sqlstate: string; sqlcode: number; text: string } | undefined,
   prepareHangs: false,
+  // Every statement on every connection fails with this, as when the IBM i is unreachable
+  linkDown: undefined as Error | undefined,
 }));
 
 /** Record a prepare-only call and answer it the way the test asked. */
@@ -71,6 +73,9 @@ function finishHanging(): void {
 function makeFakePool(): FakePool {
   return {
     query: vi.fn(async (sql: unknown) => {
+      if (created.linkDown) {
+        throw created.linkDown;
+      }
       if (sql === 'CALL QSYS2.CANCEL_SQL(?)') {
         if (created.cancelFails) {
           throw new Error(CANCEL_REFUSED);
@@ -381,6 +386,7 @@ describe.each(probes)('driver contract: $name', (probe) => {
     created.prepared.length = 0;
     created.prepareFailure = undefined;
     created.prepareHangs = false;
+    created.linkDown = undefined;
     // connection.ts keeps module state, so each test gets a fresh copy.
     vi.resetModules();
     connection = await import('../../src/db/connection.js');
@@ -475,6 +481,83 @@ describe.each(probes)('driver contract: $name', (probe) => {
     await expect(connection.executeQuery('SELECT * FROM NOPE')).rejects.toThrow(
       'Database query failed: SQL0204 not found'
     );
+  });
+
+  describe('a connection the IBM i ended', () => {
+    // What IBM i Access reports once the QZDASOINIT job behind a connection has
+    // ended, for example after an idle timeout or ENDJOB. node-odbc returns such
+    // a connection to its pool and hands it out again, so every later statement
+    // fails the same way until the process restarts.
+    const linkFailure = (): Error =>
+      probe.sqlError(
+        '08S01',
+        -99999,
+        'Communication link failure. comm rc=10054 - CWBCO1047 - The IBM i server application disconnected the connection'
+      );
+
+    it('runs the statement again on a new connection and closes the old one', async () => {
+      connection.initializePool(baseConfig(probe.name));
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      const [dead] = probe.pools();
+      dead.query.mockRejectedValue(linkFailure());
+
+      const result = await connection.executeQuery('SELECT 2 FROM SYSIBM.SYSDUMMY1');
+
+      expect(result.rows).toEqual([{ SCHEMA_NAME: 'MYLIB', N: 1 }]);
+      expect(probe.pools()).toHaveLength(2);
+      expect(dead.close).toHaveBeenCalled();
+      expect(probe.isReadOnly(1)).toBe(true);
+    });
+
+    it('keeps working on the new connection for later statements', async () => {
+      connection.initializePool(baseConfig(probe.name));
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      const [dead] = probe.pools();
+      dead.query.mockRejectedValue(linkFailure());
+
+      for (const n of [2, 3, 4, 5, 6]) {
+        await expect(connection.executeQuery(`SELECT ${n} FROM SYSIBM.SYSDUMMY1`)).resolves.toBeDefined();
+      }
+      expect(probe.pools()).toHaveLength(2);
+    });
+
+    it('runs a procedure again on a new connection', async () => {
+      connection.initializePool(baseConfig(probe.name));
+      await connection.executeProcedure("CALL QSYS2.GENERATE_SQL('T', 'MYLIB', 'TABLE')");
+      const [dead] = probe.pools();
+      dead.query.mockRejectedValue(linkFailure());
+
+      await connection.executeProcedure("CALL QSYS2.GENERATE_SQL('T', 'MYLIB', 'TABLE')");
+
+      expect(probe.pools()).toHaveLength(2);
+      expect(probe.isReadOnly(1)).toBe(false);
+    });
+
+    it('tries once, reports the failure when the new connection fails too, and reconnects on the next query', async () => {
+      connection.initializePool(baseConfig(probe.name));
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      created.linkDown = linkFailure();
+
+      await expect(connection.executeQuery('SELECT 2 FROM SYSIBM.SYSDUMMY1')).rejects.toThrow(/CWBCO1047/);
+      expect(probe.pools()).toHaveLength(2);
+
+      created.linkDown = undefined;
+      await expect(connection.executeQuery('SELECT 3 FROM SYSIBM.SYSDUMMY1')).resolves.toBeDefined();
+      expect(probe.pools()).toHaveLength(3);
+    });
+
+    it('keeps the connection after an ordinary SQL error', async () => {
+      connection.initializePool(baseConfig(probe.name));
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+      const [pool] = probe.pools();
+      pool.query.mockRejectedValueOnce(probe.sqlError('42704', -204, 'ORDERS in MYLIB type *FILE not found.'));
+
+      await expect(connection.executeQuery('SELECT * FROM MYLIB.ORDERS')).rejects.toThrow(/ORDERS in MYLIB/);
+      await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+
+      expect(probe.pools()).toHaveLength(1);
+      expect(pool.close).not.toHaveBeenCalled();
+    });
   });
 
   it('reports the SQLSTATE, SQLCODE, cause and recovery of a failed statement', async () => {
@@ -819,6 +902,34 @@ describe.each(probes)('driver contract: $name', (probe) => {
       expect(again.rows).toHaveLength(1);
     });
 
+    it.skipIf(probe.name === 'odbc')(
+      'cancels on a new connection when the IBM i ended the one QSYS2.CANCEL_SQL runs on',
+      async () => {
+        connection.initializePool(limited());
+        await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+        await connection.executeProcedure("CALL QSYS2.GENERATE_SQL('T', 'MYLIB', 'TABLE')");
+        const procedure = probe.pools().findIndex((_, index) => !probe.isReadOnly(index));
+        const dead = probe.pools()[procedure];
+        dead.query.mockRejectedValue(
+          probe.sqlError(
+            '08S01',
+            -99999,
+            'Communication link failure. comm rc=10054 - CWBCO1047 - The IBM i server application disconnected the connection'
+          )
+        );
+
+        created.hangNext = true;
+        await expect(connection.executeQuery('SELECT * FROM MYLIB.ORDERS')).rejects.toThrow(
+          'Database query failed: Query cancelled on the IBM i after 1 seconds (QUERY_TIMEOUT)'
+        );
+
+        const calls = cancelCalls().filter((call) => call.pool !== procedure);
+        expect(calls).toHaveLength(1);
+        expect(probe.isReadOnly(calls[0].pool)).toBe(false);
+        expect(dead.close).toHaveBeenCalled();
+      }
+    );
+
     it('says when the IBM i refused the cancel, and the pool still works', async () => {
       connection.initializePool(limited());
       created.hangNext = true;
@@ -855,6 +966,28 @@ describe('driver contract: jt400 specifics', () => {
 
   afterEach(async () => {
     await connection.closeGlobalPool();
+  });
+
+  it('reconnects after the JT400 pool reports that the connection does not exist', async () => {
+    // What node-jt400 threw on a real system for the first statement after the
+    // IBM i ended the job: a ConnectionPoolException, not an SQLException, so
+    // there is no SQLSTATE to read
+    connection.initializePool(baseConfig('jt400'));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    const [dead] = created.jt400.map((c) => c.pool);
+    dead.query.mockRejectedValue(
+      Object.assign(new Error('The connection does not exist.'), {
+        name: 'OperationalError',
+        cause: new Error(
+          'Error running instance method\ncom.ibm.as400.access.ConnectionPoolException: The connection does not exist.',
+          { cause: { toStringSync: () => 'com.ibm.as400.access.ConnectionPoolException: The connection does not exist.' } }
+        ),
+      })
+    );
+
+    await expect(connection.executeQuery('SELECT 2 FROM SYSIBM.SYSDUMMY1')).resolves.toBeDefined();
+    expect(created.jt400).toHaveLength(2);
+    expect(dead.close).toHaveBeenCalled();
   });
 
   it('reads rows through a prepared statement, so BLOB values come back as hex', async () => {
@@ -1050,6 +1183,20 @@ describe('driver contract: mapepire specifics', () => {
 
   afterEach(async () => {
     await connection.closeGlobalPool();
+  });
+
+  it('starts a new job after the Mapepire server answers Not connected', async () => {
+    // What a Mapepire job answered on a real system to every request after the
+    // IBM i ended its QZDASOINIT job: no SQLSTATE, and the job still reports ready
+    connection.initializePool(baseConfig('mapepire'));
+    await connection.executeQuery('SELECT 1 FROM SYSIBM.SYSDUMMY1');
+    const [dead] = created.mapepire.map((c) => c.pool);
+    dead.query.mockRejectedValue(new Error('Not connected, , 0'));
+
+    await expect(connection.executeQuery('SELECT 2 FROM SYSIBM.SYSDUMMY1')).resolves.toBeDefined();
+    await expect(connection.executeQuery('SELECT 3 FROM SYSIBM.SYSDUMMY1')).resolves.toBeDefined();
+    expect(created.mapepire).toHaveLength(2);
+    expect(dead.close).toHaveBeenCalled();
   });
 
   it('opens one SSH session with the configured user, port and host key check', async () => {

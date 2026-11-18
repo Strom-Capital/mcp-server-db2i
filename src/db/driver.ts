@@ -195,6 +195,17 @@ export class DbError extends Error implements SqlDiagnostics {
 }
 
 /**
+ * Whether a statement failed because its connection or job is gone (SQLSTATE
+ * class 08), for example after the IBM i ended the QZDASOINIT job behind it.
+ * IBM i Access reports that as 08S01 with CWBCO1047.
+ *
+ * @param error - Error thrown by a driver
+ */
+export function isConnectionLost(error: unknown): boolean {
+  return error instanceof DbError && error.sqlstate?.startsWith('08') === true;
+}
+
+/**
  * The SQLCODE from a message that starts with a JT400 message ID, such as
  * `[SQL0204] ...`. A statement that fails has a negative SQLCODE.
  */
