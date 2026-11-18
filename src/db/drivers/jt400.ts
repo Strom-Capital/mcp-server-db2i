@@ -214,6 +214,15 @@ function isJavaSqlException(value: unknown): value is JavaSqlException {
 }
 
 /**
+ * What the JT400 connection pool throws, instead of an SQLException, for the
+ * first statement after the IBM i ended the job behind a pooled connection.
+ * Reported as SQLSTATE 08003 (connection does not exist), so the connection
+ * manager opens a new pool and runs the statement again.
+ */
+const CONNECTION_GONE = /ConnectionPoolException: The connection does not exist/;
+const CONNECTION_GONE_SQLSTATE = '08003';
+
+/**
  * The SQLSTATE and SQLCODE of a failed statement. node-jt400 throws an Oops
  * error whose cause is node-java's error, whose cause in turn is the Java
  * SQLException. If that cannot be read, the SQLCODE comes from the `[SQLnnnn]`
@@ -222,6 +231,9 @@ function isJavaSqlException(value: unknown): value is JavaSqlException {
 function jt400Diagnostics(error: Error): SqlDiagnostics {
   let current: unknown = error;
   for (let depth = 0; depth < 4 && current; depth++) {
+    if (current instanceof Error && CONNECTION_GONE.test(current.message)) {
+      return { sqlstate: CONNECTION_GONE_SQLSTATE };
+    }
     if (isJavaSqlException(current)) {
       try {
         const sqlstate = current.getSQLStateSync() ?? undefined;

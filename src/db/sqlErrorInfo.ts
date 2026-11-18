@@ -9,7 +9,7 @@
  */
 
 import type { DbPool, SqlDiagnostics } from './driver.js';
-import { DbError } from './driver.js';
+import { DbError, isConnectionLost } from './driver.js';
 
 /** What a tool returns next to `error` when a statement fails. */
 export type SqlErrorDetails = SqlDiagnostics & {
@@ -168,7 +168,9 @@ export async function explainSqlError(
     return { message: inline.lead, details: { ...details, cause: inline.cause, recovery: inline.recovery } };
   }
 
-  if (error.sqlcode === undefined || unavailable.has(system)) {
+  // A lost connection has no SQLCODE text worth a lookup, and the lookup would
+  // run on the pool whose connection just ended
+  if (error.sqlcode === undefined || unavailable.has(system) || isConnectionLost(error)) {
     return { message, details };
   }
   try {
