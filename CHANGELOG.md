@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.9](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.8...v3.8.9) (2026-11-18)
+
+
+### Bug Fixes
+
+* **db:** reconnect after the IBM i ends a pooled connection ([#369](https://github.com/Strom-Capital/mcp-server-db2i/issues/369)) ([1769010](https://github.com/Strom-Capital/mcp-server-db2i/commit/1769010a390dd0d578079edbc73d3e66328ef2a2)), closes [#368](https://github.com/Strom-Capital/mcp-server-db2i/issues/368)
+
 ## [3.8.8](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.7...v3.8.8) (2026-11-16)
 
 
