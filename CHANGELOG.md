@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.10](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.9...v3.8.10) (2026-11-23)
+
+
+### Dependencies
+
+* bump hono, eslint, typescript-eslint and the web-app eslint ([#375](https://github.com/Strom-Capital/mcp-server-db2i/issues/375)) ([301966e](https://github.com/Strom-Capital/mcp-server-db2i/commit/301966efac354d571dda2cc43e496b3f583f79f8))
+
 ## [3.8.9](https://github.com/Strom-Capital/mcp-server-db2i/compare/v3.8.8...v3.8.9) (2026-11-18)
 
 
